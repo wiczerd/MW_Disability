@@ -19,6 +19,7 @@ real(8), parameter :: 	   beta= 0.9, & 	 !People are impatient
 			   R = 1/beta, &	 !People can save
 			   youngD = 20.0, &	 !Length of initial young period
 			   oldD = 2.0, &	 !Length of each old period
+			   tlength =9, &	 !Number of periods per year	
 			   Longev = 78, &	 !Median longevity	
 			   xi0 = 0.16, &	 !Probability of DI accept for d=0
 			   xi1 = 0.22, &	 !Probability of DI accept for d=1
@@ -30,9 +31,10 @@ real(8), parameter :: 	   beta= 0.9, & 	 !People are impatient
 			   UIrr = 0.3, &	 !Replacement Rate in UI
 			   DItest1 = 1.0, &	 !Earnings Index threshold 1 (See Kopecky later)
 			   DItest2 = 1.5, &	 !Earnings Index threshold 2
-			   DItest3 = 2.0 	 !Earnings Index threshold 3	
+			   DItest3 = 2.0, & 	 !Earnings Index threshold 3	
+			   alfii = 0.95		 !Peristance of Alpha_i type
 
-integer, parameter ::  	   oldN = 11, &		 !Number of old periods
+integer, parameter ::  	   oldN = 11,	 &	 !Number of old periods
 			   TT = oldN+2		 !Total number of periods
 
  !Preferences----------------------------------------------------------------!
@@ -63,12 +65,14 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 			piz2 = 0.01, &  !Probability z0->zl
 			piz3 = 0.30, &  !Probability z0->zh
 			piz4 = 0.10	!Probability zh->z0
+
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter ::  ni  = 4,  &	!Number of individual types (same for alfi and beti)
+integer, parameter ::  nai = 2,  &	!Number of individual alpha types 
+		       nbi = 2,  &	!Number of indiidual beta types
 		       ndi = 2,  &	!Number of individual disability types
-		       nj  = 4,  &	!Number of occupations (for now the 4 types)
+		       nj  = 2,  &	!Number of occupations (for now 2 types, give TFP risk)
 		       nd  = 3,  &	!Number of disability extents
 		       ne  = 10, &	!Points on earnings grid
 		       na  = 80, &	!Points on assets grid
@@ -87,10 +91,9 @@ real(8), parameter ::  Vtol     = 0.0001, & 	!Tolerance on V-dist
 								   	
 
 !**To build***************************!
-real(8) :: 		alfi(ni), &		!Alpha_i grid- individual wage type parameter
-			beti(ni), &		!Beta_i grid- individual wage type parameter
+real(8) :: 		alfi(nai), &		!Alpha_i grid- individual wage type parameter
+			beti(nbi), &		!Beta_i grid- individual wage type parameter
 			occz(nj), &		!Occupation-specific z risk
-			occd(nj), &		!Occupation-specific d risk
 			wtau(TT-1), &		!Age-specific wage parameter
 			wd(nd),   &		!Disability-specific wage parameter
 			ptau(TT), &		!Probability of aging
@@ -99,13 +102,16 @@ real(8) :: 		alfi(ni), &		!Alpha_i grid- individual wage type parameter
 			zgrid(nz), &		!TFP shock grid
 			xi(nd),&		!DI acceptance probability
 			agrid(na),&		!Assets grid
-			egrid(ne)		!Earnings Index Grid
+			egrid(ne),&		!Earnings Index Grid
+			pialf(nai,nai),&	!Alpha_i transition matrix
+			piz(nz,nz,nj),&		!TFP transition matrix
+			pid(nd,nd,ndi,TT-1)	!Disability transition matrix
 			
 contains
 subroutine setparams()
 
 			character(len=24) :: param_name
-			integer:: i, j, k, unitno, t 
+			integer:: i, j, k, unitno, t, ii 
 			real(8):: summy, meps2(ne), agrid2(na), emin, emax, wtmax, step
 
 			!***For Now, Simple Grids for Comparative Statics***!
@@ -114,18 +120,9 @@ subroutine setparams()
 				!Extra probability of bad d transitions
 				!Comp Stat --> 1=(l,l) 2=(l,h) 3=(h,l) 4=(l,l) 
 				occz(1) = 1.0
-				occz(2) = 1.0
-				occz(3) = 1.2
-				occz(4)	= 1.2
+				occz(2) = 1.2
 			open (newunit=unitno,file ='occtfp.txt',status ='replace')
 			write (unitno,*) occz
-			close (unitno)
-				occd(1) = 1.0
-				occd(2) = 1.2
-				occd(3) = 1.2
-				occd(4) = 1.0
-			open (newunit=unitno,file ='occdr.txt',status ='replace')
-			write (unitno,*) occd
 			close (unitno)
 
 	
@@ -134,13 +131,20 @@ subroutine setparams()
 				!Full Model-->Joint Distributed log-normal.
 				!CompStat  --> 1=(h,l) 2=(h,h) 3=(l,h) 4=(l,l)
 				alfi(1) = 0.5
-				alfi(2) = 0.5
-				alfi(3) = 0.2
-				alfi(4) = 0.2
+				alfi(2) = 0.2
 				beti(1) = 1.0
 				beti(2) = 1.2 
-				beti(3) = 1.2
-				beti(4) = 1.0
+
+				!Transition on alpha
+				DO i=1,nai	!Current ai
+				DO j=1,nai	!ai'
+					IF (i==j)
+					pialf(i,j) = alfii
+					ELSE
+					pialf(i,j) = 1-alfii
+					EndIF
+				EndDO
+				EndDO
 
 				!Extra disability risk
 				dtype(1) = 1
@@ -159,12 +163,12 @@ subroutine setparams()
 				ENDDO
 
 				!Aging Probability (actually, probability of not aging)
-				! Mean Duration = (pr(age))^(-1)-1
-				ptau(1) = 1-(youngD+1)**(-1)
+				! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlength units
+				ptau(1) = 1-(tlength*youngD+1)**(-1)
 				DO t=2,TT-1
-					ptau(t) = 1-(oldD+1)**(-1)
+					ptau(t) = 1-(tlength*oldD+1)**(-1)
 				ENDDO
-				ptau(TT) = 1-(Longev-25+youngD+oldN*oldD-1)**(-1)
+				ptau(TT) = 1-((Longev-25+youngD+oldN*oldD)*tlength-1)**(-1)
 
 				!Age-related disability risk
 				dtau(1) = 0.5	!Young's Risk
@@ -200,6 +204,36 @@ subroutine setparams()
 				DO i=2,na
 					agrid(i) = amin+amax/((na-i+1)**(1-gam))-1.1
 				ENDdo
+
+		!Make Markov transition matrices with all wierd invidual stuff
+		!Disability: pid(id,id';i,t) <---indv. type and age specific
+		DO i=1,ndi
+		DO t=it:TT-1
+	           pid(1,1,i,TT-it) = 1-pid1*dtau(TT-it)*dtype(i)	!Stay healthy
+		   pid(1,2,i,TT-it) = pid1*dtau(TT-it)*dtype(i)		!Partial Disability
+		   pid(1,3,i,TT-it) = 0					!Full Disability
+		   pid(2,1,i,TT-it) = 0					!Monotone
+		   pid(2,2,i,TT-it) = 1-pid2*dtau(TT-it)*dtype(i)	!Stay Partial
+		   pid(2,3,i,TT-it) = pid2*dtau(TT-it)*dtype(i)		!Full Disability
+		   pid(3,1,i,TT-it) = 0		!Full is absorbing State
+		   pid(3,2,i,TT-it) = 0
+		   pid(3,3,i,TT-it) = 1
+	        EndDO
+		EndDO
+		!Technology: piz(iz,iz';j) <--- occupations differ in downside risk       
+		DO j=1,nj
+		   piz(1,1,j) = 1-piz1   	!Stay in really bad shock
+		   piz(1,2,j) = piz1		!Move to low shock
+		   piz(1,3,j) = 0
+		   piz(2,1,j) = pz2*occz(j)	  !Move to really bad shock (occupations affect it)
+		   piz(2,2,j) = 1-pz2*occz(j)-pz3 !Stay in low shock
+		   piz(2,3,j) = pz3		  !Move to high shock
+		   piz(3,1,j) = 0		  !Must go through low to get to really bad
+		   piz(3,2,j) = pz4*occz(j)	  !Move to low shock
+		   piz(3,3,j) = 1-pz4*occz(j)	  !Stay in high shock
+		EndDO
+
+
 			
 		     !xxxJUNKxxx!Construct general weights for gauss-chebyshev quadratures
 				!weps = cheb_weight(neps)

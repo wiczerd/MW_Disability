@@ -1,4 +1,4 @@
-module utils
+module GKSTW_tools
 
 use nrtype
 implicit none
@@ -4298,6 +4298,7 @@ IF (xnp > 30.) THEN
       END DO
 
     ELSE IF (m > ix) THEN
+
       ix1 = ix + 1
       DO i = ix1, m
         f = f / (g/i-r)
