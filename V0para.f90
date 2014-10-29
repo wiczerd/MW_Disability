@@ -10,7 +10,7 @@ module V0para
 !use nrtype
 !use nr_lib, only:  cheb_nodes, cheb_weight, mynrmlpdf
 implicit none
-
+save
 !***Unit number***********************************!
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 
@@ -138,9 +138,9 @@ subroutine setparams()
 				!Transition on alpha
 				DO i=1,nai	!Current ai
 				DO j=1,nai	!ai'
-					IF (i==j)
+					IF (i .EQ. j) THEN
 					pialf(i,j) = alfii
-					ELSE
+					ELSE 
 					pialf(i,j) = 1-alfii
 					EndIF
 				EndDO
@@ -208,16 +208,16 @@ subroutine setparams()
 		!Make Markov transition matrices with all wierd invidual stuff
 		!Disability: pid(id,id';i,t) <---indv. type and age specific
 		DO i=1,ndi
-		DO t=it:TT-1
-	           pid(1,1,i,TT-it) = 1-pid1*dtau(TT-it)*dtype(i)	!Stay healthy
-		   pid(1,2,i,TT-it) = pid1*dtau(TT-it)*dtype(i)		!Partial Disability
-		   pid(1,3,i,TT-it) = 0					!Full Disability
-		   pid(2,1,i,TT-it) = 0					!Monotone
-		   pid(2,2,i,TT-it) = 1-pid2*dtau(TT-it)*dtype(i)	!Stay Partial
-		   pid(2,3,i,TT-it) = pid2*dtau(TT-it)*dtype(i)		!Full Disability
-		   pid(3,1,i,TT-it) = 0		!Full is absorbing State
-		   pid(3,2,i,TT-it) = 0
-		   pid(3,3,i,TT-it) = 1
+		DO t=1,TT-1
+	           pid(1,1,i,TT-t) = 1-pid1*dtau(TT-t)*dtype(i)	!Stay healthy
+		   pid(1,2,i,TT-t) = pid1*dtau(TT-t)*dtype(i)		!Partial Disability
+		   pid(1,3,i,TT-t) = 0					!Full Disability
+		   pid(2,1,i,TT-t) = 0					!Monotone
+		   pid(2,2,i,TT-t) = 1-pid2*dtau(TT-t)*dtype(i)	!Stay Partial
+		   pid(2,3,i,TT-t) = pid2*dtau(TT-t)*dtype(i)		!Full Disability
+		   pid(3,1,i,TT-t) = 0		!Full is absorbing State
+		   pid(3,2,i,TT-t) = 0
+		   pid(3,3,i,TT-t) = 1
 	        EndDO
 		EndDO
 		!Technology: piz(iz,iz';j) <--- occupations differ in downside risk       
@@ -225,12 +225,12 @@ subroutine setparams()
 		   piz(1,1,j) = 1-piz1   	!Stay in really bad shock
 		   piz(1,2,j) = piz1		!Move to low shock
 		   piz(1,3,j) = 0
-		   piz(2,1,j) = pz2*occz(j)	  !Move to really bad shock (occupations affect it)
-		   piz(2,2,j) = 1-pz2*occz(j)-pz3 !Stay in low shock
-		   piz(2,3,j) = pz3		  !Move to high shock
+		   piz(2,1,j) = piz2*occz(j)	  !Move to really bad shock (occupations affect it)
+		   piz(2,2,j) = 1-piz2*occz(j)-piz3 !Stay in low shock
+		   piz(2,3,j) = piz3		  !Move to high shock
 		   piz(3,1,j) = 0		  !Must go through low to get to really bad
-		   piz(3,2,j) = pz4*occz(j)	  !Move to low shock
-		   piz(3,3,j) = 1-pz4*occz(j)	  !Stay in high shock
+		   piz(3,2,j) = piz4*occz(j)	  !Move to low shock
+		   piz(3,3,j) = 1-piz4*occz(j)	  !Stay in high shock
 		EndDO
 
 

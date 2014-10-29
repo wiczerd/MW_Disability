@@ -282,7 +282,7 @@ call setparams()
 		 ELSE !Don't apply
 			Vtest2 = util(UI(egrid(ie))+R*agrid(ia)-agrid(iaa),1,2)+VC
 			app2 = 0
-		 END
+		 EndIF
 		  apol = max(iaa-1,1)		!concave, start next loop here
 		  IF (Vtest2<Vtest1) THEN	
 		     iaa = na
@@ -420,7 +420,7 @@ function UI(ein)
 use V0para
 implicit none
 	
-	real(DP), intent(in)	:: ein 
+	real(8), intent(in)	:: ein 
 
 	!I'm using a replacement rate of 30% for now, can be fancier
 	UI = ein*UIrr

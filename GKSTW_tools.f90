@@ -1,10 +1,10 @@
 module GKSTW_tools
-
+INCLUDE 'nrtype.f90'
 use nrtype
 implicit none
-!    INTEGER, PARAMETER :: SP = KIND(1.0D0)
-!    INTEGER, PARAMETER :: DP = KIND(1.0D0)
-!    INTEGER, PARAMETER :: WP = DP
+    !INTEGER, PARAMETER :: SP = 4
+    !INTEGER, PARAMETER :: DP = 8
+    !INTEGER, PARAMETER :: 8 = DP
 
 contains
 subroutine mat2csv(A,fname,append)
@@ -136,8 +136,8 @@ SUBROUTINE grid(x,xmin,xmax,s)
 	else
 		if (s==-1.0) then
 			c=xmax-xmin+1
-!		elseif (s==0.0_WP) then
-!			if (xmin>0.0_WP) then
+!		elseif (s==0.0_8) then
+!			if (xmin>0.0_8) then
 !				c=xmax/xmin
 !			else
 !				STOP 'grid: can not use logarithmic spacing for nonpositive values'
@@ -318,11 +318,11 @@ subroutine spline(x,y,y2,yp1,ypn)
 ! this is the NR version of the spline
 
 	IMPLICIT NONE
-	REAL(WP), DIMENSION(:), INTENT(IN) :: x,y
-	REAL(WP), DIMENSION(:), INTENT(OUT) :: y2
-	REAL(WP), INTENT(IN), OPTIONAL :: yp1,ypn
-	REAL(WP), DIMENSION(size(x)-1) :: u
-	real(wp) :: p,qn,si,un
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y
+	REAL(8), DIMENSION(:), INTENT(OUT) :: y2
+	REAL(8), INTENT(IN), OPTIONAL :: yp1,ypn
+	REAL(8), DIMENSION(size(x)-1) :: u
+	real(8) :: p,qn,si,un
 	INTEGER :: n,i,k
 	n=size(x)
 	IF (size(y)/=n .or. size(y2)/=n) THEN
@@ -331,30 +331,30 @@ subroutine spline(x,y,y2,yp1,ypn)
 	END IF
 
 	IF (present(yp1)) THEN
-		y2(1)=-0.5_wp
-		u(1) = (1.0_wp/(x(2)-x(1) ))*( (y(2)-y(1))/(x(2)-x(1))-yp1)
+		y2(1)=-0.5_8
+		u(1) = (1.0_8/(x(2)-x(1) ))*( (y(2)-y(1))/(x(2)-x(1))-yp1)
 	ELSE
-		y2(1)=0.0_WP
-		u(1)=0.0_WP
+		y2(1)=0.0_8
+		u(1)=0.0_8
 	END IF
 	do i =2,n-1
 		si	= (x(i)-x(i-1))/(x(i+1)-x(i-1))
-		p	= si*y2(i-1)+2.0_wp
-		y2(i)	= (si-1.0_wp)/p
-		u(i)	= (6.0_wp*((y(i+1)-y(i))/(x(i+1)-x(i))-(y(i)-y(i-1)) &
+		p	= si*y2(i-1)+2.0_8
+		y2(i)	= (si-1.0_8)/p
+		u(i)	= (6.0_8*((y(i+1)-y(i))/(x(i+1)-x(i))-(y(i)-y(i-1)) &
 			& /(x(i)-x(i-1)))/(x(i+1)-x(i-1))-si*u(i-1))/p
 	enddo
 
 	IF (present(ypn)) THEN
-		qn = 0.5_wp
-		un = (3.0_wp/(x(n)-x(n-1)))*( ypn-(y(n)-y(n-1))/(x(n)-x(n-1)) )
+		qn = 0.5_8
+		un = (3.0_8/(x(n)-x(n-1)))*( ypn-(y(n)-y(n-1))/(x(n)-x(n-1)) )
 	ELSE
-		qn = 0.0_wp
-		un = 0.0_wp
+		qn = 0.0_8
+		un = 0.0_8
 !		y2(n)=y2(n-1)
-!		a(n-1)=0.0_WP
+!		a(n-1)=0.0_8
 	END IF
-	y2(n) = (un-qn*u(n-1))/(qn*y2(n-1)+1.0_wp)
+	y2(n) = (un-qn*u(n-1))/(qn*y2(n-1)+1.0_8)
 	do k=n-1,1,-1
 		y2(k) = y2(k)*y2(k+1)+u(k)
 	enddo
@@ -367,10 +367,10 @@ end subroutine spline
 FUNCTION splint(x,y,y2,xi)
 ! cubic interpolation of function y on grid x at interpolation point xi
 	IMPLICIT NONE
-	REAL(WP), DIMENSION(:), INTENT(IN) :: x,y,y2
-	REAL(WP), INTENT(IN) :: xi
-	REAL(WP) :: splint
-	REAL(WP) :: a,b,d,xhr
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y,y2
+	REAL(8), INTENT(IN) :: xi
+	REAL(8) :: splint
+	REAL(8) :: a,b,d,xhr
 	INTEGER :: n,i
 	n=size(x)
 	IF (size(y)/=n .or. size(y2)/=n) THEN
@@ -391,7 +391,7 @@ FUNCTION splint(x,y,y2,xi)
 	a=(x(i+1)-xhr)/d
 	b=(xhr-x(i))/d
 	if((xhr .ge. x(1)) .and. (xhr .le. x(n))) then
-		splint=a*y(i)+b*y(i+1)+((a**3-a)*y2(i)+(b**3-b)*y2(i+1))*(d**2)/6.0_WP
+		splint=a*y(i)+b*y(i+1)+((a**3-a)*y2(i)+(b**3-b)*y2(i+1))*(d**2)/6.0_8
 	elseif( xhr .ge. x(n) ) then
 		splint = (y(n)-y(n-1))/(x(n)-x(n-1))*(xhr -x(n)) + y(n)
 	elseif( xhr .le. x(1) ) then
@@ -403,10 +403,10 @@ END FUNCTION splint
 FUNCTION dsplint(x,y,y2,xi)
 ! derivative implied by cubic interpolation of function y on grid x at interpolation point xi
 	IMPLICIT NONE
-	REAL(WP), DIMENSION(:), INTENT(IN) :: x,y,y2
-	REAL(WP), INTENT(IN) :: xi
-	REAL(WP) :: dsplint
-	REAL(WP) :: a,b,d, xhr
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y,y2
+	REAL(8), INTENT(IN) :: xi
+	REAL(8) :: dsplint
+	REAL(8) :: a,b,d, xhr
 	INTEGER :: n,i
 	n=size(x)
 	IF (size(y)/=n .or. size(y2)/=n) THEN
@@ -420,16 +420,16 @@ FUNCTION dsplint(x,y,y2,xi)
 	if (d == 0.0) STOP 'bad x input in dsplint'
 	a=(x(i+1)-xhr)/d
 	b=(xhr-x(i))/d
-	dsplint=(y(i+1)-y(i))/d+((3*b**2-1)*y2(i+1)-(3*a**2-1)*y2(i))*d/6.0_WP
+	dsplint=(y(i+1)-y(i))/d+((3*b**2-1)*y2(i+1)-(3*a**2-1)*y2(i))*d/6.0_8
 END FUNCTION dsplint
 
 FUNCTION linint(x,y,xi)
 ! linear interpolation of function y on grid x at interpolation point xi
 	IMPLICIT NONE
-	REAL(WP), DIMENSION(:), INTENT(IN) :: x,y
-	REAL(WP), INTENT(IN) :: xi
-	REAL(WP) :: linint
-	REAL(WP) :: a,b,d,xhr
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y
+	REAL(8), INTENT(IN) :: xi
+	REAL(8) :: linint
+	REAL(8) :: a,b,d,xhr
 	INTEGER :: n,i
 	n=size(x)
 	IF (size(y)/=n) THEN
@@ -450,10 +450,10 @@ END FUNCTION linint
 FUNCTION dlinint(x,y,xi)
 ! derivative implied by linear interpolation of function y on grid x at interpolation point xi
 	IMPLICIT NONE
-	REAL(WP), DIMENSION(:), INTENT(IN) :: x,y
-	REAL(WP), INTENT(IN) :: xi
-	REAL(WP) :: dlinint
-	REAL(WP) :: dx,dy
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y
+	REAL(8), INTENT(IN) :: xi
+	REAL(8) :: dlinint
+	REAL(8) :: dx,dy
 	INTEGER :: n,i
 	n=size(x)
 	IF (size(y)/=n) THEN
@@ -471,9 +471,9 @@ END FUNCTION dlinint
 SUBROUTINE linintv(x,y,xi,yi)
 ! linear interpolation of function y on grid x at interpolation vector xi
     IMPLICIT NONE
-    REAL(WP), DIMENSION(:), INTENT(IN)  :: x,y,xi
-    REAL(WP), DIMENSION(:), INTENT(OUT) :: yi
-    REAL(WP) :: a,b,d
+    REAL(8), DIMENSION(:), INTENT(IN)  :: x,y,xi
+    REAL(8), DIMENSION(:), INTENT(OUT) :: yi
+    REAL(8) :: a,b,d
     INTEGER :: m,n,i,j
     n=size(x)
     IF (size(y)/=n) THEN
@@ -499,12 +499,12 @@ END SUBROUTINE linintv
 
 function bilinint(x,y,f,xiyi)
 	implicit none
-	real(wp), dimension(:), intent(in) :: x,y
-	real(wp), dimension(:,:), intent(in) :: f
-	real(wp), dimension(:), intent(in) :: xiyi
-	real(wp) :: fq11,fq21,fq12,fq22, dx,dy
+	real(8), dimension(:), intent(in) :: x,y
+	real(8), dimension(:,:), intent(in) :: f
+	real(8), dimension(:), intent(in) :: xiyi
+	real(8) :: fq11,fq21,fq12,fq22, dx,dy
 	
-	real(wp) :: bilinint
+	real(8) :: bilinint
 	integer  :: x1,x2,y1,y2
 
 	x1=0
@@ -549,12 +549,12 @@ end function
 
 subroutine dbilinint(x,y,f,xiyi,dxdy)
 	implicit none
-	real(wp), dimension(:), intent(in) :: x,y
-	real(wp), dimension(:,:), intent(in) :: f
-	real(wp), dimension(:), intent(in) :: xiyi
-	real(wp) :: fq11,fq21,fq12,fq22, dx,dy
+	real(8), dimension(:), intent(in) :: x,y
+	real(8), dimension(:,:), intent(in) :: f
+	real(8), dimension(:), intent(in) :: xiyi
+	real(8) :: fq11,fq21,fq12,fq22, dx,dy
 	
-	real(wp), dimension(2) :: dxdy
+	real(8), dimension(2) :: dxdy
 	integer  :: x1,x2,y1,y2
 
 	if(size(x)/=size(f,1)) stop 'x,f grids not the same length in bilinear interpolation'
@@ -603,12 +603,12 @@ end subroutine
 
 function bilinint_v(x,y,f,xiyi)
 	implicit none
-	real(wp), dimension(:), intent(in) :: x,y
-	real(wp), dimension(:), intent(in) :: f
-	real(wp), dimension(:), intent(in) :: xiyi
-	real(wp) :: fq11,fq21,fq12,fq22, dx,dy
+	real(8), dimension(:), intent(in) :: x,y
+	real(8), dimension(:), intent(in) :: f
+	real(8), dimension(:), intent(in) :: xiyi
+	real(8) :: fq11,fq21,fq12,fq22, dx,dy
 	
-	real(wp) :: bilinint_v
+	real(8) :: bilinint_v
 	integer  :: x1,x2,y1,y2,Nx,Ny
 
 	Nx = size(x)
@@ -650,11 +650,11 @@ end function
 function bisplint(x,y,f,coefs,xiyi)
 !This is just a place holder, just calls bilinear interpolation right now
 	implicit none
-	real(wp), dimension(:), intent(in) :: x,y
-	real(wp), dimension(:,:), intent(in) :: f,coefs
-	real(wp), dimension(:), intent(in) :: xiyi
+	real(8), dimension(:), intent(in) :: x,y
+	real(8), dimension(:,:), intent(in) :: f,coefs
+	real(8), dimension(:), intent(in) :: xiyi
 
-	real(wp) :: bisplint
+	real(8) :: bisplint
 	
 	bisplint = bilinint(x,y,f,xiyi)
 
@@ -663,16 +663,16 @@ end function bisplint
 
 function nlinint(x,f,xi, dims)
 	implicit none
-	real(wp), dimension(:), intent(in) :: x ! will have each dimension flattened
-	real(wp), dimension(:), intent(in) :: f ! f defined over the flattened dimensions
-	real(wp), dimension(:), intent(in) :: dims ! array containing the sizes of each dimension
-	real(wp), dimension(:), intent(in) :: xi! where the interpolation should happen, lenght is going to be the number of dimensions
-	real(wp) :: fq1s,fq2s
+	real(8), dimension(:), intent(in) :: x ! will have each dimension flattened
+	real(8), dimension(:), intent(in) :: f ! f defined over the flattened dimensions
+	real(8), dimension(:), intent(in) :: dims ! array containing the sizes of each dimension
+	real(8), dimension(:), intent(in) :: xi! where the interpolation should happen, lenght is going to be the number of dimensions
+	real(8) :: fq1s,fq2s
 
-	real(wp) :: nlinint
+	real(8) :: nlinint
 	integer  :: Nh,si,sii
 	integer, dimension(size(dims))  :: x1,x2, xL,xH
-	real(wp), dimension(size(dims))  :: dx1
+	real(8), dimension(size(dims))  :: dx1
 
 	Nh = size(dims)
 	! put in some checks on the size of x f
@@ -717,8 +717,8 @@ end function
 PURE FUNCTION locate(xx,x)
 ! locates x on array xx and returns the integer index
 	IMPLICIT NONE
-	REAL(WP), DIMENSION(:), INTENT(IN) :: xx
-	REAL(WP), INTENT(IN) :: x
+	REAL(8), DIMENSION(:), INTENT(IN) :: xx
+	REAL(8), INTENT(IN) :: x
 	INTEGER :: locate
 	INTEGER :: n,il,im,iu
 	n=size(xx)
@@ -746,9 +746,9 @@ FUNCTION locate_retvals(xx,x,xhi,xlo)
 ! locates x on array xx and returns the integer index
 ! output arguments xhi and xlo are the x values above and below x on xx
 	IMPLICIT NONE
-	REAL(WP), DIMENSION(:), INTENT(IN) :: xx
-	REAL(WP), INTENT(OUT) :: xhi,xlo
-	REAL(WP), INTENT(IN) :: x
+	REAL(8), DIMENSION(:), INTENT(IN) :: xx
+	REAL(8), INTENT(OUT) :: xhi,xlo
+	REAL(8), INTENT(IN) :: x
 	INTEGER :: locate_retvals
 	INTEGER :: n,il,im,iu
 	n=size(xx)
@@ -784,9 +784,9 @@ END FUNCTION locate_retvals
 PURE FUNCTION locate_idx(xx,idx,x)
 ! locates x on array xx(idx) where index integers idx map the naturals to the sorting
 	IMPLICIT NONE
-	REAL(WP), DIMENSION(:), INTENT(IN) :: xx
+	REAL(8), DIMENSION(:), INTENT(IN) :: xx
 	INTEGER , DIMENSION(:), INTENT(IN) :: idx
-	REAL(WP), INTENT(IN) :: x
+	REAL(8), INTENT(IN) :: x
 	INTEGER :: locate_idx
 	INTEGER :: n,il,im,iu
 	n=size(xx)
@@ -826,28 +826,28 @@ FUNCTION brent(ax,bx,cx,func,xmin, funcp,info,tol_in,niter)
 ! 	info is the status, 0 for sucess and 1 for max iterations
 
 	IMPLICIT NONE
-	REAL(WP), INTENT(IN) :: ax,bx,cx
-	REAL(WP), INTENT(IN), optional :: tol_in
-	REAL(WP), INTENT(OUT) :: xmin
+	REAL(8), INTENT(IN) :: ax,bx,cx
+	REAL(8), INTENT(IN), optional :: tol_in
+	REAL(8), INTENT(OUT) :: xmin
 	integer , intent(out) :: info
 	integer , intent(out), optional :: niter
-	REAL(WP) :: brent
-	real(wp), dimension(:), intent(in) :: funcp ! a vector of function parameters
+	REAL(8) :: brent
+	real(8), dimension(:), intent(in) :: funcp ! a vector of function parameters
 	INTERFACE
 		FUNCTION func(x, funcp)
 		use nrtype
-!		USE mkl95_precision, ONLY: WP => DP
+!		USE mkl95_precision, ONLY: 8 => DP
 		IMPLICIT NONE
-		REAL(WP), INTENT(IN) :: x
-		REAL(WP), INTENT(IN), dimension(:) :: funcp
-		REAL(WP) :: func
+		REAL(8), INTENT(IN) :: x
+		REAL(8), INTENT(IN), dimension(:) :: funcp
+		REAL(8) :: func
 		END FUNCTION func
 	END INTERFACE
 	INTEGER, PARAMETER :: ITMAX=100
-	real(wp) :: TOL
-	REAL(WP), PARAMETER :: CGOLD=0.381966011250105_WP,ZEPS=1.0e-3_WP*epsilon(ax)
+	real(8) :: TOL
+	REAL(8), PARAMETER :: CGOLD=0.381966011250105_8,ZEPS=1.0e-3_8*epsilon(ax)
 	INTEGER :: iter
-	REAL(WP) :: a,b,d,e,etemp,fu,fv,fw,fx,p,q,r,tol1,tol2,u,v,w,x,xm
+	REAL(8) :: a,b,d,e,etemp,fu,fv,fw,fx,p,q,r,tol1,tol2,u,v,w,x,xm
 	info = 0
 
 	if(present(tol_in) .eqv. .true.) then 
@@ -870,10 +870,10 @@ FUNCTION brent(ax,bx,cx,func,xmin, funcp,info,tol_in,niter)
 	fv=fx
 	fw=fx
 	do iter=1,ITMAX
-		xm=0.5_WP*(a+b)
+		xm=0.5_8*(a+b)
 		tol1=tol*abs(x)+ZEPS
-		tol2=2.0_WP*tol1
-		if (abs(x-xm) <= (tol2-0.5_WP*(b-a))) then
+		tol2=2.0_8*tol1
+		if (abs(x-xm) <= (tol2-0.5_8*(b-a))) then
 			xmin=x
 			brent=fx
 			if( (present(niter).eqv. .true.) ) niter = iter-1
@@ -883,12 +883,12 @@ FUNCTION brent(ax,bx,cx,func,xmin, funcp,info,tol_in,niter)
 			r=(x-w)*(fx-fv)
 			q=(x-v)*(fx-fw)
 			p=(x-v)*q-(x-w)*r
-			q=2.0_WP*(q-r)
+			q=2.0_8*(q-r)
 			if (q > 0.0) p=-p
 			q=abs(q)
 			etemp=e
 			e=d
-			if (abs(p) >= abs(0.5_WP*q*etemp) .or. &
+			if (abs(p) >= abs(0.5_8*q*etemp) .or. &
 				p <= q*(a-x) .or. p >= q*(b-x)) then
 				e=merge(a-x,b-x, x >= xm )
 				d=CGOLD*e
@@ -943,24 +943,24 @@ END FUNCTION brent
 
 FUNCTION zbrent(func,x1,x2,funcp,tol,flag)
 	IMPLICIT NONE
-	REAL(WP), INTENT(IN) :: x1,x2,tol
-	REAL(WP) :: zbrent
-	real(wp), dimension(:), intent(in) :: funcp ! a vector of function parameters
+	REAL(8), INTENT(IN) :: x1,x2,tol
+	REAL(8) :: zbrent
+	real(8), dimension(:), intent(in) :: funcp ! a vector of function parameters
 	integer , intent(out) :: flag
 	INTERFACE
 		FUNCTION func(x, funcp)
 		use nrtype
-!		USE mkl95_precision, ONLY: WP => DP
+!		USE mkl95_precision, ONLY: 8 => DP
 		IMPLICIT NONE
-		REAL(WP), INTENT(IN) :: x
-		REAL(WP), INTENT(IN), dimension(:) :: funcp
-		REAL(WP) :: func
+		REAL(8), INTENT(IN) :: x
+		REAL(8), INTENT(IN), dimension(:) :: funcp
+		REAL(8) :: func
 		END FUNCTION func
 	END INTERFACE
 	INTEGER, PARAMETER :: ITMAX=100
-	REAL(WP), PARAMETER :: EPS=epsilon(x1)
+	REAL(8), PARAMETER :: EPS=epsilon(x1)
 	INTEGER :: iter
-	REAL(WP) :: a,b,c,d,e,fa,fb,fc,p,q,r,s,tol1,xm
+	REAL(8) :: a,b,c,d,e,fa,fb,fc,p,q,r,s,tol1,xm
 	a=x1
 	b=x2
 	fa=func(a, funcp)
@@ -992,8 +992,8 @@ FUNCTION zbrent(func,x1,x2,funcp,tol,flag)
 			fb=fc
 			fc=fa
 		end if
-		tol1=2.0_WP*EPS*abs(b)+0.5_WP*tol
-		xm=0.5_WP*(c-b)
+		tol1=2.0_8*EPS*abs(b)+0.5_8*tol
+		xm=0.5_8*(c-b)
 		if (abs(xm) <= tol1 .or. fb == 0.0) then
 			zbrent=b
 			flag = 0
@@ -1002,17 +1002,17 @@ FUNCTION zbrent(func,x1,x2,funcp,tol,flag)
 		if (abs(e) >= tol1 .and. abs(fa) > abs(fb)) then
 			s=fb/fa
 			if (a == c) then
-				p=2.0_WP*xm*s
-				q=1.0_WP-s
+				p=2.0_8*xm*s
+				q=1.0_8-s
 			else
 				q=fa/fc
 				r=fb/fc
-				p=s*(2.0_WP*xm*q*(q-r)-(b-a)*(r-1.0_WP))
-				q=(q-1.0_WP)*(r-1.0_WP)*(s-1.0_WP)
+				p=s*(2.0_8*xm*q*(q-r)-(b-a)*(r-1.0_8))
+				q=(q-1.0_8)*(r-1.0_8)*(s-1.0_8)
 			end if
 			if (p > 0.0) q=-q
 			p=abs(p)
-			if (2.0_WP*p  <  min(3.0_WP*xm*q-abs(tol1*q),abs(e*q))) then
+			if (2.0_8*p  <  min(3.0_8*xm*q-abs(tol1*q),abs(e*q))) then
 				e=d
 				d=p/q
 			else
@@ -1107,11 +1107,11 @@ function trapezoid_refine ( a, b, m, f, q )
 !
   implicit none
 
-  real (wp)  :: a, b
+  real (8)  :: a, b
   real ( kind = 8 ), external :: f
   integer :: i,k,m
 
-  real (wp) :: q, trapezoid_refine,value,x
+  real (8) :: q, trapezoid_refine,value,x
 
   if ( m < 1 ) then
     write ( *, '(a)' ) ' '
