@@ -290,6 +290,7 @@ program V0main
 		EndDO
 		EndDO
 		EndDO
+
 	       !----------------------------------------------------------------!
 	!2) Calculate Value of Disabled: VD(d,e,a,t)	 
 		!d in{1,2,3}  	   :disability extent
@@ -345,8 +346,6 @@ program V0main
 		  j=j+1
 		EndDO	!j: V-iter loop
 		EndDO	!t loop, going backwards
-
-
 
 	!************************************************************************************************!
 	!3) Calculate V= max(VW,VN); requires calculating VW and VN
@@ -422,7 +421,7 @@ program V0main
 			 ELSE !Don't apply
 				Vtest1 = util(UI(egrid(ie))+R*agrid(ia)-agrid(apol),1,2)+VC
 				gapp(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = 0
-			 END
+			 EndIF
 
 			  !Guess on higher grid points only
 			  iaa = apol+1
@@ -443,7 +442,7 @@ program V0main
 			 ELSE !Don't apply
 				Vtest2 = util(UI(egrid(ie))+R*agrid(ia)-agrid(iaa),1,2)+VC
 				app2 = 0
-			 END
+			 EndIF
 			  apol = max(iaa-1,1)		!concave, start next loop here
 			  IF (Vtest2<Vtest1) THEN	
 			     iaa = na
@@ -540,13 +539,14 @@ program V0main
 		!------------------------------------------------!
 		!Check |V-V0|<eps
 		!------------------------------------------------!
+!WRITE(*,*) summer, j
 		 IF (summer < Vtol) THEN
 		  j = maxiter+100	!Converged
 		 EndIF
 		  V0 = V	!New guess
 		  j=j+1
 		EndDO	!j: V-iter loop
-
+WRITE(*,*) ij, ibi, idi, it
 		EndDO	!t loop, going backwards
 
 	EndDO	!idi
@@ -554,8 +554,15 @@ program V0main
 	EndDO	!j
 
 
+!WRITE(*,*) aD(1,:,:,TT-5)
+!WRITE(*,*) '-----'
+!WRITE(*,*) VR
+!WRITE(*,*) '-----'
+!WRITE(*,*) summer, j
 
-END PROGRAM
+End PROGRAM
+
+
 
 
 
