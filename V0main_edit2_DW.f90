@@ -195,19 +195,20 @@ program V0main
 	!************************************************************************************************!
 	! Value Functions
 	!************************************************************************************************!
-		real(8)  ::	Vtest1, Vtest2, Vapp, VC, VR0(nd,ne,na), VR(nd,ne,na), &
-				VD0(nd,ne,na,TT), VD(nd,ne,na,TT), &
-				VN(nj,nbi,ndi,nai,nd,ne,na,nz,TT), VN0(nj,nbi,ndi,nai,nd,ne,na,nz,TT), &
-				VW(nj,nbi,ndi,nai,nd,ne,na,nz,TT), VW0(nj,nbi,ndi,nai,nd,ne,na,nz,TT), &
-				V(nj,nbi,ndi,nai,nd,ne,na,nz,TT),  V0(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
+		real(8)  			::	Vtest1, Vtest2, Vapp, VC
+		real(8),allocatable	:: VR0(:,:,:), VR(:,:,:),	VD0(:,:,:,:), VD(:,:,:,:), &
+				VN(:,:,:,:,:,:,:,:,:), VN0(:,:,:,:,:,:,:,:,:), &
+				VW(:,:,:,:,:,:,:,:,:), VW0(:,:,:,:,:,:,:,:,:), &
+				V(:,:,:,:,:,:,:,:,:),  V0(:,:,:,:,:,:,:,:,:)
 	
 
 	!************************************************************************************************!
 	! Policies objects
 	!************************************************************************************************!
-		real(8)  ::	aR(nd,ne,na), aD(nd,ne,na,TT-1), app2, &
-				aN(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1), aW(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1), &
-				gwork(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1), gapp(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1)
+		real(8)  			::	app2
+		real(8),allocatable	:: aR(:,:,:), aD(:,:,:,:), &
+				aN(:,:,:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:,:,:), &
+				gwork(:,:,:,:,:,:,:,:,:), gapp(:,:,:,:,:,:,:,:,:)
 
 	!************************************************************************************************!
 	! Other
@@ -219,16 +220,21 @@ program V0main
 	!************************************************************************************************!
 	
 	allocate(VR0(nd,ne,na))
-	allocate(VR(nd,ne,na)
-	allocate(VD0(nd,ne,na,TT)
-	allocate(VD(nd,ne,na,TT)
-	allocate(VN(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(VN0(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(VW(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(VW0(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(V(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(V0(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-
+	allocate(VR(nd,ne,na))
+	allocate(VD0(nd,ne,na,TT))
+	allocate(VD(nd,ne,na,TT))
+	allocate(VN(nj,nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(VN0(nj,nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(VW(nj,nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(VW0(nj,nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(V(nj,nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(V0(nj,nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(aR(nd,ne,na))
+	allocate(aD(nd,ne,na,TT-1))
+	allocate(aN(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1))
+	allocate(aW(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1))
+	allocate(gwork(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1))
+	allocate(gapp(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1))
 
 	call setparams()
 	!************************************************************************************************!
@@ -585,6 +591,12 @@ WRITE(*,*) ij, ibi, idi, it
 !	open (newunit=unitno,file ='Vfun.txt',status ='replace')
 !	write (unitno,*) V	
 !	close (unitno)
+
+	!****************************************************************************!
+	! IF you love something.... 
+	!****************************************************************************!
+	deallocate(aR,aD,aN, aW,gwork, gapp)
+	deallocate(VR0,VR,VD0,VD,VN,VN0,VW,VW0,V,V0)
 
 
 
