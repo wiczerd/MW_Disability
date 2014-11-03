@@ -562,13 +562,13 @@ WRITE(*,*) ij, ibi, idi, it
 !WRITE(*,*) '-----'
 !WRITE(*,*) summer, j
 
-	open (newunit=unitno,file ='workpol.txt',status ='replace')
-	ie = INT(na/4)
-	write (unitno,*) gwork(:,1,:,:,:,floor(egrid/3),ie,2,2)	!(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)
-	close (unitno)
-	open (newunit=unitno,file ='Vfun.txt',status ='replace')
-	write (unitno,*) V	
-	close (unitno)
+!	open (newunit=unitno,file ='workpol.txt',status ='replace')
+!	ie = INT(na/4)
+!	write (unitno,*) gwork(:,1,:,:,:,floor(egrid/3),ie,2,2)	!(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)
+!	close (unitno)
+!	open (newunit=unitno,file ='Vfun.txt',status ='replace')
+!	write (unitno,*) V	
+!	close (unitno)
 
 
 

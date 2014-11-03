@@ -1,7 +1,7 @@
 ! V0main.f90
 
 !************************************************************************************************!
-! @ Amanda Michaud, v1: 10/6/2014; current: 10/30/2014
+! @ Amanda Michaud, v1: 10/6/2014; current: 10/31/2014
 !-----------------------------------------------------
 !This is a sub-program for DIchoices paper w/ David Wiczer
 !	Objective: compute V0(j), the expected value of choosing occupation j in {1,2...J}
@@ -168,7 +168,11 @@ module helper_funs
 
 end module helper_funs
 
-
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!						MAIN PROGRAM						       !
+!**************************************************************************************************************!
+!**************************************************************************************************************!
 
 program V0main
 	!INCLUDE 'GKSTW_tools.f90'
@@ -186,10 +190,8 @@ program V0main
 	!************************************************************************************************!
 
 		integer  :: i, j, t, ia, ie, id, it, iaa, apol, ibi, iai, ij , idi, izz, iaai, idd, &
-			    iee1, iee2, iz
+			    iee1, iee2, iz, unitno
 	
-		real(8), parameter :: pival = 3.14159265
-
 	!************************************************************************************************!
 	! Value Functions
 	!************************************************************************************************!
@@ -559,6 +561,16 @@ WRITE(*,*) ij, ibi, idi, it
 !WRITE(*,*) VR
 !WRITE(*,*) '-----'
 !WRITE(*,*) summer, j
+
+	open (newunit=unitno,file ='workpol.txt',status ='replace')
+	ie = INT(na/4)
+	write (unitno,*) gwork(:,1,:,:,:,floor(egrid/3),ie,2,2)	!(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)
+	close (unitno)
+	open (newunit=unitno,file ='Vfun.txt',status ='replace')
+	write (unitno,*) V	
+	close (unitno)
+
+
 
 End PROGRAM
 
