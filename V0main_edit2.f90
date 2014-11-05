@@ -193,21 +193,22 @@ program V0main
 			    iee1, iee2, iz, unitno
 	
 	!************************************************************************************************!
-	! Value Functions
+	! Value Functions- Stack z-risk j and indiv. exposure beta_i
 	!************************************************************************************************!
-		real(8)  ::	Vtest1, Vtest2, Vapp, VC, VR0(nd,ne,na), VR(nd,ne,na), &
-				VD0(nd,ne,na,TT), VD(nd,ne,na,TT), &
-				VN(nj,nbi,ndi,nai,nd,ne,na,nz,TT), VN0(nj,nbi,ndi,nai,nd,ne,na,nz,TT), &
-				VW(nj,nbi,ndi,nai,nd,ne,na,nz,TT), VW0(nj,nbi,ndi,nai,nd,ne,na,nz,TT), &
-				V(nj,nbi,ndi,nai,nd,ne,na,nz,TT),  V0(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
+	real(8)  	  ::Vtest1, Vtest2, Vapp, VC, app2
+	real(8), allocatable :: VR0(:,:,:), VR(:,:,:), &
+				VD0(:,:,:,:), VD(:,:,:,:), &
+				VN(:,:,:,:,:,:,:,:), VN0(:,:,:,:,:,:,:,:), &
+				VW(:,:,:,:,:,:,:,:), VW0(:,:,:,:,:,:,:,:), &
+				V(:,:,:,:,:,:,:,:),  V0(:,:,:,:,:,:,:,:)
 	
 
 	!************************************************************************************************!
-	! Policies objects
+	! Policies objects- Stack z-risk j and indiv. exposure beta_i
 	!************************************************************************************************!
-		real(8)  ::	aR(nd,ne,na), aD(nd,ne,na,TT-1), app2, &
-				aN(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1), aW(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1), &
-				gwork(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1), gapp(nj,nbi,ndi,nai,nd,ne,na,nz,TT-1)
+	real(8), allocatable  ::aR(:,:,:), aD(:,:,:,:),  &
+				aN(:,:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:,:), &
+				gwork(:,:,:,:,:,:,:,:), gapp(:,:,:,:,:,:,:,:)
 
 	!************************************************************************************************!
 	! Other
@@ -219,16 +220,21 @@ program V0main
 	!************************************************************************************************!
 	
 	allocate(VR0(nd,ne,na))
-	allocate(VR(nd,ne,na)
-	allocate(VD0(nd,ne,na,TT)
-	allocate(VD(nd,ne,na,TT)
-	allocate(VN(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(VN0(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(VW(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(VW0(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(V(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-	allocate(V0(nj,nbi,ndi,nai,nd,ne,na,nz,TT)
-
+	allocate(VR(nd,ne,na))
+	allocate(aR(nd,ne,na))
+	allocate(VD0(nd,ne,na,TT))
+	allocate(VD(nd,ne,na,TT))
+	allocate(aD(nd,ne,na,TT-1))
+	allocate(VN(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(VN0(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(VW(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(VW0(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(V(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(V0(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
+	allocate(aN(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
+	allocate(aW(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
+	allocate(gwork(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
+	allocate(gapp(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
 
 	call setparams()
 	!************************************************************************************************!
@@ -248,6 +254,7 @@ program V0main
 		DO ie=1,ne
 		DO ia=1,na
 		DO id=1,nd
+
 			VR0(id,ie,ia) = (((exval**(theta*real(id)))*(SSI(egrid(ie))+agrid(ia)))**(1-gam))/((1-gam)*((1-junk)**(1-gam))*(1-beta*ptau(TT)*(junk*R)**(1-gam)))
 		ENDdo
 		ENDdo
@@ -296,11 +303,11 @@ program V0main
 			DO ibi=1,nbi
 			DO idi=1,ndi
 			DO iai=1,nai
-			DO iz=1,nz   
-				VW(ij,ibi,idi,iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
-				VN(ij,ibi,idi,iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
-				V(ij,ibi,idi,iai,id,ie,ia,iz,TT) = VR(id,ie,ia)	   
-			EndDO
+			!DO iz=1,nz   
+				VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,1,TT) = VR(id,ie,ia)
+				VN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,1,TT) = VR(id,ie,ia)
+				V((ij-1)*nbi+ibi,idi,iai,id,ie,ia,1,TT) = VR(id,ie,ia)	   
+			!EndDO
 			EndDO
 			EndDO
 			EndDO
@@ -386,20 +393,20 @@ program V0main
 		!Guess once, then use prior occupation/beta as guess
 			IF (j .EQ. 1 .AND. ibi .EQ. 1 .AND. idi .EQ. 1) THEN
 			 !0) Guess VW0(nj,nbi,nai,nd,ne,na,nz,TT-1)
-				VW0(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = VW(ij,ibi,idi,iai,id,ie,ia,iz,TT-it+1)
+				VW0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it+1)
 			 !0) Guess VN0(nj,nbi,nai,nd,ne,na,nz,TT-1)
-				VN0(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = VN0(ij,ibi,idi,iai,id,ie,ia,iz,TT-it+1)
+				VN0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VN0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it+1)
 			IF (it .EQ. 1) THEN
-				VN0(ij,ibi,idi,iai,1,ie,ia,iz,TT-it) = 0.5*VW0(ij,ibi,idi,iai,1,ie,ia,iz,TT-it+1)
+				VN0((ij-1)*nbi+ibi,idi,iai,1,ie,ia,iz,TT-it) = 0.5*VW0((ij-1)*nbi+ibi,idi,iai,1,ie,ia,iz,TT-it+1)
 			EndIF
 			ELSE
 			 !0) Guess VW0(nj,nbi,nai,nd,ne,na,nz,TT-1)
-				VW0(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = VW0(max(1,ij-1),max(1,ibi-1),max(1,idi-1),iai,id,ie,ia,iz,TT-it+1)
+				VW0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VW0(max(1,ij-1)*nbi+max(1,ibi-1),max(1,idi-1),iai,id,ie,ia,iz,TT-it+1)
 			 !0) Guess VN0(nj,nbi,nai,nd,ne,na,nz,TT-1)
-				VN0(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = VN0(max(1,ij-1),max(1,ibi-1),max(1,idi-1),iai,id,ie,ia,iz,TT-it+1)
+				VN0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VN0(max(1,ij-1)*nbi+max(1,ibi-1),max(1,idi-1),iai,id,ie,ia,iz,TT-it+1)
 			EndIF !first occupationXbeta loop
 			!0) Calculate V0(nj,nbi,nai,nd,ne,na,nz,it)	
-			V0(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)= max(VW0(ij,ibi,idi,iai,id,ie,ia,iz,TT-it),VN0(ij,ibi,idi,iai,id,ie,ia,iz,TT-it))
+			V0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)= max(VW0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it),VN0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it))
 
 		EndDO	!iai   
 		EndDO 	!id
@@ -427,7 +434,7 @@ program V0main
 			 VC = 0	 
 			  DO izz = 1,nz	 !Loop over z'
 			  DO iaai = 1,nai !Loop over alpha_i'
-			  VC = VC + beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V(ij,ibi,idi,iaai,id,ie,apol,izz,TT-it+1)+ptau(TT-it)*V(ij,ibi,idi,iaai,id,ie,apol,izz,TT-it)) 
+			  VC = VC + beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it)) 
 			  EndDO
 			  EndDO
 			 !Continuation if app is accepted
@@ -435,10 +442,10 @@ program V0main
 			 !Apply if xi(id)Vapp-nu>xi(id)VC
 			 IF (xi(id)*Vapp > xi(id)*VC) THEN
 				Vtest1 = util(UI(egrid(ie))+R*agrid(ia)-agrid(apol),1,2)-nu+(1-xi(id))*VC+xi(id)*Vapp
-				gapp(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = 1
+				gapp((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 1
 			 ELSE !Don't apply
 				Vtest1 = util(UI(egrid(ie))+R*agrid(ia)-agrid(apol),1,2)+VC
-				gapp(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = 0
+				gapp((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 0
 			 EndIF
 
 			  !Guess on higher grid points only
@@ -448,7 +455,7 @@ program V0main
 			 VC = 0	 
 			  DO izz = 1,nz	 !Loop over z'
 			  DO iaai = 1,nai !Loop over alpha_i'
-			  VC = VC + beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V(ij,ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)+ptau(TT-it)*V(ij,ibi,idi,iaai,id,ie,iaa,izz,TT-it)) 
+			  VC = VC + beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it)) 
 			  EndDO
 			  EndDO
 			 !Continuation if app is accepted
@@ -466,13 +473,13 @@ program V0main
 			     iaa = na
 			  ELSE
 			     Vtest1 = Vtest2
-			     gapp(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = app2	
+			     gapp((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = app2	
 			  EndIF
 			  iaa = iaa+1
 			EndDO	!iaa
 
-			VN(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = Vtest1
-			aN(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = agrid(min(apol+1,na))
+			VN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = Vtest1
+			aN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = agrid(min(apol+1,na))
 
 		  	EndDO !iai
 			EndDO !id
@@ -502,8 +509,8 @@ program V0main
 			  DO izz = 1,nz	 !Loop over z'
 			  DO iaai = 1,nai !Loop over alpha_i'
 				!Linearly interpolating on e'
-				yL = beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V(ij,ibi,idi,iaai,id,iee1,apol,izz,TT-it+1)+ptau(TT-it)*V(ij,ibi,idi,iaai,id,iee1,apol,izz,TT-it))
-				yH = beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V(ij,ibi,idi,iaai,id,iee2,apol,izz,TT-it+1)+ptau(TT-it)*V(ij,ibi,idi,iaai,id,iee2,apol,izz,TT-it))
+				yL = beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,iee1,apol,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,iee1,apol,izz,TT-it))
+				yH = beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,iee2,apol,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,iee2,apol,izz,TT-it))
 				Vtest1 = Vtest1 + yL+(yH-yL)*(eprime-egrid(iee1))/(egrid(iee2)-egrid(iee1))
 			  EndDO
 			  EndDO		
@@ -517,8 +524,8 @@ program V0main
 			  DO izz = 1,nz	 !Loop over z'
 			  DO iaai = 1,nai !Loop over alpha_i'
 				!Linearly interpolating on e'
-				yL = beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V(ij,ibi,idi,iaai,id,iee1,iaa,izz,TT-it+1)+ptau(TT-it)*V(ij,ibi,idi,iaai,id,iee1,iaa,izz,TT-it))
-				yH = beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V(ij,ibi,idi,iaai,id,iee2,iaa,izz,TT-it+1)+ptau(TT-it)*V(ij,ibi,idi,iaai,id,iee2,iaa,izz,TT-it))
+				yL = beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,iee1,iaa,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,iee1,iaa,izz,TT-it))
+				yH = beta*piz(iz,izz,idi)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,iee2,iaa,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,iee2,iaa,izz,TT-it))
 				Vtest2 = Vtest2 + yL+(yH-yL)*(eprime-egrid(iee1))/(egrid(iee2)-egrid(iee1))
 			  EndDO
 			  EndDO	
@@ -531,22 +538,22 @@ program V0main
 			  iaa = iaa+1
 			EndDO	!iaa
 
-			VW(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = Vtest1
-			aW(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = agrid(min(apol+1,na))
+			VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = Vtest1
+			aW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = agrid(min(apol+1,na))
 
 
 			!------------------------------------------------!
 			!Calculate V with solved vals of VW and VN
 			!------------------------------------------------!
-			IF (VW(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)>VN(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)) THEN
-			V(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = VW(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)
-			gwork(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = 1
+			IF (VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)>VN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)) THEN
+			V((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)
+			gwork((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 1
 			ELSE
-			V(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = VN(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)
-			gwork(ij,ibi,idi,iai,id,ie,ia,iz,TT-it) = 0
+			V((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)
+			gwork((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 0
 			EndIF
 	
-			summer = summer+ abs(V(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)-V0(ij,ibi,idi,iai,id,ie,ia,iz,TT-it))
+			summer = summer+ abs(V((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it))
 		
 		  	EndDO !iai
 			EndDO !id
@@ -580,11 +587,18 @@ WRITE(*,*) ij, ibi, idi, it
 
 !	open (newunit=unitno,file ='workpol.txt',status ='replace')
 !	ie = INT(na/4)
-!	write (unitno,*) gwork(:,1,:,:,:,floor(egrid/3),ie,2,2)	!(ij,ibi,idi,iai,id,ie,ia,iz,TT-it)
+!	write (unitno,*) gwork(:,1,:,:,:,floor(egrid/3),ie,2,2)	!((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)
 !	close (unitno)
 !	open (newunit=unitno,file ='Vfun.txt',status ='replace')
 !	write (unitno,*) V	
 !	close (unitno)
+
+
+!    .----.   @   @
+!   / .-"-.`.  \v/
+!   | | '\ \ \_/ )
+! ,-\ `-.' /.'  /
+!'---`----'----'
 
 
 

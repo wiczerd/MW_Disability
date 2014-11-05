@@ -78,10 +78,10 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter ::  nai = 20,  &	!Number of individual alpha types 
+integer, parameter ::  nai = 10,  &	!Number of individual alpha types 
 		       nbi = 2,  &	!Number of indiidual beta types
-		       ndi = 20,  &	!Number of individual disability types
-		       nj  = 20,  &	!Number of occupations (downward TFP risk variation)
+		       ndi = 10,  &	!Number of individual disability types
+		       nj  = 10,  &	!Number of occupations (downward TFP risk variation)
 		       nd  = 3,  &	!Number of disability extents
 		       ne  = 10, &	!Points on earnings grid
 		       na  = 80, &	!Points on assets grid
