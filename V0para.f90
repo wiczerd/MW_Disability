@@ -42,7 +42,7 @@ real(8), parameter :: 	   beta= 0.9, & 	 !People are impatient
 			   zRiskL = 0.5,&	 !Lower bound on occupation-related extra economic risk (mult factor)
 			   zRiskH = 1.5		 !Upper bound on occupation-related extra economic risk (mult factor)
 
-integer, parameter ::  	   oldN = 11,	 &	 !Number of old periods
+integer, parameter ::  	   oldN = 1,	 &	 !Number of old periods
 			   TT = oldN+2		 !Total number of periods
 
  !Preferences----------------------------------------------------------------!
@@ -78,13 +78,13 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter ::  nai = 10,  &	!Number of individual alpha types 
-		       nbi = 2,  &	!Number of indiidual beta types
-		       ndi = 10,  &	!Number of individual disability types
-		       nj  = 10,  &	!Number of occupations (downward TFP risk variation)
+integer, parameter ::  nai = 11,  &	!Number of individual alpha types 
+		       nbi = 1,  &	!Number of indiVidual beta types
+		       ndi = 1,  &	!Number of individual disability types
+		       nj  = 1,  &	!Number of occupations (downward TFP risk variation)
 		       nd  = 3,  &	!Number of disability extents
 		       ne  = 10, &	!Points on earnings grid
-		       na  = 80, &	!Points on assets grid
+		       na  = 40, &	!Points on assets grid
 		       nz  = 3,  &	!Number of Occ TFP Shocks
 		       maxiter = 1000   !Tolerance parameter	
 		       	
@@ -115,6 +115,11 @@ real(8) :: 		alfi(nai), &		!Alpha_i grid- individual wage type parameter
 			pialf(nai,nai),&	!Alpha_i transition matrix
 			piz(nz,nz,nj),&		!TFP transition matrix
 			pid(nd,nd,ndi,TT-1)	!Disability transition matrix
+
+
+!****************************************************************************************************************************************!
+!8888888888888888888888888888888888888888		BUILDER MOD		888888888888888888888888888888888888888888888888888888888!
+!****************************************************************************************************************************************!
 			
 contains
 subroutine setparams()
@@ -132,10 +137,6 @@ subroutine setparams()
 				DO i=1,nj
 					occz(i) = zRiskL +(i-1)*(zRiskH-zRiskL)/(nz-1)
 				EndDO
-
-				open (newunit=unitno,file ='ZriskGrid.txt',status ='replace')
-				write (unitno,*) occz
-				close (unitno)
 
 	
 			!Individual- Specific Things
@@ -168,9 +169,6 @@ subroutine setparams()
 				EndIF
 				EndDO
 
-				open (newunit=unitno,file ='AlfGrid.txt',status ='replace')
-				write (unitno,*) alfi
-				close (unitno)
 
 				!Pdf of alpha- N(alfmu,alfsig)
 				 !Probability of landing in bin centered at node
@@ -183,12 +181,9 @@ subroutine setparams()
 
 				!Extra disability risk
 				DO i=1,ndi
-					dtype(i) = dRiskL +(i-1)*(dRiskH-dRiskL)/(ndi-1)
+					dtype(i) = dRiskL +(i-1)*(dRiskH-dRiskL)/(ndi)
 				EndDO
 
-				open (newunit=unitno,file ='DriskGrid.txt',status ='replace')
-				write (unitno,*) dtype
-				close (unitno)
 
 			!TFP 
 				zgrid(1) = 0.5		!Structural Decline
@@ -219,8 +214,8 @@ subroutine setparams()
 			!Disability Extent-Specific Things
 				!Wage Penalty 
 				wd(1) = 0	!Healthy, no penalty
-				wd(2) = -0.1	!Partially Disabled, small penalty	
-				wd(3) = -0.5	!Full Disabled, large penalty
+				wd(2) = -0.5	!Partially Disabled, small penalty	
+				wd(3) = -1.0	!Full Disabled, large penalty
 
 				!DI Acceptance probability
 				xi(1) = xi0
@@ -239,10 +234,9 @@ subroutine setparams()
 				ENDdo
 
 			!Assets Grid
-				step = (amax-amin)/(na-1)
-				agrid(1) = 0.0
-				DO i=2,na
-					agrid(i) = amin+amax/((na-i+1)**(1-gam))-1.1
+				DO i=1,na
+				 agrid(i)=real(i-1,8)/real(na-1,8)
+				 agrid(i)=agrid(i)**2*(amax-amin)+amin
 				ENDdo
 
 		!Make Markov transition matrices with all wierd invidual stuff
@@ -273,17 +267,14 @@ subroutine setparams()
 		   piz(3,3,j) = 1-piz4*occz(j)	  !Stay in high shock
 		EndDO
 
-
-			
-		     !xxxJUNKxxx!Construct general weights for gauss-chebyshev quadratures
-				!weps = cheb_weight(neps)
-				!DO i = 1,na
-				!	meps(i) = mynrmlpdf(abar,siga,agrid(i))
-				!EndDO
-				!agrid = cheb_nodes(na,acheb_min,acheb_max)
-				!WRITE(*,*) hgrid	
+	
 
 end subroutine setparams
+
+!****************************************************************************************************************************************!
+!8888888888888888888888888888888888888888		FUNCTIONS		888888888888888888888888888888888888888888888888888888888!
+!****************************************************************************************************************************************!
+
 		
 function alnorm ( x, upper )
 

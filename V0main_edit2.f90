@@ -567,11 +567,11 @@ program V0main
 !WRITE(*,*) summer, j
 		 IF (summer < Vtol) THEN
 		  j = maxiter+100	!Converged
+WRITE(*,*) ij, ibi, idi, it
 		 EndIF
 		  V0 = V	!New guess
 		  j=j+1
 		EndDO	!j: V-iter loop
-WRITE(*,*) ij, ibi, idi, it
 		EndDO	!t loop, going backwards
 
 	EndDO	!idi
