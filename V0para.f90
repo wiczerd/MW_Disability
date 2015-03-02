@@ -17,11 +17,11 @@ save
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 
 !**Environmental Parameters**********************************************************************!
-real(8), parameter :: 	   beta= 0.9, & 	 !People are impatient
+real(8), parameter :: 	   beta= 0.996, & 	 !People are impatient
 			   R = 1/beta, &	 !People can save
 			   youngD = 20.0, &	 !Length of initial young period
 			   oldD = 2.0, &	 !Length of each old period
-			   tlength =9, &	 !Number of periods per year	
+			   tlength =12, &	 !Number of periods per year (monthly)	
 			   Longev = 78, &	 !Median longevity	
 			   xi0 = 0.16, &	 !Probability of DI accept for d=0
 			   xi1 = 0.22, &	 !Probability of DI accept for d=1
@@ -40,7 +40,10 @@ real(8), parameter :: 	   beta= 0.9, & 	 !People are impatient
 			   dRiskL = 0.5,&	 !Lower bound on occupation-related extra disability risk (mult factor)
 			   dRiskH = 1.5, &	 !Upper bound on occupation-related extra disability risk (mult factor)
 			   zRiskL = 0.5,&	 !Lower bound on occupation-related extra economic risk (mult factor)
-			   zRiskH = 1.5		 !Upper bound on occupation-related extra economic risk (mult factor)
+			   zRiskH = 1.5,&	 !Upper bound on occupation-related extra economic risk (mult factor)
+			   b = 0.05,&		 !Home production
+			   rhho = 0.2,&		 !Probability of finding a job when long-term unemployed (David)
+			   phhi = 0.2		 !Probability moving to LTU (5 months)
 
 integer, parameter ::  	   oldN = 1,	 &	 !Number of old periods
 			   TT = oldN+2		 !Total number of periods
@@ -48,10 +51,10 @@ integer, parameter ::  	   oldN = 1,	 &	 !Number of old periods
  !Preferences----------------------------------------------------------------!
  ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
 
-real(8), parameter :: 	   gam= 0.5, & 		 !IES
+real(8), parameter :: 	   gam= 2.0, & 		 !IES
 			   exval = 2.71828, &    !Value of constant e 	
 			   eta = -0.20, &	 !Util cost of participation
-			   theta = -0.22, &	 !Util cose of disability	
+			   theta = -0.22, &	 !Util cost of disability	
 			   pival = 3.14159265	 !The number pi
 !----------------------------------------------------------------------------!
 	
@@ -84,7 +87,7 @@ integer, parameter ::  nai = 11,  &	!Number of individual alpha types
 		       nj  = 1,  &	!Number of occupations (downward TFP risk variation)
 		       nd  = 3,  &	!Number of disability extents
 		       ne  = 10, &	!Points on earnings grid
-		       na  = 200, &	!Points on assets grid
+		       na  = 40, &	!Points on assets grid
 		       nz  = 3,  &	!Number of Occ TFP Shocks
 		       maxiter = 1000   !Tolerance parameter	
 		       	
@@ -97,7 +100,7 @@ real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
 			di_lambd = 1.0,    &	!Shape of disability dist. (Exponential)
 			amax = 10.0, 	   &	!Max on Asset Grid
 			amin = 0.0	   	!Min on Asset Grid
-
+								   	
 
 !**To build***************************!
 real(8) :: 		alfi(nai), &		!Alpha_i grid- individual wage type parameter
@@ -200,6 +203,7 @@ subroutine setparams()
 				!Aging Probability (actually, probability of not aging)
 				! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlength units
 				ptau(1) = 1-(tlength*youngD+1)**(-1)
+
 				DO t=2,TT-1
 					ptau(t) = 1-(tlength*oldD+1)**(-1)
 				ENDDO

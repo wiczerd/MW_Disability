@@ -131,7 +131,7 @@ module helper_funs
 		integer, intent(in)	:: din, tin
 		real(8)			:: wage
 
-		wage = biin*zin(aiin+wd(din)+wtau(tin))
+		wage = biin*zin*(aiin+wd(din)+wtau(tin))
 
 	end function
 
