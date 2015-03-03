@@ -43,7 +43,7 @@ real(8), parameter :: 	   beta= 0.996, & 	 !People are impatient
 			   zRiskH = 1.5,&	 !Upper bound on occupation-related extra economic risk (mult factor)
 			   b = 0.05,&		 !Home production
 			   rhho = 0.2,&		 !Probability of finding a job when long-term unemployed (David)
-			   phhi = 0.2		 !Probability moving to LTU (5 months)
+			   pphi = 0.2		 !Probability moving to LTU (5 months)
 
 integer, parameter ::  	   oldN = 1,	 &	 !Number of old periods
 			   TT = oldN+2		 !Total number of periods
@@ -87,7 +87,7 @@ integer, parameter ::  nai = 11,  &	!Number of individual alpha types
 		       nj  = 1,  &	!Number of occupations (downward TFP risk variation)
 		       nd  = 3,  &	!Number of disability extents
 		       ne  = 10, &	!Points on earnings grid
-		       na  = 40, &	!Points on assets grid
+		       na  = 200, &	!Points on assets grid
 		       nz  = 3,  &	!Number of Occ TFP Shocks
 		       maxiter = 1000   !Tolerance parameter	
 		       	
