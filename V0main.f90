@@ -255,7 +255,7 @@ program V0main
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: i, j, t, ia, ie, id, it, iaa, apol, ibi, iai, ij , idi, izz, iaai, idd, &
+		integer  :: i, j, t, ia, ie, id, it, iaa,iaa1, apol, ibi, iai, ij , idi, izz, iaai, idd, &
 			    iee1, iee2, iz, unitno
 	
 	!************************************************************************************************!
@@ -264,10 +264,10 @@ program V0main
 	real(8)  	  ::Vtest1, Vtest2, Vapp, VC, app2, Vc1, Vnapp, aNapp
 	real(8), allocatable :: VR0(:,:,:), VR(:,:,:), &			!Retirement
 				VD0(:,:,:,:), VD(:,:,:,:), &			!Disabled
-				VN(:,:,:,:,:,:,:,:), VN0(:,:,:,:,:,:,:,:), &	!Long-term Unemployed
-				VW(:,:,:,:,:,:,:,:), VW0(:,:,:,:,:,:,:,:), &	!Working
-				VU(:,:,:,:,:,:,:,:), VU0(:,:,:,:,:,:,:,:), &	!Unemployed
-				V(:,:,:,:,:,:,:,:),  V0(:,:,:,:,:,:,:,:)	!Participant
+				VN(:,:,:,:,:,:,:), VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
+				VW(:,:,:,:,:,:,:), VW0(:,:,:,:,:,:,:), &	!Working
+				VU(:,:,:,:,:,:,:), VU0(:,:,:,:,:,:,:), &	!Unemployed
+				V(:,:,:,:,:,:,:),  V0(:,:,:,:,:,:,:)	!Participant
 	
 
 	!************************************************************************************************!
@@ -275,9 +275,9 @@ program V0main
 	!	+Asset grids correspond to V-funs
 	!	+g-grids correspond to discrete choices
 	!************************************************************************************************!
-	real(8), allocatable  ::aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:,:), &		
-				aN(:,:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:,:), &
-				gwork(:,:,:,:,:,:,:,:), gapp(:,:,:,:,:,:,:,:)
+	real(8), allocatable  ::aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &		
+				aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:), &
+				gwork(:,:,:,:,:,:,:), gapp(:,:,:,:,:,:,:)
 
 	!************************************************************************************************!
 	! Other
@@ -295,20 +295,20 @@ program V0main
 	allocate(VD0(nd,ne,na,TT))
 	allocate(VD(nd,ne,na,TT))
 	allocate(aD(nd,ne,na,TT-1))
-	! (occupation X ind exposure, ind disb. risk, ind. wage, disab. extent earn ind, assets, agg shock, age)
-	allocate(VN(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
-	allocate(VN0(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
-	allocate(VU(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
-	allocate(VU0(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
-	allocate(VW(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
-	allocate(VW0(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
-	allocate(V(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
-	allocate(V0(nj*nbi,ndi,nai,nd,ne,na,nz,TT))
-	allocate(aN(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
-	allocate(aW(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
-	allocate(aU(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
-	allocate(gwork(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
-	allocate(gapp(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
+	! (occupation X ind exposure, ind disb. risk, ind. wage, disab. extent, earn ind, assets, agg shock, age)
+	allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+	allocate(VN0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+	allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+	allocate(VU0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+	allocate(VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+	allocate(VW0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+	allocate(V(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+	allocate(V0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+	allocate(aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+	allocate(aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+	allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+	allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+	allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
 
 	call setparams()
 WRITE(*,*) agrid
@@ -325,17 +325,17 @@ WRITE(*,*) agrid
 	
 		!VFI with good guess
 		!Initialize
-		junk = (1.0+(beta*ptau(TT)*R**(1.0-gam))**(-1.0/gam))**-1.0 
+		junk = (1.0+(beta*ptau(TT)*R**(1.0-gam))**(-1.0/gam))**(-1.0)
 		DO ie=1,ne
 		DO ia=1,na
 		DO id=1,nd
-			VR0(id,ie,ia) = (((exval**(theta*real(id)))*(SSI(egrid(ie))+agrid(ia)))**(1-gam))/((1-gam)*((1-junk)**(1-gam))*(1-beta*ptau(TT)*(junk*R)**(1-gam)))
+			VR0(id,ie,ia) = (((exval**(theta*real(id)))*(SSI(egrid(ie))+agrid(ia)))**(1.-gam))/((1.-gam)*((1.-junk)**(1-gam))*(1-beta*ptau(TT)*(junk*R)**(1.-gam)))
 		ENDdo
 		ENDdo
 		ENDdo
-	
-		DO WHILE (j<maxiter)
-		summer = 0
+		j = 1
+		DO WHILE (j<=maxiter)
+			summer = 0
 		  	DO ie=1,ne
 				apol = 1
 		  	DO ia=1,na
@@ -378,10 +378,10 @@ WRITE(*,*) agrid
 			DO idi=1,ndi
 			DO iai=1,nai
 			!DO iz=1,nz   
-				VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				VN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				VU((ij-1)*nbi+ibi,idi,iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				V((ij-1)*nbi+ibi,idi,iai,id,ie,ia,1,TT) = VR(id,ie,ia)	   
+				VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
+				VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
+				VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
+				V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)	   
 			!EndDO
 			EndDO
 			EndDO
@@ -403,7 +403,7 @@ WRITE(*,*) agrid
 			!Guess will be value at t+1
 			DO ia=1,na
 			DO ie=1,ne
-			   VD0(1,ie,ia,TT-it) = VD(1,ie,ia,TT-it+1)
+				VD0(1,ie,ia,TT-it) = VD(1,ie,ia,TT-it+1)
 			EndDO
 			EndDO
 
@@ -413,31 +413,30 @@ WRITE(*,*) agrid
 				summer = 0
 				!Loop over earnings index
 				DO ie=1,ne
-				   apol = 1
-				!Loop over current state: assets
-				DO ia=1,na
-					Vtest1 = util(SSDI(egrid(ie))+R*agrid(ia)-agrid(apol),1,2)+beta*((1-ptau(TT-it))*VD0(id,ie,apol,TT-it+1)+ptau(TT-it)*VD0(id,ie,apol,TT-it))
-					iaa = apol+1
-				!Find Policy
-				DO WHILE (iaa<na)
-					Vtest2 = util(SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa),1,2)+beta*((1-ptau(TT-it))*VD0(id,ie,iaa,TT-it+1)+ptau(TT-it)*VD0(id,ie,iaa,TT-it))
-					apol = max(iaa-1,1)		!concave, start next loop here
-					IF (Vtest2<Vtest1) THEN
-						iaa = na
-					ELSE
-						Vtest1 = Vtest2	
-					EndIF
-					iaa = iaa+1
-				EndDO	!iaa
-
-				VD(1,ie,ia,TT-it) = Vtest1
-				aD(1,ie,ia,TT-it) = agrid(min(apol+1,na))
-				summer = summer+ abs(VD(1,ie,ia,TT-it)-VD0(1,ie,ia,TT-it))	
-				!Polices for disabled are the same, just scale V-function
-				VD(2,ie,ia,TT-it) = VD(1,ie,ia,TT-it)*((exval**(theta*1))**(1-gam))
-				VD(3,ie,ia,TT-it) = VD(1,ie,ia,TT-it)*((exval**(theta*2))**(1-gam))
-				EndDO	!ie
-				EndDO	!ia		
+					apol = 1
+					!Loop over current state: assets
+					DO ia=1,na
+						Vtest1 = util(SSDI(egrid(ie))+R*agrid(ia)-agrid(apol),1,2)+beta*((1-ptau(TT-it))*VD0(id,ie,apol,TT-it+1)+ptau(TT-it)*VD0(id,ie,apol,TT-it))
+						iaa = max(apol-1,1)
+						!Find Policy
+						DO WHILE (iaa<na)
+							Vtest2 = util(SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa),1,2)+beta*((1-ptau(TT-it))*VD0(id,ie,iaa,TT-it+1)+ptau(TT-it)*VD0(id,ie,iaa,TT-it))
+							apol = max(iaa-1,1)		!concave, start next loop here
+							IF (Vtest2<Vtest1) THEN
+								iaa = na
+							ELSE
+								Vtest1 = Vtest2	
+							EndIF
+							iaa = iaa+1
+						EndDO	!iaa
+						VD(1,ie,ia,TT-it) = Vtest1
+						aD(1,ie,ia,TT-it) = agrid(min(apol+1,na))
+						summer = summer+ abs(VD(1,ie,ia,TT-it)-VD0(1,ie,ia,TT-it))	
+						!Polices for disabled are the same, just scale V-function
+						VD(2,ie,ia,TT-it) = VD(1,ie,ia,TT-it)*((exval**(theta*1))**(1-gam))
+						VD(3,ie,ia,TT-it) = VD(1,ie,ia,TT-it)*((exval**(theta*2))**(1-gam))
+					EndDO	!ia
+				EndDO	!ie		
 
 				IF (summer < Vtol) THEN
 					j = maxiter+100	!Converged
@@ -469,15 +468,15 @@ WRITE(*,*) agrid
 			!IF (j .EQ. 1 .AND. ibi .EQ. 1 .AND. idi .EQ. 1) THEN
 			!IF (j .EQ. 1 .AND. ibi .EQ. 1 .AND. idi .EQ. 1) THEN
 			 !0) Guess VW0(nj,nbi,nai,nd,ne,na,nz,TT-1)
-				VW0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it+1)
+				VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
 			 !0) Guess VU0(nj,nbi,nai,nd,ne,na,nz,TT-1)
-				VU0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VU((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it+1)
+				VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
 			 !0) Guess VN0(nj,nbi,nai,nd,ne,na,nz,TT-1)
-				VN0((ij-1)*nbi+ibi,idi,iai,3,ie,ia,iz,TT-it) = 1.5*VU((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it+1)
-				VN0((ij-1)*nbi+ibi,idi,iai,2,ie,ia,iz,TT-it) = 1.0*VU((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it+1)
-				VN0((ij-1)*nbi+ibi,idi,iai,1,ie,ia,iz,TT-it) = 0.5*VU((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it+1)
+				VN0((ij-1)*nbi+ibi,(idi-1)*nai +iai,3,ie,ia,iz,TT-it) = 1.5*VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
+				VN0((ij-1)*nbi+ibi,(idi-1)*nai +iai,2,ie,ia,iz,TT-it) = 1.0*VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
+				VN0((ij-1)*nbi+ibi,(idi-1)*nai +iai,1,ie,ia,iz,TT-it) = 0.5*VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
 			IF (it .EQ. 1) THEN
-				VU0((ij-1)*nbi+ibi,idi,iai,1,ie,ia,iz,TT-it) = 0.5*VW0((ij-1)*nbi+ibi,idi,iai,1,ie,ia,iz,TT-it+1)
+				VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it) = 0.5*VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it+1)
 			EndIF
 			!ELSE
 			! !0) Guess VW0(nj,nbi,nai,nd,ne,na,nz,TT-1)
@@ -486,13 +485,13 @@ WRITE(*,*) agrid
 			!	VN0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VN(max(1,ij-1)*nbi+max(1,ibi-1),max(1,idi-1),iai,id,ie,ia,iz,TT-it+1)
 			!EndIF !first occupationXbeta loop
 			!0) Calculate V0(nj,nbi,nai,nd,ne,na,nz,it)	
-			V0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)= max(VW0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it),VU0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it))
+			V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)= max(VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it),VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))
 
-		EndDO	!iai   
-		EndDO 	!id
-		EndDO	!ie
-		EndDO	!ia
 		EndDO	!iz
+		EndDO	!ia
+		EndDO	!ie
+		EndDO 	!id
+		EndDO	!iai   
 		!***********************************************************************************************************
 		!Loop over V=max(VN,VW)	
 		 j=1
@@ -511,39 +510,42 @@ WRITE(*,*) agrid
 				!Loop over current state: assets
 				DO ia=1,na
 				!Continuation value 
-					Vtest1 = 0	 
-					DO izz = 1,nz	 !Loop over z'
-					DO iaai = 1,nai !Loop over alpha_i'
-						Vc1 = (1-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it+1)) !Age and might go LTU
-						Vc1 = Vc1+ptau(TT-it)*(pphi*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it)+(1-pphi)*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it))     !Don't age, maybe LTU
-						Vtest1 = Vtest1 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1)										  !Probability of alpha_i X z_i draw 
-					EndDO
-					EndDO
-					Vtest1 = Vtest1 + util(UI(egrid(ie))+R*agrid(ia)-agrid(apol),id,2) 
-					!Guess on higher grid points only
-					iaa = apol+1
-					DO WHILE (iaa<na)
+					!Vtest1 = 0	 
+					!DO izz = 1,nz	 !Loop over z'
+					!DO iaai = 1,nai !Loop over alpha_i'
+					!	Vc1 = (1-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,apol,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,apol,izz,TT-it+1)) !Age and might go LTU
+					!	Vc1 = Vc1+ptau(TT-it)*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,apol,izz,TT-it)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,apol,izz,TT-it))     !Don't age, maybe LTU
+					!	Vtest1 = Vtest1 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1)										  !Probability of alpha_i X z_i draw 
+					!EndDO !iaai
+					!EndDO !izz
+					!Vtest1 = Vtest1 + util(UI(egrid(ie))+R*agrid(ia)-agrid(apol),id,2) 
+
+					Vtest1 = -1e5 ! just a very bad number, does not really matter
+					iaa1 = max(apol-1,1)
+					DO iaa=iaa1,na
 						!Continuation value if don't go on disability
 						Vtest2 = 0	 
 						DO izz = 1,nz	 !Loop over z'
 						DO iaai = 1,nai !Loop over alpha_i'
-							Vc1 = (1-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)) !Age and might go LTU
-							Vc1 = Vc1+ptau(TT-it)*(pphi*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it)+(1-pphi)*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it))     !Don't age, maybe LTU
-							Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1)										  !Probability of alpha_i X z_i draw 
+							Vc1 = (1-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) & !Age and might go LTU
+								&1+ptau(TT-it)*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, maybe LTU
+							Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1)  !Probability of alpha_i X z_i draw 
 						EndDO
 						EndDO
 						Vtest2 = Vtest2 + util(UI(egrid(ie))+R*agrid(ia)-agrid(iaa),id,2)
-						apol = max(iaa-1,1)		!concave, start next loop here
-						IF (Vtest2<Vtest1) THEN	
-							iaa = na
+						apol = max(iaa-1,1) !set policy
+						IF (Vtest2<Vtest1 .and. 1aa .gt. iaa1) THEN	
+						!no longer improving
+							iaa1 = apol - 1 !concave, start next loop here
+							exit
 						ELSE
 							Vtest1 = Vtest2
 						EndIF
-						iaa = iaa+1
+						
 					EndDO	!iaa
 
-					VU((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = Vtest1
-					aU((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = agrid(min(apol+1,na))
+					VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vtest1
+					aU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = agrid(min(apol,na))
 
 				EndDO !ia
 			EndDO !id
@@ -564,79 +566,68 @@ WRITE(*,*) agrid
 				!First Solve as if do NOT apply (since assets are a joint choice)
 				!---------------------------------------------------------------!
 				!Restart at bottom of asset grid for each of the above (ai,d,e,z)
-				apol = 1
+				iaa1 = 1
 				!----------------------------------------------------------------
 				!Loop over current state: assets
 				DO ia=1,na
-					!Continuation if do not apply for DI
-					VC = 0	 
-					DO izz = 1,nz	 !Loop over z'
-					DO iaai = 1,nai !Loop over alpha_i'
-						Vc1 = (1-ptau(TT-it))*((1-rhho)*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it+1)+rhho*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it+1)) !Age and might go on DI
-						Vc1 = Vc1+ptau(TT-it)*((1-rhho)*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it)+rhho*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it))     !Don't age, might go on DI	
-						Vtest1 = Vtest1 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*Vc1
-					EndDO
-					EndDO
-					Vtest1 = Vtest1+util(b+R*agrid(ia)-agrid(apol),id,2)
-
-					iaa = apol+1
-					DO WHILE (iaa<na)
+					!Value if do not apply for DI
+					Vtest1 = 0
+					DO iaa=iaa1,na
 						!Continuation if do not apply for DI
 						Vtest2 = 0	 
 						DO izz = 1,nz	 !Loop over z'
 						DO iaai = 1,nai !Loop over alpha_i'
-							Vc1 = (1-ptau(TT-it))*((1-rhho)*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)+rhho*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)) !Age and might go on DI
-							Vc1 = Vc1+ptau(TT-it)*((1-rhho)*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it)+rhho*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it))     !Don't age, might go on DI	
+							Vc1 = (1-ptau(TT-it))*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it+1)+rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) !Age and might go on DI
+							Vc1 = Vc1+ptau(TT-it)*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it)+rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, might go on DI	
 							Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1) 
 						EndDO
 						EndDO
 						Vtest2 = Vtest2+util(b+R*agrid(ia)-agrid(iaa),id,2)
 
 						apol = max(iaa-1,1)		!concave, start next loop here
-						IF (Vtest2<Vtest1) THEN	
-							iaa = na
+						IF (Vtest2<Vtest1 .and. iaa .gt. iaa1) THEN	
+							iaa1 = apol -1
+							exit !break
 						ELSE
 							Vtest1 = Vtest2	
 						EndIF
-						iaa = iaa+1
-					EndDO	!iaa
+					EndDO !iaa
 
 					Vnapp = Vtest1
 					aNapp = agrid(min(apol+1,na))
 					!***********Calc app choices and values to compare
 
 					!Continuation value if apply for disability
-					Vapp = 0	 
+					Vapp = util(b+R*agrid(ia)-agrid(iaa),id,2)
 					DO izz = 1,nz	 !Loop over z'
 					DO iaai = 1,nai !Loop over alpha_i'
-						!Vc1 = (1-ptau(TT-it))*((1-xi(id))*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it+1)+xi(id)*VD((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it+1)) !Age and might go on DI
-						!Vc1 = Vc1+ptau(TT-it)*((1-xi(id))*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it)+xi(id)*VD((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it))     !Don't age, might go on DI	
-						Vc1 = (1-ptau(TT-it))*	((1-xi(id))*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it+1)+xi(id)*VD(id,ie,apol,TT-it+1)) & !Age and might go on DI
-						& + ptau(TT-it)*	((1-xi(id))*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,apol,izz,TT-it)+xi(id)*VD(id,ie,apol,TT-it))     !Don't age, might go on DI	
+						Vc1 = (1-ptau(TT-it))*	((1-xi(id))*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,apol,izz,TT-it+1)+xi(id)*VD(id,ie,apol,TT-it+1)) & !Age and might go on DI
+						& + ptau(TT-it)*	((1-xi(id))*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,apol,izz,TT-it)+xi(id)*VD(id,ie,apol,TT-it))     !Don't age, might go on DI	
 						Vapp = Vapp + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1) 
 					EndDO
 					EndDO
 
-					!Apply if Vapp-nu>VC
-					IF (Vapp-nu > VC) THEN
-						Vtest1 = util(b+R*agrid(ia)-agrid(apol),1,2)-nu+Vapp
-						gapp((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 1
+					!Apply if Vapp-nu>Vnapp
+					IF (Vapp-nu > Vnapp) THEN
+						!Vtest1 = util(b+R*agrid(ia)-agrid(apol),1,2)-nu+Vapp
+						Vtest1 = Vapp - nu
+						gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 1
 					ELSE !Don't apply
-						Vtest1 = util(b+R*agrid(ia)-agrid(apol),1,2)+VC
-						gapp((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 0
+						!Vtest1 = util(b+R*agrid(ia)-agrid(apol),1,2)+Vnapp
+						Vtest1 = Vnapp
+						gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 0
 					EndIF
 
 					!Guess on higher grid points only
-					iaa = apol+1
-					DO WHILE (iaa<na)
+					!iaa = apol+1
+					!DO WHILE (iaa<na)
+					do iaa=iaa1,na
 						!Continuation value if apply for disability
 						Vapp = 0	 
 						DO izz = 1,nz	 !Loop over z'
 						DO iaai = 1,nai !Loop over alpha_i'
-							!Vc1 = (1-ptau(TT-it))*((1-xi(id))*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)+xi(id)*VD((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)) !Age and might go on DI
-							!Vc1 = Vc1+ptau(TT-it)*((1-xi(id))*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it)+xi(id)*VD((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it))     !Don't age, might go on DI
-							Vc1 = (1-ptau(TT-it))	*((1-xi(id))*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)+xi(id)*VD(id,ie,iaa,TT-it+1)) & !Age and might go on DI
-								& + ptau(TT-it)	*((1-xi(id))*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it)+xi(id)*VD(id,ie,iaa,TT-it) )    !Don't age, might go on DI
+							Vc1 = (1-ptau(TT-it))	*((1-xi(id))*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+xi(id)*VD(id,ie,iaa,TT-it+1)) & !Age and might go on DI
+								& + ptau(TT-it)	*((1-xi(id))*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it)+xi(id)*VD(id,ie,iaa,TT-it) )    !Don't age, might go on DI
 							Vapp = Vapp + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1) 
 						EndDO
 						EndDO
@@ -644,8 +635,8 @@ WRITE(*,*) agrid
 						VC = 0	 
 						DO izz = 1,nz	 !Loop over z'
 						DO iaai = 1,nai !Loop over alpha_i'
-							Vc1 = (1-ptau(TT-it))*((1-rhho)*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)+rhho*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it+1)) & !Age and might go on DI
-								&+ ptau(TT-it)*((1-rhho)*VN0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it)+rhho*V0((ij-1)*nbi+ibi,idi,iaai,id,ie,iaa,izz,TT-it))     !Don't age, might go on DI	
+							Vc1 = (1-ptau(TT-it))*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) & !Age and might go on DI
+								&+ ptau(TT-it)*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it)+rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, might go on DI	
 							VC = VC + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1) 
 						EndDO
 						EndDO
@@ -653,30 +644,31 @@ WRITE(*,*) agrid
 						!Apply if Vapp-nu>VC
 						IF (Vapp-nu > VC) THEN
 							Vtest1 = util(b+R*agrid(ia)-agrid(apol),1,2)-nu+Vapp
-							gapp((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 1
+							gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 1
 						ELSE !Don't apply
 							Vtest1 = util(b+R*agrid(ia)-agrid(apol),1,2)+VC
-							gapp((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 0
+							gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 0
 						EndIF
 
 
-						apol = max(iaa-1,1)		!concave, start next loop here
-						IF (Vtest2<Vtest1) THEN	
-							iaa = na
+						apol = max(iaa-1,1) !replace this each time unless find max
+						IF (Vtest2<Vtest1) THEN
+							iaa1 = apol-1 		!concave, start next loop here
+							exit
 						ELSE
 							Vtest1 = Vtest2
-							gapp((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = app2	
+							gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = app2	
 						EndIF
-						iaa = iaa+1
+						!iaa = iaa+1
 					EndDO	!iaa
 
-					VN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = Vtest1
-					aN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = agrid(min(apol+1,na))
+					VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vtest1
+					aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = agrid(min(apol+1,na))
 
 				EndDO !ia
 			EndDO !id
-		  	EndDO !ie
 		  	EndDO !iz
+		  	EndDO !ie
 		  	EndDO !iai
 		!------------------------------------------------!
 		!Solve VW given guesses on VW, VN, and implied V
@@ -700,8 +692,10 @@ WRITE(*,*) agrid
 					DO izz = 1,nz	 !Loop over z'
 					DO iaai = 1,nai !Loop over alpha_i'
 						!Linearly interpolating on e'
-						yL = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,iee1,apol,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,iee1,apol,izz,TT-it))
-						yH = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,iee2,apol,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,iee2,apol,izz,TT-it))
+						yL = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,apol,izz,TT-it+1) & 
+							& +ptau(TT-it)*V((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,apol,izz,TT-it))
+						yH = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,apol,izz,TT-it+1) &
+							& +ptau(TT-it)*V((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,apol,izz,TT-it))
 						Vtest1 = Vtest1 + yL+(yH-yL)*(eprime-egrid(iee1))/(egrid(iee2)-egrid(iee1))
 					EndDO
 					EndDO		
@@ -715,8 +709,10 @@ WRITE(*,*) agrid
 						DO izz = 1,nz	 !Loop over z'
 						DO iaai = 1,nai !Loop over alpha_i'
 							!Linearly interpolating on e'
-							yL = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,iee1,iaa,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,iee1,iaa,izz,TT-it))
-							yH = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,idi,iaai,id,iee2,iaa,izz,TT-it+1)+ptau(TT-it)*V((ij-1)*nbi+ibi,idi,iaai,id,iee2,iaa,izz,TT-it))
+							yL = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it+1) & 
+								& +ptau(TT-it)*V((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it))
+							yH = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it+1) & 
+								& +ptau(TT-it)*V((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it))
 							Vtest2 = Vtest2 + yL+(yH-yL)*(eprime-egrid(iee1))/(egrid(iee2)-egrid(iee1))
 						EndDO
 						EndDO	
@@ -729,33 +725,39 @@ WRITE(*,*) agrid
 						iaa = iaa+1
 					EndDO	!iaa
 
-					VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = Vtest1
-					aW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = agrid(min(apol+1,na))
+					VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vtest1
+					aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = agrid(min(apol+1,na))
 
 
 					!------------------------------------------------!
 					!Calculate V with solved vals of VW and VN
 					!------------------------------------------------!
-					IF (VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)>VN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)) THEN
-						V((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)
-						gwork((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 1
+					IF (VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)>VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)) THEN
+						V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+						gwork((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 1
 					ELSE
-						V((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)
-						gwork((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = 0
+						V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+						gwork((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 0
 					EndIF
 
-					summer = summer+ abs(V((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it))
+					summer = summer+ & 
+						& abs(V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))
+					V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)					
+					
 
-				EndDO !iai
-			EndDO !id
+				EndDO !ia
+			EndDO !iz
 		  	EndDO !ie
-		  	EndDO !iz
-		  	EndDO !ia
+		  	EndDO !id
+		  	EndDO !iai
+
+
+
 
 		!------------------------------------------------!
 		!Check |V-V0|<eps
 		!------------------------------------------------!
-	WRITE(*,*) summer, j, ij, ibi, idi, it
+		WRITE(*,*) summer, j, ij, ibi, idi, it
 		 IF (summer < Vtol) THEN
 		  j = maxiter+100	!Converged
 		 EndIF
@@ -767,6 +769,22 @@ WRITE(*,*) agrid
 
 	EndDO	!idi
 	EndDO	!ibi
+	
+		! reset V0
+	!	DO iai=1,nai	!Loop over alpha (ai)
+	!	DO id=1,nd	!Loop over disability index
+	! 	DO ie=1,ne	!Loop over earnings index
+	!	DO iz=1,nz	!Loop over TFP
+	!  	do ia=1,na
+	!		V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+	!	EndDO !iai
+	!	EndDO !id
+	!	EndDO !ie
+	!	EndDO !iz
+	! 	EndDO !ia
+
+
+	
 	EndDO	!j
 
 
@@ -780,14 +798,15 @@ ie = INT(na/4)
 j = INT(nj/2)
 idi = INT(ndi/2)
 ia = INT(ne/3)
-call mat2csv(gwork(1,1,:,:,ie,ia,2,2),'dipol.csv',INT(0))
-call mat2csv(gapp(1,1,:,:,ie,ia,2,2),'workpol.csv',INT(0))
-call mat2csv(V(1,1,:,:,ie,ia,2,2),'Vfun.csv',INT(0))
+! this plots the cross product of alphai and di
+call vec2csv(gwork(1,1,:,ie,ia,2,2),'dipol.csv',INT(0))
+call vec2csv(gapp(1,1,:,ie,ia,2,2),'workpol.csv',INT(0))
+call vec2csv(V(1,1,:,ie,ia,2,2),'Vfun.csv',INT(0))
 call vec2csv(dtype,'DriskGrid.csv',INT(0))
 call vec2csv(alfi(:),'AlfGrid.csv',INT(0))
 call vec2csv(occz(:),'ZriskGrid.csv',INT(0))
 call vec2csv(agrid(:),'Agrid.csv',INT(0))
-call mat2csv(aW(1,1,1,:,ie,:,2,2),'aW.csv',INT(0))
+call vec2csv(aW(1,1,1,ie,:,2,2),'aW.csv',INT(0))
 
 
 
@@ -803,7 +822,7 @@ call mat2csv(aW(1,1,1,:,ie,:,2,2),'aW.csv',INT(0))
 	! IF you love something.... 
 	!****************************************************************************!
 	deallocate(aR,aD,aN, aW,gwork, gapp)
-	deallocate(VR0,VR,VD0,VD,VN,VN0,VW,VW0,V,V0)
+	deallocate(VR0,VR,VD0,VD,VN,VN0,VU,VU0,VW,VW0,V,V0)
 
 
 

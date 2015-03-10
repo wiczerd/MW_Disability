@@ -82,14 +82,14 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 
 !**Programming Parameters***********************!
 integer, parameter ::  nai = 11,  &	!Number of individual alpha types 
-		       nbi = 1,  &	!Number of indiVidual beta types
+		       nbi = 2,  &	!Number of indiVidual beta types
 		       ndi = 1,  &	!Number of individual disability types
 		       nj  = 1,  &	!Number of occupations (downward TFP risk variation)
 		       nd  = 3,  &	!Number of disability extents
 		       ne  = 10, &	!Points on earnings grid
 		       na  = 200, &	!Points on assets grid
 		       nz  = 3,  &	!Number of Occ TFP Shocks
-		       maxiter = 1000   !Tolerance parameter	
+		       maxiter = 10000   !Tolerance parameter	
 		       	
 
 real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
@@ -129,8 +129,8 @@ subroutine setparams()
 
 			character(len=24) :: param_name
 			logical, parameter :: lower= .FALSE. 
-			integer:: i, j, k, unitno, t, ii 
-			real(8):: summy, meps2(ne), agrid2(na), emin, emax, wtmax, step, &
+			integer:: i, j, k, unitno, t, ii,wtmax
+			real(8):: summy, meps2(ne), agrid2(na), emin, emax, step, &
 				  node, nodeH, nodeL, midL, midH
 			real(8), parameter :: pival = 3.14159265	 !The number pi
 
