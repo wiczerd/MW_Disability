@@ -8,6 +8,7 @@
 !				  before individual types are drawn.
 !	
 !************************************************************************************************!
+! compiler line: gfortran -ffree-line-length-none -g V0para.f90 V0main.f90 -o V0main.out 
 module helper_funs
 	
 	use V0para
@@ -420,6 +421,7 @@ WRITE(*,*) agrid
 				!Loop over earnings index
 				DO ie=1,ne
 					apol = 1
+
 					!Loop over current state: assets
 					DO ia=1,na
 						Vtest1 = util(SSDI(egrid(ie))+R*agrid(ia)-agrid(apol),1,2)+beta*((1-ptau(TT-it))*VD0(id,ie,apol,TT-it+1)+ptau(TT-it)*VD0(id,ie,apol,TT-it))
@@ -523,8 +525,8 @@ WRITE(*,*) agrid
 						Vtest2 = 0	 
 						DO izz = 1,nz	 !Loop over z'
 						DO iaai = 1,nai !Loop over alpha_i'
-							Vc1 = (1-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) & !Age and might go LTU
-								&1+ptau(TT-it)*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, maybe LTU
+							Vc1 = (1.-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) & !Age and might go LTU
+								& +ptau(TT-it)*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, maybe LTU
 							Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1)  !Probability of alpha_i X z_i draw 
 						EndDO
 						EndDO
@@ -532,7 +534,7 @@ WRITE(*,*) agrid
 						apol = max(iaa-1,1) !set policy
 						IF (Vtest2<Vtest1 .and. iaa > iaa1) THEN	
 						!no longer improving
-							iaa1 = apol - 1 !concave, start next loop here
+							iaa1 = max(apol - 1,1) !concave, start next loop here
 							exit
 						ELSE
 							Vtest1 = Vtest2
@@ -541,7 +543,7 @@ WRITE(*,*) agrid
 					EndDO	!iaa
 
 					VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vtest1
-					aU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = agrid(apol))
+					aU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = agrid(apol)
 
 				EndDO !ia
 			EndDO !id
@@ -583,7 +585,7 @@ WRITE(*,*) agrid
 
 						apol = max(iaa-1,1)		!concave, start next loop here
 						IF (Vtest2<Vtest1 .and. iaa .gt. iaa1napp) THEN	
-							iaa1napp = apol -1
+							iaa1napp = max(apol -1,1)
 							exit !break
 						ELSE
 							Vtest1 = Vtest2	
@@ -592,7 +594,7 @@ WRITE(*,*) agrid
 
 					Vnapp = Vtest1
 					aNapp = agrid(apol)
-					
+
 					!*******************************************
 					!**********Value if apply for DI 
 					Vtest1 = 0
@@ -610,7 +612,7 @@ WRITE(*,*) agrid
 
 						apol = max(iaa-1,1)		!concave, start next loop here
 						IF (Vtest2<Vtest1 .and. iaa .gt. iaa1app) THEN	
-							iaa1app = apol -1
+							iaa1app = max(apol -1,1)
 							exit !break
 						ELSE
 							Vtest1 = Vtest2	
@@ -643,7 +645,7 @@ WRITE(*,*) agrid
 		  	DO ie=1,ne	!Loop over earnings index
 		  	DO iz=1,nz	!Loop over TFP
 				do iaa =1,na
-					VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,apol,izz,TT-it) = VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+					VN0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
 				enddo !ia		  	
 			EndDO !iai
 		  	EndDO !id
@@ -661,7 +663,7 @@ WRITE(*,*) agrid
 				eprime = Hearn(TT-it,ie,wagehere)
 				!I'm going to linear interpolate for the portion that blocks off bounds on assets
 				iee1 = finder(egrid,eprime)
-				iee2 = min(ne,iee2+1)
+				iee2 = min(ne,iee1+1)
 				!Restart at bottom of asset grid for each of the above (ai,d,e,z)
 				iaa1 = 1
 				!----------------------------------------------------------------
@@ -685,7 +687,7 @@ WRITE(*,*) agrid
 						EndDO	
 						apol = max(iaa-1,1)		!concave, start next loop here
 						IF (Vtest2<Vtest1 .and. iaa>iaa1) THEN				     
-							iaa1 = apol-1
+							iaa1 = max(apol-1,1)
 							exit
 						ELSE
 							Vtest1 = Vtest2
