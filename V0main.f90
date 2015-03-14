@@ -96,10 +96,13 @@ module helper_funs
 		integer, intent(in)	:: din, win
 		real(8)			:: util
 		
-		if (win .EQ. 1) THEN
-		  util = ((cin*(exval**(theta*real(din-1)+eta)))**(1-gam))/(1-gam)
-		else
-		  util = ((cin*(exval**(theta*real(din-1))))**(1-gam))/(1-gam)
+		
+		if ((win .EQ. 1) .and. (din .gt. 1)) THEN
+			util = ((cin*(exval**(theta*dble(din-1)+eta)))**(1.-gam))/(1.-gam)
+		elseif( din .gt. 1) then
+			util = ((cin*(exval**(theta*dble(din-1))))**(1.-gam))/(1.-gam)
+		else 
+			util = (cin**(1.-gam))/(1.-gam)
 		end if
 
 	end function
@@ -259,13 +262,13 @@ program V0main
 	!************************************************************************************************!
 
 		integer  :: i, j, t, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp,apol, ibi, iai, ij , idi, izz, iaai, idd, &
-			    iee1, iee2, iz, unitno
+			    iee1, iee2, iz, unitno, print_lev, verbose, narg_in
 	
 	!************************************************************************************************!
 	! Value Functions- Stack z-risk j and indiv. exposure beta_i
 	!************************************************************************************************!
-	real(8)  	  ::Vtest1, Vtest2, Vapp, VC, app2, Vc1, Vnapp, aNapp,aapp
-	real(8), allocatable :: VR0(:,:,:), VR(:,:,:), &			!Retirement
+	real(8)  	  	:: Vtest1, Vtest2, Vapp, VC, app2, Vc1, Vnapp, aNapp,aapp
+	real(8), allocatable	:: VR0(:,:,:), VR(:,:,:), &			!Retirement
 				VD0(:,:,:,:), VD(:,:,:,:), &			!Disabled
 				VN(:,:,:,:,:,:,:), VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
 				VW(:,:,:,:,:,:,:), VW0(:,:,:,:,:,:,:), &	!Working
@@ -278,14 +281,15 @@ program V0main
 	!	+Asset grids correspond to V-funs
 	!	+g-grids correspond to discrete choices
 	!************************************************************************************************!
-	real(8), allocatable  ::aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &		
+	real(8), allocatable	:: aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
 				aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:), &
 				gwork(:,:,:,:,:,:,:), gapp(:,:,:,:,:,:,:)
-
+	integer, allocatable  	:: aiD(:,:,:,:)
+	
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(8)	:: wagehere, junk,summer, eprime, yL, yH 
+		real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH 
 
 	!************************************************************************************************!
 	! Allocate phat matrices
@@ -298,6 +302,7 @@ program V0main
 	allocate(VD0(nd,ne,na,TT))
 	allocate(VD(nd,ne,na,TT))
 	allocate(aD(nd,ne,na,TT-1))
+	allocate(aiD(nd,ne,na,TT-1))	
 	! (occupation X ind exposure, ind disb. risk, ind. wage, disab. extent, earn ind, assets, agg shock, age)
 	allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 	allocate(VN0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
@@ -313,8 +318,15 @@ program V0main
 	allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
 	allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
 
+	narg_in = iargc()
+
+	verbose = 1
+	print_lev = 4
+
 	call setparams()
-WRITE(*,*) agrid
+	agrid(1) = .05*(agrid(1)+agrid(2))
+	!WRITE(*,*) agrid
+
 	!************************************************************************************************!
 	! Caculate things that are independent of occupation/person type
 	!	1) Value of Retired:  VR(d,e,a)
@@ -332,42 +344,66 @@ WRITE(*,*) agrid
 		DO ie=1,ne
 		DO ia=1,na
 		DO id=1,nd
-			VR0(id,ie,ia) = (((exval**(theta*real(id)))*(SSI(egrid(ie))+agrid(ia)))**(1.-gam))/((1.-gam)*((1.-junk)**(1-gam))*(1-beta*ptau(TT)*(junk*R)**(1.-gam)))
+			!VR0(id,ie,ia) = (((exval**(theta*dble(id)))*(SSI(egrid(ie))+agrid(ia)))**(1.-gam))/((1.-gam)*((1.-junk)**(1-gam))*(1-beta*ptau(TT)*(junk*R)**(1.-gam)))
+			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,1)* (1./(1.-beta*ptau(TT)))
 		ENDdo
 		ENDdo
 		ENDdo
+		if(print_lev >3) then
+			call vec2csv(VR0(1,1,:),"VR.csv",0)
+		endif		
 		j = 1
 		DO WHILE (j<=maxiter)
 			summer = 0
 		  	DO ie=1,ne
-				apol = 1
-		  	DO ia=1,na
-				Vtest1 = util(SSI(egrid(ie))+R*agrid(ia)-agrid(apol),1,2)+beta*ptau(TT)*VR0(id,ie,apol)
-				iaa = apol+1
-			DO WHILE (iaa<na)
-				Vtest2 = util(SSI(egrid(ie))+R*agrid(ia)-agrid(iaa),1,1)+beta*ptau(TT)*VR0(id,ie,iaa)
-				apol = max(iaa-1,1)	!concave, start next loop here
-				IF (Vtest2<Vtest1) THEN
-					iaa = na
-				ELSE
-					Vtest1 = Vtest2	
-				EndIF
-				iaa = iaa+1
-			EndDO
-			VR(1,ie,ia) = Vtest1
-			aR(1,ie,ia) = agrid(min(na,apol+1))
-			summer = summer+ abs(VR(1,ie,ia)-VR0(1,ie,ia))	
-			!Polices for disabled are the same, just scale V-function
-			VR(2,ie,ia) = VR(1,ie,ia)*((exval**(theta*1))**(1-gam))
-			VR(3,ie,ia) = VR(1,ie,ia)*((exval**(theta*2))**(1-gam))
-			EndDO			
-			EndDO
-		 IF (summer < Vtol) THEN
-		  j = maxiter+100	!Converged
-		 EndIF
-		  VR0 = VR	!New guess
-		  j=j+1
+				iaa1 = 1
+			  	DO ia=1,na
+					chere = SSI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
+					Vc1 = beta*ptau(TT)*VR0(id,ie,iaa1) 
+					Vtest1 = util(chere,1,1) + Vc1 !arbitrary number
+					apol = iaa1
+					DO iaa=iaa1,na
+						chere = SSI(egrid(ie))+R*agrid(ia)-agrid(iaa)
+						if( chere .gt. 0.) then !ensure positive consumption
+							Vc1 = beta*ptau(TT)*VR0(id,ie,iaa)
+							Vtest2 = util(chere ,1,1) + Vc1
+							IF ((Vtest2<Vtest1) .and. (iaa > iaa1+1)) THEN
+								apol = iaa-1
+								exit 
+							ELSE
+								apol = iaa
+								Vtest1 = Vtest2	
+							EndIF
+						else!saved too much and negative consumtion
+							exit
+						endif
+					EndDO
+					iaa1  = max(apol-1,1)  	!concave, start next loop here
+					VR(1,ie,ia) = Vtest1
+					aR(1,ie,ia) = agrid(apol)
+					summer = summer+ (VR(1,ie,ia)-VR0(1,ie,ia))**2
+					!Polices for disabled are the same, just scale V-function
+			!		do id =2,ne
+			!			VR(id,ie,ia) = VR(1,ie,ia)*(exval**(theta*dble(id-1)))**(1-gam)
+			!			aR(id,ie,ia) = aR(1,ie,ia)
+			!		enddo
+				EndDO !ie
+			EndDO !ia 
+			IF (summer < Vtol) THEN
+				j = maxiter+100	!Converged
+			else
+				VR0 = VR	!New guess
+				j=j+1
+				if(print_lev >3) then
+					call vec2csv(aR(1,1,:),"aR.csv",0)
+					call vec2csv(VR(1,1,:),"VR.csv",0)
+				endif
+			endif
 		EndDO
+		if (print_lev > 2) then
+			call vec2csv(aR(1,1,:),"aR.csv",0)
+			call vec2csv(VR(1,1,:),"VR.csv",0)
+		endif
 
 		!----------------------------------------------------------!
 		!Set value at t=TT to be VR in all other V-functions
@@ -421,7 +457,6 @@ WRITE(*,*) agrid
 				!Loop over earnings index
 				DO ie=1,ne
 					apol = 1
-
 					!Loop over current state: assets
 					DO ia=1,na
 						Vtest1 = util(SSDI(egrid(ie))+R*agrid(ia)-agrid(apol),1,2)+beta*((1-ptau(TT-it))*VD0(id,ie,apol,TT-it+1)+ptau(TT-it)*VD0(id,ie,apol,TT-it))
@@ -439,10 +474,12 @@ WRITE(*,*) agrid
 						EndDO	!iaa
 						VD(1,ie,ia,TT-it) = Vtest1
 						aD(1,ie,ia,TT-it) = agrid(min(apol+1,na))
-						summer = summer+ abs(VD(1,ie,ia,TT-it)-VD0(1,ie,ia,TT-it))	
+						summer = summer+ (VD(1,ie,ia,TT-it)-VD0(1,ie,ia,TT-it))**2
 						!Polices for disabled are the same, just scale V-function
-						VD(2,ie,ia,TT-it) = VD(1,ie,ia,TT-it)*((exval**(theta*1))**(1-gam))
-						VD(3,ie,ia,TT-it) = VD(1,ie,ia,TT-it)*((exval**(theta*2))**(1-gam))
+						do id = 2,nd
+							VD(id,ie,ia,TT-it) = VD(id,ie,ia,TT-it)*((exval**(theta*dble(id-1)))**(1-gam))
+							aD(id,ie,ia,TT-it) = aD(id,ie,ia,TT-it)
+						enddo
 					EndDO	!ia
 				EndDO	!ie		
 
@@ -453,6 +490,11 @@ WRITE(*,*) agrid
 				j=j+1
 			EndDO	!j: V-iter loop
 		EndDO	!t loop, going backwards
+		
+		if (print_lev > 2) then
+			call mat2csv(aD(1,1,:,:),"aD.csv",0)
+			call mat2csv(VD(1,1,:,:),"VD.csv",0)
+		endif
 
 	!************************************************************************************************!
 	!3) Calculate V= max(VW,VN); requires calculating VW and VN
@@ -480,11 +522,10 @@ WRITE(*,*) agrid
 			 !0) Guess VU0(nj,nbi,nai,nd,ne,na,nz,TT-1)
 				VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
 			 !0) Guess VN0(nj,nbi,nai,nd,ne,na,nz,TT-1)
-				VN0((ij-1)*nbi+ibi,(idi-1)*nai +iai,3,ie,ia,iz,TT-it) = 1.5*VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
-				VN0((ij-1)*nbi+ibi,(idi-1)*nai +iai,2,ie,ia,iz,TT-it) = 1.0*VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
-				VN0((ij-1)*nbi+ibi,(idi-1)*nai +iai,1,ie,ia,iz,TT-it) = 0.5*VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
+				VN0((ij-1)*nbi+ibi,(idi-1)*nai +iai,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
+
 			IF (it .EQ. 1) THEN
-				VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it) = 0.5*VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it+1)
+				VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it) = VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it+1)
 			EndIF
 			!ELSE
 			! !0) Guess VW0(nj,nbi,nai,nd,ne,na,nz,TT-1)
@@ -514,12 +555,13 @@ WRITE(*,*) agrid
 		  	DO iz=1,nz	!Loop over TFP
 				!Restart at bottom of asset grid for each of the above (ai,d,e,z)
 				apol = 1
+				iaa1 = 1
 				!----------------------------------------------------------------
 				!Loop over current state: assets
 				DO ia=1,na
 					
 					Vtest1 = -1e5 ! just a very bad number, does not really matter
-					iaa1 = max(apol-1,1)
+					
 					DO iaa=iaa1,na
 						!Continuation value if don't go on disability
 						Vtest2 = 0	 
@@ -550,6 +592,24 @@ WRITE(*,*) agrid
 		  	EndDO !ie
 		  	EndDO !iz
 		  	EndDO !iai	
+
+
+			if (print_lev > 2) then
+				call vec2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"aU.csv",0)
+				call vec2csv(VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"VU.csv",0)
+
+				DO iai=1,nai	!Loop over alpha (ai)
+				DO id=1,nd	!Loop over disability index
+			  	DO ie=1,ne	!Loop over earnings index
+			  	DO iz=1,nz	!Loop over TFP			
+					call vec2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"aU.csv",1)
+					call vec2csv(VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"VU.csv",1)
+				enddo
+				enddo
+				enddo
+				enddo
+			endif
+
 	
 		!------------------------------------------------!
 		!Solve VN given guesses on VW, VN, and implied V
@@ -710,7 +770,7 @@ WRITE(*,*) agrid
 					EndIF
 
 					summer = summer+ & 
-						& abs(V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))
+						& (V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))**2
 					V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)					
 					
 
@@ -791,6 +851,7 @@ call vec2csv(aW(1,1,1,ie,:,2,2),'aW.csv',INT(0))
 	! IF you love something.... 
 	!****************************************************************************!
 	deallocate(aR,aD,aN, aW,gwork, gapp)
+	deallocate(aiD)
 	deallocate(VR0,VR,VD0,VD,VN,VN0,VU,VU0,VW,VW0,V,V0)
 
 
