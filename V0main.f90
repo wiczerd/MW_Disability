@@ -28,8 +28,9 @@ module helper_funs
 	!Locate Function
 	!	7)finder(xx,x)	xx is grid, x is point, returns higher bound
 	!Writing Subroutines
-	!	8) mat2csv(A,fname,append)  A=matrix, fname=file, append={0,1}
-	!	9) vec2csv(A,fname,append)  A=matrix, fname=file, append={0,1}
+	!	8)  mat2csv(A,fname,append)   A=matrix, fname=file, append={0,1}
+	!	9)  mati2csv(A,fname,append)  A=matrix, fname=file, append={0,1}: A is integer
+	!	10) vec2csv(A,fname,append)   A=matrix, fname=file, append={0,1}
 	!**********************************************************!
 	!------------------------------------------------------------------------
 	!1)UI(e): Unemployment Insurance
@@ -211,7 +212,43 @@ module helper_funs
 	end subroutine mat2csv
 
 	!------------------------------------------------------------------------
-	! 9) Write a Vector to .csv
+	! 9) Write a Matrix to .csv
+	!--------------------
+	subroutine mati2csv(A,fname,append)
+	!--------------------
+
+	integer, dimension(:,:), intent(in) :: A
+	character(LEN=*), intent(in) :: fname
+	integer, intent(in), optional :: append
+	CHARACTER(LEN=*), PARAMETER  :: FMT = "(I8.1)"
+	CHARACTER(LEN=20) :: FMT_1
+	integer :: r,c,ri,ci
+	r = size(A,1)
+	c = size(A,2)
+	if(present(append)) then
+		if(append .eq. 1) then 
+			open(1, file=fname,ACCESS='APPEND', POSITION='APPEND')
+		else
+			open(1, file=fname)
+		endif
+	else
+		open(1, file=fname)
+	endif
+
+	do ri=1,r
+		do ci = 1,c-1
+			write(1,FMT, advance='no') A(ri,ci)
+		enddo
+		write(1,FMT) A(ri,c)
+	enddo
+	write(1,*) " "! trailing space
+	close(1)
+
+	end subroutine mati2csv
+
+
+	!------------------------------------------------------------------------
+	! 10) Write a Vector to .csv
 	!--------------------
 	subroutine vec2csv(A,fname,append)
 	!--------------------
@@ -237,6 +274,35 @@ module helper_funs
 	close(1)
 
 	end subroutine vec2csv
+
+
+	!------------------------------------------------------------------------
+	! 11) Write a Vector to .csv
+	!--------------------
+	subroutine veci2csv(A,fname,append)
+	!--------------------
+
+	integer, dimension(:), intent(in) :: A
+	character(len=*), intent(in) :: fname
+	integer, intent(in), optional :: append
+	integer :: r,ri
+	r = size(A,1)
+	if(present(append)) then
+		if(append .eq. 1) then 
+			open(1, file=fname,ACCESS='APPEND', POSITION='APPEND')
+		else
+			open(1, file=fname)
+		endif
+	else
+		open(1, file=fname) 
+	endif
+	do ri=1,r
+		write(1,*) A(ri)
+	end do
+	write(1,*) " "! trailing space
+	close(1)
+
+	end subroutine veci2csv
 
 
 end module helper_funs
@@ -268,7 +334,7 @@ program V0main
 	!************************************************************************************************!
 	! Value Functions- Stack z-risk j and indiv. exposure beta_i
 	!************************************************************************************************!
-	real(8)  	  	:: Vtest1, Vtest2, Vapp, VC, app2, Vc1, Vnapp, aNapp,aapp
+	real(8)  	  	:: Vtest1, Vtest2, Vapp, VC, app2, Vc1, Vnapp, anapp,aapp
 	real(8), allocatable	:: VR0(:,:,:), VR(:,:,:), &			!Retirement
 				VD0(:,:,:,:), VD(:,:,:,:), &			!Disabled
 				VN(:,:,:,:,:,:,:), VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
@@ -283,9 +349,9 @@ program V0main
 	!	+g-grids correspond to discrete choices
 	!************************************************************************************************!
 	real(8), allocatable	:: aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
-				aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:), &
-				gwork(:,:,:,:,:,:,:), gapp(:,:,:,:,:,:,:)
-	integer, allocatable  	:: aiD(:,:,:,:)
+				aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
+	integer, allocatable  	:: aiD(:,:,:,:), gapp(:,:,:,:,:,:,:), &
+				gwork(:,:,:,:,:,:,:)
 	
 	!************************************************************************************************!
 	! Other
@@ -412,28 +478,30 @@ program V0main
 		!----------------------------------------------------------!
 		!Set value at t=TT to be VR in all other V-functions
 		!----------------------------------------------------------!
-		DO id=1,nd
-		DO ie=1,ne
-		DO ia=1,na
-	  	   VD(id,ie,ia,TT) = VR(id,ie,ia)
-			DO ij=1,nj
-			DO ibi=1,nbi
-			DO idi=1,ndi
-			DO iai=1,nai
-			!DO iz=1,nz   
-				VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				VN0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)
-				V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,1,TT) = VR(id,ie,ia)	   
-			!EndDO
+
+			
+		DO ij=1,nj
+		DO ibi=1,nbi
+		DO idi=1,ndi
+		DO iai=1,nai
+		DO iz=1,nz   
+			DO id=1,nd
+			DO ie=1,ne
+			DO ia=1,na
+				VD(id,ie,ia,TT) = VR(id,ie,ia)
+				VW ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
+				VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
+				VN ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
+				VN0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
+				VU ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
+				VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
+				V  ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
+				V0 ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)	   
 			EndDO
 			EndDO
 			EndDO
-			EndDO
+		EndDO
+		EndDO
 		EndDO
 		EndDO
 		EndDO
@@ -517,6 +585,8 @@ program V0main
 			call mat2csv(VD(1,1,:,:),"VD.csv",0)
 		endif
 
+
+
 	!************************************************************************************************!
 	!3) Calculate V= max(VW,VN); requires calculating VW and VN
 	! Begin loop over occupations
@@ -525,6 +595,8 @@ program V0main
 		DO ibi = 1,nbi 
 	! And individual disability type
 		DO idi = 1,ndi
+		
+		
 	!************************************************************************************************!
 		!Work Backwards TT-1,TT-2...1!
 		DO it=1,TT-1
@@ -562,6 +634,7 @@ program V0main
 			EndDO	!ie
 			EndDO 	!id
 			EndDO	!iai   
+
 			!***********************************************************************************************************
 			!Loop over V=max(VN,VW)	
 			j=1
@@ -594,12 +667,13 @@ program V0main
 							EndDO
 							EndDO
 							Vtest2 = Vtest2 + util(UI(egrid(ie))+R*agrid(ia)-agrid(iaa),id,2)
-							apol = max(iaa-1,1) !set policy
 							IF (Vtest2<Vtest1 .and. iaa > iaa1) THEN	
 							!no longer improving
 								iaa1 = max(apol - 1,1) !concave, start next loop here
+								apol = max(iaa-1,1) ! set the policy
 								exit
 							ELSE
+								apol = iaa 
 								Vtest1 = Vtest2
 							EndIF
 						
@@ -624,7 +698,7 @@ program V0main
 				if (print_lev > 2) then
 					call vec2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,iz,TT-it),"aU.csv",0)
 					call vec2csv(VU((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,iz,TT-it),"VU.csv",0)
-
+					
 					DO iai=2,nai	!Loop over alpha (ai)
 					DO id=1,nd	!Loop over disability index
 				  	DO ie=1,ne	!Loop over earnings index
@@ -652,7 +726,9 @@ program V0main
 					!---------------------------------------------------------------!
 					!Restart at bottom of asset grid for each of the above (ai,d,e,z)
 					iaa1napp = 1
-					iaa1app = 1				
+					iaa1app = 1
+					Vapp  = -1e6
+					Vnapp = -1e6				
 					!----------------------------------------------------------------
 					!Loop over current state: assets
 					DO ia=1,na
@@ -664,7 +740,6 @@ program V0main
 							if(chere >0) then
 								Vtest2 = util(chere,2,1)
 								!Continuation if do not apply for DI
-								Vtest2 = 0
 								DO izz = 1,nz	 !Loop over z'
 								DO iaai = 1,nai !Loop over alpha_i'
 									Vc1 = (1-ptau(TT-it))*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it+1)+rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) !Age and might go on DI
@@ -676,22 +751,25 @@ program V0main
 								IF (Vtest2<Vtest1 .and. iaa .gt. iaa1napp) THEN	
 									apol = max(iaa-1,1)
 									iaa1napp = max(apol -1,1)
+									Vnapp = Vtest1
 									exit !break
 								ELSE
 									apol = iaa
 									Vtest1 = Vtest2	
+									Vnapp = Vtest2
 								EndIF
-							else
+							else	
+								Vnapp = Vtest1
+								apol = max(iaa-1,1)
 								exit
 							endif
 						EndDO !iaa
-
-						Vnapp = Vtest1
 						aNapp = agrid(apol)
 
 						!*******************************************
 						!**********Value if apply for DI 
 						Vtest1 = -1e6
+						apol = iaa1app
 						DO iaa=iaa1app,na
 						
 							chere = b+R*agrid(ia)-agrid(iaa)
@@ -710,16 +788,18 @@ program V0main
 								IF (Vtest2<Vtest1 .and. iaa .gt. iaa1app) THEN	
 									apol = max(iaa-1,1)									
 									iaa1app = max(apol -1,1) !concave, start next loop here
+									Vapp = Vtest1
 									exit !break
 								ELSE
 									Vtest1 = Vtest2	
+									Vapp = Vtest2
 								EndIF
 							else 
+								Vapp = Vtest1
+								apol = max(iaa-1,1)
 								exit
 							endif
 						EndDO !iaa
-
-						Vapp = Vtest1
 						aapp = agrid(apol)					
 					
 						IF (Vapp-nu > Vnapp) THEN
@@ -736,35 +816,41 @@ program V0main
 				enddo !iz 
 				enddo !ie 
 				enddo !id 
-				enddo !iai 		  	
+				enddo !iai	  	
 			  	if (print_lev >3) then
+					id = 1
+					ie = 1
+					iai= 1
+					iz = 1
 			  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"VN.csv",0)
 			  		call mat2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"aN.csv",0)
+			  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"gapp.csv",0)
 				  	do iai=1,nai	!Loop over alpha (ai)
 					DO id=1,nd	!Loop over disability index
 				  	DO ie=1,ne	!Loop over earnings index
 				  	DO iz=2,nz	!Loop over TFP
 				  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"VN.csv",1)
 				  		call mat2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"aN.csv",1)
+				  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"gapp.csv",1)
 					enddo !iz 
 					enddo !ie 
 					enddo !id 
 					enddo !iai 	
 			  	endif
 		  	
-		  	
 			  	!update VN0
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
 			  	DO iz=1,nz	!Loop over TFP
-					do iaa =1,na
+					do ia =1,na
 						VN0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
 					enddo !ia		  	
 				EndDO !iai
 			  	EndDO !id
 			  	EndDO !ie
 			  	EndDO !iz
+
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
@@ -788,25 +874,37 @@ program V0main
 						!Find saving Policy
 						DO iaa = iaa1,na
 							!Continuation value if don't go on disability
-							Vtest2 = util(wagehere+R*agrid(ia)-agrid(iaa),id,1)	!Flow util
-							DO izz = 1,nz	 !Loop over z'
-							DO iaai = 1,nai !Loop over alpha_i'
-								!Linearly interpolating on e'
-								yL = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it+1) & 
-									& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it))
-								yH = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it+1) & 
-									& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it))
-								Vtest2 = Vtest2 + yL+(yH-yL)*(eprime-egrid(iee1))/(egrid(iee2)-egrid(iee1))
-							EndDO
-							EndDO	
+							chere = wagehere+R*agrid(ia)-agrid(iaa)
+							if (chere >0.) then
+								Vtest2 = util(chere,id,1)	!Flow util
+								DO izz = 1,nz	 !Loop over z'
+								DO iaai = 1,nai !Loop over alpha_i'
+									!Linearly interpolating on e'
+									yL = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it+1) & 
+										& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it))
+									yH = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it+1) & 
+										& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it))
+									Vtest2 = Vtest2 + yL+(yH-yL)*(eprime-egrid(iee1))/(egrid(iee2)-egrid(iee1))
+								EndDO
+								EndDO	
 
-							IF (Vtest2<Vtest1 .and. iaa>iaa1) THEN				     
-								apol = max(iaa-1,1)		!concave, start next loop here
-								iaa1 = max(apol-1,1)
-								exit
-							ELSE
-								Vtest1 = Vtest2
-							EndIF
+								! This imposes lots of monotonicity/ concavity that probably does not hold
+								!IF (Vtest2<Vtest1 .and. iaa>iaa1) THEN				     
+								!	apol = max(iaa-1,1)		!concave, start next loop here
+								!	iaa1 = max(apol-10,1)
+								!	exit
+								!ELSE
+								!	apol = iaa
+								!	Vtest1 = Vtest2
+								!EndIF
+								IF (Vtest2>Vtest1 .and. iaa>iaa1) THEN				     
+									Vtest1 = Vtest2
+									apol = iaa
+									iaa1 = 1	!concave? start next loop here
+								!ELSE
+								!	exit
+								EndIF
+							endif
 						EndDO	!iaa
 
 						VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vtest1
@@ -826,6 +924,8 @@ program V0main
 
 						summer = summer+ & 
 							& (V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))**2
+
+						! reset V0
 						V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)					
 					
 
@@ -835,17 +935,52 @@ program V0main
 			  	EndDO !id
 			  	EndDO !iai
 
+			  	!update VN0
+			  	DO iai=1,nai	!Loop over alpha (ai)
+				DO id=1,nd	!Loop over disability index
+			  	DO ie=1,ne	!Loop over earnings index
+			  	DO iz=1,nz	!Loop over TFP
+					do ia =1,na
+						VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+					enddo !ia		  	
+				EndDO !iai
+			  	EndDO !id
+			  	EndDO !ie
+			  	EndDO !iz
+
+
+
+				if (print_lev >3) then
+					id = 1
+					ie = 1
+					iai= 1
+					iz = 1
+					call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"VW.csv",0)
+					call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"aW.csv",0)
+					do iai=1,nai	!Loop over alpha (ai)
+					DO id=1,nd	!Loop over disability index
+					DO ie=1,ne	!Loop over earnings index
+					DO iz=2,nz	!Loop over TFP
+						call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"VW.csv",1)
+						call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"aW.csv",1)
+					enddo !iz 
+					enddo !ie 
+					enddo !id 
+					enddo !iai 	
+				endif
+
+
+
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! End of j iteration
-
-			!------------------------------------------------!
-			!Check |V-V0|<eps
-			!------------------------------------------------!
-			WRITE(*,*) summer, j, ij, ibi, idi, it
-			IF (summer < Vtol) THEN
-				j = maxiter+100	!Converged
-			EndIF
+				! End of j iteration
+				!------------------------------------------------!
+				!Check |V-V0|<eps
+				!------------------------------------------------!
+				WRITE(*,*) summer, j, ij, ibi, idi, it
+				IF (summer < Vtol) THEN
+					exit !Converged
+				EndIF
 				V0 = V	!New guess
 				j=j+1
 			EndDO	!j: V-iter loop
@@ -854,7 +989,7 @@ program V0main
 
 	EndDO	!idi
 	EndDO	!ibi
-	
+	EndDO	!ij	
 		! reset V0
 	!	DO iai=1,nai	!Loop over alpha (ai)
 	!	DO id=1,nd	!Loop over disability index
@@ -869,8 +1004,7 @@ program V0main
 	! 	EndDO !ia
 
 
-	
-	EndDO	!j
+
 
 
 !WRITE(*,*) aD(1,:,:,TT-5)
@@ -884,19 +1018,15 @@ j = INT(nj/2)
 idi = INT(ndi/2)
 ia = INT(ne/3)
 ! this plots the cross product of alphai and di
-call vec2csv(gwork(1,1,:,ie,ia,2,2),'dipol.csv',INT(0))
-call vec2csv(gapp(1,1,:,ie,ia,2,2),'workpol.csv',INT(0))
-call vec2csv(V(1,1,:,ie,ia,2,2),'Vfun.csv',INT(0))
-call vec2csv(dtype,'DriskGrid.csv',INT(0))
-call vec2csv(alfi(:),'AlfGrid.csv',INT(0))
-call vec2csv(occz(:),'ZriskGrid.csv',INT(0))
-call vec2csv(agrid(:),'Agrid.csv',INT(0))
-call vec2csv(aW(1,1,1,ie,:,2,2),'aW.csv',INT(0))
+call veci2csv(gwork(1,1,:,ie,ia,2,2),'dipol.csv',0)
+call veci2csv(gapp(1,1,:,ie,ia,2,2),'workpol.csv',0)
+call vec2csv(V(1,1,:,ie,ia,2,2),'Vfun.csv',0)
+call vec2csv(dtype,'DriskGrid.csv',0)
+call vec2csv(alfi(:),'AlfGrid.csv',0)
+call vec2csv(occz(:),'ZriskGrid.csv',0)
+call vec2csv(agrid(:),'Agrid.csv',0)
+call vec2csv(aW(1,1,1,ie,:,2,2),'aW.csv',0)
 
-
-
-!gapp(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
-!(aW(nj*nbi,ndi,nai,nd,ne,na,nz,TT-1))
 
 !    .----.   @   @
 !   / .-"-.`.  \v/
