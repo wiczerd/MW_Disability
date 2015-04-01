@@ -89,8 +89,7 @@ integer, parameter ::  nai = 11,  &	!Number of individual alpha types
 		       ne  = 10, &	!Points on earnings grid
 		       na  = 200, &	!Points on assets grid
 		       nz  = 3,  &	!Number of Occ TFP Shocks
-		       maxiter = 5000   !Tolerance parameter	
-		       	
+		       maxiter = 5000	!Tolerance parameter	
 
 real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
 			alfi_mu  = 0.0,    & 	!Mean of alpha_i wage parameter (Log Normal)

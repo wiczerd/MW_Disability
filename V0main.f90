@@ -2,8 +2,9 @@
 
 !************************************************************************************************!
 ! @ Amanda Michaud, v1: 10/6/2014; current: 10/31/2014
+! @ David Wiczer, v2: 03/31/2015
 !-----------------------------------------------------
-!This is a sub-program for DIchoices paper w/ David Wiczer
+!This is a sub-program for DIchoices paper 
 !	Objective: compute V0(j), the expected value of choosing occupation j in {1,2...J}
 !				  before individual types are drawn.
 !	
@@ -99,9 +100,9 @@ module helper_funs
 		
 		
 		if ((win .EQ. 1) .and. (din .gt. 1)) THEN
-			util = ((cin*(exval**(theta*dble(din-1)+eta)))**(1.-gam))/(1.-gam)
+			util = ((cin*dexp(theta*dble(din-1)+eta))**(1.-gam))/(1.-gam)
 		elseif( din .gt. 1) then
-			util = ((cin*(exval**(theta*dble(din-1))))**(1.-gam))/(1.-gam)
+			util = ((cin*dexp(theta*dble(din-1)))**(1.-gam))/(1.-gam)
 		else 
 			util = (cin**(1.-gam))/(1.-gam)
 		end if
@@ -330,11 +331,14 @@ program V0main
 
 		integer  :: i, j, t, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp,apol, ibi, iai, ij , idi, izz, iaai, idd, &
 			    iee1, iee2, iz, unitno, print_lev, verbose, narg_in
+		integer, dimension(5) :: maxer_i
 	
 	!************************************************************************************************!
 	! Value Functions- Stack z-risk j and indiv. exposure beta_i
 	!************************************************************************************************!
-	real(8)  	  	:: Vtest1, Vtest2, Vapp, VC, app2, Vc1, Vnapp, anapp,aapp
+	real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, VC, app2, Vc1, Vnapp, anapp,aapp, maxer, smthV,smthV0param, &
+				&	iee1wt
+		       
 	real(8), allocatable	:: VR0(:,:,:), VR(:,:,:), &			!Retirement
 				VD0(:,:,:,:), VD(:,:,:,:), &			!Disabled
 				VN(:,:,:,:,:,:,:), VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
@@ -356,7 +360,7 @@ program V0main
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH 
+		real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH,VUhere, VWhere
 
 	!************************************************************************************************!
 	! Allocate phat matrices
@@ -586,7 +590,7 @@ program V0main
 		endif
 
 
-
+		smthV0param  =0.1 ! will tighten this down
 	!************************************************************************************************!
 	!3) Calculate V= max(VW,VN); requires calculating VW and VN
 	! Begin loop over occupations
@@ -605,8 +609,9 @@ program V0main
 			DO iai=1,nai
 			DO id =1,nd
 			DO ie =1,ne
-			DO ia =1,na
 			DO iz =1,nz
+			DO ia =1,na
+
 			!Guess once, then use prior occupation/beta as guess
 				!IF (j .EQ. 1 .AND. ibi .EQ. 1 .AND. idi .EQ. 1) THEN
 				!IF (j .EQ. 1 .AND. ibi .EQ. 1 .AND. idi .EQ. 1) THEN
@@ -618,7 +623,7 @@ program V0main
 					VN0((ij-1)*nbi+ibi,(idi-1)*nai +iai,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it+1)
 
 				IF (it .EQ. 1) THEN
-					VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it) = VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it+1)
+					VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it) = VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,1,ie,ia,iz,TT-it)
 				EndIF
 				!ELSE
 				! !0) Guess VW0(nj,nbi,nai,nd,ne,na,nz,TT-1)
@@ -626,20 +631,32 @@ program V0main
 				! !0) Guess VN0(nj,nbi,nai,nd,ne,na,nz,TT-1)
 				!	VN0((ij-1)*nbi+ibi,idi,iai,id,ie,ia,iz,TT-it) = VN(max(1,ij-1)*nbi+max(1,ibi-1),max(1,idi-1),iai,id,ie,ia,iz,TT-it+1)
 				!EndIF !first occupationXbeta loop
-				!0) Calculate V0(nj,nbi,nai,nd,ne,na,nz,it)	
-				V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)= max(VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it),VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))
+				!0) Calculate V0(nj,nbi,nai,nd,ne,na,nz,it) by max:	
+				!V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)= max(VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it),VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))
+				!0) Calculate V0(nj,nbi,nai,nd,ne,na,nz,it) so its smooth
+				!smthV = dexp( smthV0param * VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) ) &
+				!	& /(dexp(smthV0param * VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)) + dexp(smthV0param * VN0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)) )
+				!V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)= smthV*VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) + (1.-smthV)*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+				V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)= VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
 
-			EndDO	!iz
+
 			EndDO	!ia
+			EndDO	!iz
 			EndDO	!ie
 			EndDO 	!id
 			EndDO	!iai   
 
 			!***********************************************************************************************************
-			!Loop over V=max(VN,VW)	
+			!Loop over V=max(VU,VW)	
 			j=1
 			DO WHILE (j<maxiter)
-			summer = 0	!Use to calc |V-V0|<eps
+				maxer = 0.
+				summer = 0.	!Use to calc |V-V0|<eps
+				if(mod(j,100) .eq. 0) then
+					print_lev = 4
+				else 
+					print_lev =1
+				endif
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!  
@@ -743,24 +760,31 @@ program V0main
 								DO izz = 1,nz	 !Loop over z'
 								DO iaai = 1,nai !Loop over alpha_i'
 									Vc1 = (1-ptau(TT-it))*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it+1)+rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) !Age and might go on DI
-									Vc1 = Vc1+ptau(TT-it)*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it)+rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, might go on DI	
+									Vc1 = Vc1+ptau(TT-it)*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it)+rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, might go on DI
 									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1) 
 								EndDO
 								EndDO
 								
-								IF (Vtest2<Vtest1 .and. iaa .gt. iaa1napp) THEN	
-									apol = max(iaa-1,1)
-									iaa1napp = max(apol -1,1)
-									Vnapp = Vtest1
-									exit !break
-								ELSE
-									apol = iaa
-									Vtest1 = Vtest2	
-									Vnapp = Vtest2
+						!		IF (Vtest2<Vtest1 .and. iaa .gt. iaa1napp) THEN	
+						!			apol = max(iaa-1,1)
+						!			iaa1napp = max(apol -1,1)
+						!			Vnapp = Vtest1
+						!			exit !break
+						!		ELSE
+						!			apol = iaa
+						!			Vtest1 = Vtest2	
+						!			Vnapp = Vtest2
+								if( Vtest2 > Vtest1 .and. iaa>iaa1napp) then
+									apol = iaa 
+									Vtest1 = Vtest2 
+									iaa1napp = max(iaa-1,1)
+									Vnapp = Vtest1 
+							!	else 
+							!		exit
 								EndIF
 							else	
 								Vnapp = Vtest1
-								apol = max(iaa-1,1)
+							!	apol = max(iaa-1,1)
 								exit
 							endif
 						EndDO !iaa
@@ -776,12 +800,12 @@ program V0main
 							if(chere>0)then
 								Vtest2 = util(chere,id,2) 
 								
-								!Continuation if do not apply for DI
+								!Continuation if apply for DI
 								DO izz = 1,nz	 !Loop over z'
 								DO iaai = 1,nai !Loop over alpha_i'
 									Vc1 = (1-ptau(TT-it))*((1-xi(id))*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+xi(id)*VD(id,ie,iaa,TT-it+1)) & !Age and might go on DI
 										& + ptau(TT-it)*((1-xi(id))*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it)+xi(id)*VD(id,ie,iaa,TT-it))     !Don't age, might go on DI		
-									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1) 
+									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*Vc1 
 								EndDO
 								EndDO
 
@@ -801,30 +825,35 @@ program V0main
 							endif
 						EndDO !iaa
 						aapp = agrid(apol)					
-					
+						smthV = dexp(smthV0param*Vnapp)/( dexp(smthV0param*Vnapp) +dexp(smthV0param*(Vapp-nu)) )
+						if( smthV .lt. 1e-5 .or. smthV .gt. 0.999999 .or. isnan(smthV)) then
+							if( Vapp -nu > Vnapp ) smthV =0.
+							if(Vnapp > Vapp - nu ) smthV =1.
+						endif
 						IF (Vapp-nu > Vnapp) THEN
-							VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vapp - nu
+							!VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vapp - nu
 							aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = aapp
 							gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 1
 						ELSE !Don't apply
-							VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vnapp
+							!VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vnapp
 							aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = aNapp
 							gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 0
 						EndIF
 
+						
+						VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = smthV*Vapp + (1. - smthV)*(Vapp - nu)
 					EndDO !ia
 				enddo !iz 
 				enddo !ie 
 				enddo !id 
-				enddo !iai	  	
+				enddo !iai	
+				!------------------------------------------------!			
+				! Done making VN
+				  	
 			  	if (print_lev >3) then
-					id = 1
-					ie = 1
-					iai= 1
-					iz = 1
-			  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"VN.csv",0)
-			  		call mat2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"aN.csv",0)
-			  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"gapp.csv",0)
+			  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"VN.csv",0)
+			  		call mat2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"aN.csv",0)
+			  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"gapp.csv",0)
 				  	do iai=1,nai	!Loop over alpha (ai)
 					DO id=1,nd	!Loop over disability index
 				  	DO ie=1,ne	!Loop over earnings index
@@ -861,9 +890,21 @@ program V0main
 					!Earnings evolution independent of choices.
 					wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),TT-it)
 					eprime = Hearn(TT-it,ie,wagehere)
-					!I'm going to linear interpolate for the portion that blocks off bounds on assets
-					iee1 = finder(egrid,eprime)
-					iee2 = min(ne,iee1+1)
+					!linear interpolate for the portion that blocks off bounds on assets
+					if(eprime > minval(egrid) .and. eprime < maxval(egrid)) then
+						iee1 = finder(egrid,eprime)
+						iee2 = min(ne,iee1+1)
+						iee1wt = (egrid(iee2)-eprime)/(egrid(iee2)-egrid(iee1))
+					elseif( eprime <= minval(egrid)  ) then 
+						iee1wt = 1.
+						iee1 = 1
+						iee2 = 1
+					else 
+						iee1wt = 0.
+						iee1 = ne
+						iee2 = ne
+					endif
+
 					!Restart at bottom of asset grid for each of the above (ai,d,e,z)
 					iaa1 = 1
 					!----------------------------------------------------------------
@@ -876,17 +917,21 @@ program V0main
 							!Continuation value if don't go on disability
 							chere = wagehere+R*agrid(ia)-agrid(iaa)
 							if (chere >0.) then
-								Vtest2 = util(chere,id,1)	!Flow util
+								Vc1 = 0.
 								DO izz = 1,nz	 !Loop over z'
 								DO iaai = 1,nai !Loop over alpha_i'
 									!Linearly interpolating on e'
-									yL = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it+1) & 
-										& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it))
-									yH = beta*piz(iz,izz,ij)*pialf(iai,iaai)*((1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it+1) & 
-										& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it))
-									Vtest2 = Vtest2 + yL+(yH-yL)*(eprime-egrid(iee1))/(egrid(iee2)-egrid(iee1))
+									yL = (1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it+1) & 
+										& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it)
+									yH = (1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it+1) & 
+										& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it)
+									Vc1 = piz(iz,izz,ij)*pialf(iai,iaai) &
+										& * (yH*(1. - iee1wt) + yL*iee1wt )&
+										& + Vc1
 								EndDO
-								EndDO	
+								EndDO
+								utilhere = util(chere,id,1)
+								Vtest2 = utilhere + beta*Vc1 ! flow utility
 
 								! This imposes lots of monotonicity/ concavity that probably does not hold
 								!IF (Vtest2<Vtest1 .and. iaa>iaa1) THEN				     
@@ -896,14 +941,16 @@ program V0main
 								!ELSE
 								!	apol = iaa
 								!	Vtest1 = Vtest2
-								!EndIF
-								IF (Vtest2>Vtest1 .and. iaa>iaa1) THEN				     
+
+								IF (Vtest2>Vtest1 ) THEN				     
 									Vtest1 = Vtest2
 									apol = iaa
-									iaa1 = 1	!concave? start next loop here
+									iaa1 = 1 !iaa -10	!concave? start next loop here
 								!ELSE
 								!	exit
 								EndIF
+							else 
+								exit
 							endif
 						EndDO	!iaa
 
@@ -912,57 +959,61 @@ program V0main
 
 
 						!------------------------------------------------!
-						!Calculate V with solved vals of VW and VN
+						!Calculate V with solved vals of VW and VU -- i.e. can quit into unemployment
 						!------------------------------------------------!
-						IF (VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)>VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)) THEN
-							V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+						VUhere = VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+						VWhere = VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+
+						IF (VWhere>VUhere) THEN
 							gwork((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 1
 						ELSE
-							V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
 							gwork((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 0
 						EndIF
+						smthV = dexp( smthV0param *VWhere  ) &
+							& /( dexp(smthV0param * VWhere) + dexp(smthV0param * VUhere ) )
+						if (smthV <1e-5 .or. smthV>.999999 .or. isnan(smthV) ) then
+							if(VWhere .gt. VUhere)	smthV = 1. 
+							if(VWhere .lt. VUhere)	smthV = 0. 							
+						endif
+						V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = smthV*VWhere &
+								& + (1.-smthV)*VUhere
 
 						summer = summer+ & 
 							& (V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))**2
-
-						! reset V0
-						V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)					
-					
-
+						if ((V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))**2 .gt. maxer ) then
+							maxer = (V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))**2
+							maxer_i = (/ ia,iz,ie,id,iai /)
+						endif
 					EndDO !ia
 				EndDO !iz
 			  	EndDO !ie
 			  	EndDO !id
 			  	EndDO !iai
 
-			  	!update VN0
+			  	!update VW0
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
 			  	DO iz=1,nz	!Loop over TFP
-					do ia =1,na
-						VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
-					enddo !ia		  	
+				do ia =1,na
+					VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
+				enddo !ia		  	
 				EndDO !iai
 			  	EndDO !id
 			  	EndDO !ie
 			  	EndDO !iz
 
-
-
 				if (print_lev >3) then
-					id = 1
-					ie = 1
-					iai= 1
-					iz = 1
-					call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"VW.csv",0)
-					call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"aW.csv",0)
+					call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"VW.csv",0)
+					call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"aW.csv",0)
+					call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"gwork.csv",0)
 					do iai=1,nai	!Loop over alpha (ai)
 					DO id=1,nd	!Loop over disability index
 					DO ie=1,ne	!Loop over earnings index
 					DO iz=2,nz	!Loop over TFP
 						call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"VW.csv",1)
 						call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"aW.csv",1)
+						call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"gwork.csv",1)
 					enddo !iz 
 					enddo !ie 
 					enddo !id 
@@ -970,6 +1021,18 @@ program V0main
 				endif
 
 
+			  	!update V0
+			  	DO iai=1,nai	!Loop over alpha (ai)
+				DO id=1,nd	!Loop over disability index
+			  	DO ie=1,ne	!Loop over earnings index
+			  	DO iz=1,nz	!Loop over TFP
+				do ia =1,na
+					V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)					
+				enddo !ia		  	
+				EndDO !iai
+			  	EndDO !id
+			  	EndDO !ie
+			  	EndDO !iz
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -978,11 +1041,14 @@ program V0main
 				!Check |V-V0|<eps
 				!------------------------------------------------!
 				WRITE(*,*) summer, j, ij, ibi, idi, it
+				WRITE(*,*) maxer, maxer_i(1), maxer_i(2), maxer_i(3), maxer_i(4), maxer_i(5)
+				
 				IF (summer < Vtol) THEN
 					exit !Converged
 				EndIF
 				V0 = V	!New guess
 				j=j+1
+				smthV0param = smthV0param*1.1 !tighten up the discrete choice
 			EndDO	!j: V-iter loop
 	!WRITE(*,*) ij, ibi, idi, it
 		EndDO	!t loop, going backwards
