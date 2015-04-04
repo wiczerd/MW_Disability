@@ -100,6 +100,7 @@ module helper_funs
 		
 		
 		if ((win .EQ. 1) .and. (din .gt. 1)) THEN
+			! win >=2 => disutility from work
 			util = ((cin*dexp(theta*dble(din-1)+eta))**(1.-gam))/(1.-gam)
 		elseif( din .gt. 1) then
 			util = ((cin*dexp(theta*dble(din-1)))**(1.-gam))/(1.-gam)
@@ -396,7 +397,7 @@ program V0main
 
 	call setparams()
 	agrid(1) = .05*(agrid(1)+agrid(2))
-	!WRITE(*,*) agrid
+	call vec2csv(agrid,"agrid.csv")
 
 	!************************************************************************************************!
 	! Caculate things that are independent of occupation/person type
@@ -415,48 +416,49 @@ program V0main
 		DO ie=1,ne
 		DO ia=1,na
 		DO id=1,nd
-			!VR0(id,ie,ia) = (((exval**(theta*dble(id)))*(SSI(egrid(ie))+agrid(ia)))**(1.-gam))/((1.-gam)*((1.-junk)**(1-gam))*(1-beta*ptau(TT)*(junk*R)**(1.-gam)))
 			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,1)* (1./(1.-beta*ptau(TT)))
 		ENDdo
 		ENDdo
 		ENDdo
 		if(print_lev >3) then
-			call vec2csv(VR0(1,1,:),"VR.csv",0)
+			call vec2csv(VR0(1,1,:),"VR0.csv",0)
 		endif		
 		j = 1
 		DO WHILE (j<=maxiter)
 			summer = 0
+			id =1
 		  	DO ie=1,ne
 				iaa1 = 1
 			  	DO ia=1,na
 					chere = SSI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
 					Vc1 = beta*ptau(TT)*VR0(id,ie,iaa1) 
 					Vtest1 = util(chere,1,1) + Vc1 !arbitrary number
+					Vtest1 = -1e6
 					apol = iaa1
 					DO iaa=iaa1,na
 						chere = SSI(egrid(ie))+R*agrid(ia)-agrid(iaa)
 						if( chere .gt. 0.) then !ensure positive consumption
 							Vc1 = beta*ptau(TT)*VR0(id,ie,iaa)
 							Vtest2 = util(chere ,1,1) + Vc1
-							IF ((Vtest2<Vtest1) .and. (iaa > iaa1+1)) THEN
-								apol = iaa-1
-								exit 
-							ELSE
+
+							if(Vtest2>Vtest1) then
+								Vtest1 = Vtest2
 								apol = iaa
-								Vtest1 = Vtest2	
-							EndIF
+							elseif(iaa > apol+iaa_hiwindow) then ! gone 25 steps w/o new max
+								exit
+							endif
 						else!saved too much and negative consumtion
 							exit
 						endif
 					EndDO
-					iaa1  = max(apol-1,1)  	!concave, start next loop here
+					iaa1  = max(apol-iaa_lowindow,1)  	!concave, start next loop here
 					VR(1,ie,ia) = Vtest1
 					aR(1,ie,ia) = agrid(apol)
 					summer = summer+ (VR(1,ie,ia)-VR0(1,ie,ia))**2
 					!Polices for disabled are the same, just scale V-function
 
-				EndDO !ie
-			EndDO !ia 
+				EndDO !ia
+			EndDO !ie
 			IF (summer < Vtol) THEN
 				exit	!Converged
 				do ie =1,ne
@@ -493,6 +495,7 @@ program V0main
 			DO ie=1,ne
 			DO ia=1,na
 				VD(id,ie,ia,TT) = VR(id,ie,ia)
+				VD0(id,ie,ia,TT) = VR(id,ie,ia)				
 				VW ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
 				VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
 				VN ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
@@ -535,13 +538,16 @@ program V0main
 			j=1
 			DO WHILE (j<maxiter)
 				summer = 0
+				id =1
 				!Loop over earnings index
 				DO ie=1,ne
 					iaa1 = 1
 					!Loop over current state: assets
 					DO ia=1,na
 						Vc1 = beta*((1-ptau(TT-it))*VD0(id,ie,apol,TT-it+1)+ptau(TT-it)*VD0(id,ie,iaa1,TT-it))
-						Vtest1 = util(SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa1),1,1) + Vc1
+						chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
+						!Vtest1 = util(chere,1,1) + Vc1
+						Vtest1 = -1e6
 						apol = iaa1
 						!Find Policy
 						do iaa=iaa1,na
@@ -549,19 +555,17 @@ program V0main
 							if(chere >0.) then
 								Vc1 = beta*((1-ptau(TT-it))*VD0(id,ie,iaa,TT-it+1)+ptau(TT-it)*VD0(id,ie,iaa,TT-it))
 								Vtest2 = util(chere,1,1)+ Vc1
-								
-								IF ((Vtest2<Vtest1) .and. (iaa>iaa1)) THEN
-									apol = iaa-1
-									exit
-								ELSE
+								if(Vtest2>Vtest1) then
+									Vtest1 = Vtest2
 									apol = iaa
-									Vtest1 = Vtest2	
-								EndIF
+								elseif(iaa>apol+iaa_hiwindow) then
+									exit
+								endif
 							else
 								exit
 							endif
 						enddo	!iaa
-						iaa1 = max(apol-1,1)
+						iaa1 = max(apol-iaa_lowindow,1)
 						VD(1,ie,ia,TT-it) = Vtest1
 						aD(1,ie,ia,TT-it) = agrid(apol)
 						summer = summer+ (VD(1,ie,ia,TT-it)-VD0(1,ie,ia,TT-it))**2
@@ -652,7 +656,9 @@ program V0main
 			DO WHILE (j<maxiter)
 				maxer = 0.
 				summer = 0.	!Use to calc |V-V0|<eps
-				if(mod(j,100) .eq. 0) then
+
+				! lots f printing every 100 iterations (mod 1 because Fortran is designed by idiots using base-1 indexing)
+				if(mod(j,100) .eq. 1) then
 					print_lev = 4
 				else 
 					print_lev =1
@@ -669,42 +675,36 @@ program V0main
 					iaa1 = 1
 					!----------------------------------------------------------------
 					!Loop over current state: assets
-					DO ia=1,na
-					
+					do ia=1,na
 						Vtest1 = -1e5 ! just a very bad number, does not really matter
-					
-						DO iaa=iaa1,na
-							!Continuation value if don't go on disability
-							Vtest2 = 0	 
-							DO izz = 1,nz	 !Loop over z'
-							DO iaai = 1,nai !Loop over alpha_i'
-								Vc1 = (1.-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) & !Age and might go LTU
-									& +ptau(TT-it)*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, maybe LTU
-								Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1)  !Probability of alpha_i X z_i draw 
-							EndDO
-							EndDO
-							Vtest2 = Vtest2 + util(UI(egrid(ie))+R*agrid(ia)-agrid(iaa),id,2)
-							IF (Vtest2<Vtest1 .and. iaa > iaa1) THEN	
-							!no longer improving
-								iaa1 = max(apol - 1,1) !concave, start next loop here
-								apol = max(iaa-1,1) ! set the policy
+						do iaa=iaa1,na
+							chere = UI(egrid(ie))+R*agrid(ia)-agrid(iaa)
+							if(chere>0) then 
+								!Continuation value if don't go on disability
+								Vtest2 = 0
+								do izz = 1,nz	 !Loop over z'
+								do iaai = 1,nai !Loop over alpha_i'
+									Vc1 = (1.-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) & !Age and might go LTU
+										& +ptau(TT-it)*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, maybe LTU
+									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1)  !Probability of alpha_i X z_i draw 
+								enddo
+								enddo
+								Vtest2 = Vtest2 + util(chere,id,1)
+								if(Vtest2>Vtest1) then
+									apol = iaa! set the policy
+									Vtest1 = Vtest2
+								elseif(iaa > apol+iaa_hiwindow) then
+									exit
+								endif
+							else
 								exit
-							ELSE
-								apol = iaa 
-								Vtest1 = Vtest2
-							EndIF
-						
-						EndDO	!iaa
-
+							endif
+						enddo	!iaa
+						iaa1 = max(apol - iaa_lowindow,1) !concave, start next loop here
 						VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vtest1
 						aU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = agrid(apol)
 
 					EndDO !ia
-					if(print_lev > 3) then
-						call vec2csv(VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"VU.csv",0)
-						call vec2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"aU.csv",0)
-					endif
-				
 				
 				EndDO !id
 			  	EndDO !ie
@@ -755,7 +755,7 @@ program V0main
 						DO iaa=iaa1napp,na
 							chere = b+R*agrid(ia)-agrid(iaa)
 							if(chere >0) then
-								Vtest2 = util(chere,2,1)
+								Vtest2 = util(chere,id,1)
 								!Continuation if do not apply for DI
 								DO izz = 1,nz	 !Loop over z'
 								DO iaai = 1,nai !Loop over alpha_i'
@@ -764,30 +764,19 @@ program V0main
 									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1) 
 								EndDO
 								EndDO
-								
-						!		IF (Vtest2<Vtest1 .and. iaa .gt. iaa1napp) THEN	
-						!			apol = max(iaa-1,1)
-						!			iaa1napp = max(apol -1,1)
-						!			Vnapp = Vtest1
-						!			exit !break
-						!		ELSE
-						!			apol = iaa
-						!			Vtest1 = Vtest2	
-						!			Vnapp = Vtest2
-								if( Vtest2 > Vtest1 .and. iaa>iaa1napp) then
+					
+								if( Vtest2 > Vtest1) then
 									apol = iaa 
 									Vtest1 = Vtest2 
-									iaa1napp = max(iaa-1,1)
-									Vnapp = Vtest1 
-							!	else 
-							!		exit
-								EndIF
+								elseif(iaa > apol+iaa_hiwindow) then
+									exit
+								endif
 							else	
-								Vnapp = Vtest1
-							!	apol = max(iaa-1,1)
 								exit
 							endif
 						EndDO !iaa
+						iaa1napp = max(iaa-iaa_lowindow,1)
+						Vnapp = Vtest1 					
 						aNapp = agrid(apol)
 
 						!*******************************************
@@ -809,22 +798,23 @@ program V0main
 								EndDO
 								EndDO
 
-								IF (Vtest2<Vtest1 .and. iaa .gt. iaa1app) THEN	
-									apol = max(iaa-1,1)									
-									iaa1app = max(apol -1,1) !concave, start next loop here
-									Vapp = Vtest1
-									exit !break
-								ELSE
-									Vtest1 = Vtest2	
-									Vapp = Vtest2
+								if (Vtest2>Vtest1) then	
+									apol = iaa
+									Vtest1 = Vtest2
+								elseif(iaa > apol +iaa_hiwindow) then
+									exit
 								EndIF
 							else 
-								Vapp = Vtest1
-								apol = max(iaa-1,1)
 								exit
 							endif
 						EndDO !iaa
+						Vapp = Vtest1
+						iaa1app = max(apol -iaa_lowindow,1) !concave, start next loop here
 						aapp = agrid(apol)					
+
+
+						!******************************************************
+						!***************** Discrete choice for application
 						smthV = dexp(smthV0param*Vnapp)/( dexp(smthV0param*Vnapp) +dexp(smthV0param*(Vapp-nu)) )
 						if( smthV .lt. 1e-5 .or. smthV .gt. 0.999999 .or. isnan(smthV)) then
 							if( Vapp -nu > Vnapp ) smthV =0.
@@ -934,26 +924,18 @@ program V0main
 								Vtest2 = utilhere + beta*Vc1 ! flow utility
 
 								! This imposes lots of monotonicity/ concavity that probably does not hold
-								!IF (Vtest2<Vtest1 .and. iaa>iaa1) THEN				     
-								!	apol = max(iaa-1,1)		!concave, start next loop here
-								!	iaa1 = max(apol-10,1)
-								!	exit
-								!ELSE
-								!	apol = iaa
-								!	Vtest1 = Vtest2
-
 								IF (Vtest2>Vtest1 ) THEN				     
 									Vtest1 = Vtest2
 									apol = iaa
-									iaa1 = 1 !iaa -10	!concave? start next loop here
-								!ELSE
-								!	exit
+
+								elseif(iaa>apol+iaa_hiwindow) then
+									exit
 								EndIF
 							else 
 								exit
 							endif
 						EndDO	!iaa
-
+						iaa1 = max(iaa -iaa_lowindow,1)	!concave? start next loop here
 						VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vtest1
 						aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = agrid(apol)
 

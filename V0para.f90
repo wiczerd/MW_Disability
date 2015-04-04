@@ -81,15 +81,17 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter ::  nai = 11,  &	!Number of individual alpha types 
-		       nbi = 2,  &	!Number of indiVidual beta types
-		       ndi = 1,  &	!Number of individual disability types
-		       nj  = 1,  &	!Number of occupations (downward TFP risk variation)
-		       nd  = 3,  &	!Number of disability extents
-		       ne  = 10, &	!Points on earnings grid
-		       na  = 200, &	!Points on assets grid
-		       nz  = 3,  &	!Number of Occ TFP Shocks
-		       maxiter = 5000	!Tolerance parameter	
+integer, parameter :: 	nai = 11,  &		!Number of individual alpha types 
+			nbi = 2,  &		!Number of indiVidual beta types
+			ndi = 1,  &		!Number of individual disability types
+			nj  = 1,  &		!Number of occupations (downward TFP risk variation)
+			nd  = 3,  &		!Number of disability extents
+			ne  = 10, &		!Points on earnings grid
+			na  = 200, &		!Points on assets grid
+			nz  = 3,  &		!Number of Occ TFP Shocks
+			maxiter = 5000, &	!Tolerance parameter	
+			iaa_lowindow = 10,& 	!how far below to begin search
+			iaa_hiwindow = 25	!how far above to keep searching
 
 real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
 			alfi_mu  = 0.0,    & 	!Mean of alpha_i wage parameter (Log Normal)
