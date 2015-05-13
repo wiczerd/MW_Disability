@@ -666,6 +666,7 @@ program V0main
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!  
+			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iaa1,ia,iaa,chere,Vtest2,Vtest1,Vc1,iaai,izz)
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
@@ -710,7 +711,7 @@ program V0main
 			  	EndDO !ie
 			  	EndDO !iz
 			  	EndDO !iai	
-
+			!OMP END PARALLEL DO
 
 				if (print_lev > 2) then
 					call vec2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,iz,TT-it),"aU.csv",0)
@@ -731,7 +732,9 @@ program V0main
 	
 			!------------------------------------------------!
 			!Solve VN given guesses on VW, VN, and implied V
-			!------------------------------------------------!  
+			!------------------------------------------------! 
+
+			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz) 
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
@@ -831,12 +834,15 @@ program V0main
 						EndIF
 
 						
-						VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = smthV*Vapp + (1. - smthV)*(Vapp - nu)
+						VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = smthV*Vnapp + (1. - smthV)*(Vapp - nu)
 					EndDO !ia
 				enddo !iz 
 				enddo !ie 
 				enddo !id 
-				enddo !iai	
+				enddo !iai
+				
+			!OMP END PARALLEL DO	
+			
 				!------------------------------------------------!			
 				! Done making VN
 				  	
@@ -873,6 +879,7 @@ program V0main
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
+				!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iee1,iee2,iee1wt,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,VUhere,VWhere,aapp,anapp,iaai,izz) 
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
@@ -1065,9 +1072,18 @@ ie = INT(na/4)
 j = INT(nj/2)
 idi = INT(ndi/2)
 ia = INT(ne/3)
-! this plots the cross product of alphai and di
+
 call veci2csv(gwork(1,1,:,ie,ia,2,2),'dipol.csv',0)
 call veci2csv(gapp(1,1,:,ie,ia,2,2),'workpol.csv',0)
+
+! this plots work-rest and di application on the cross product of alphai and deltai and di
+call mati2csv(gwork(1,:,:,ne/2,na/2,2,2),'dipol_dalpha.csv',0)
+call mati2csv(gapp(1,:,:,ne/2,na/2,2,2),'workpol_dalpha.csv',0)
+!roll back to period 1
+call mati2csv(gwork(1,:,:,ne/2,na/2,2,1),'dipol_dalpha.csv',1)
+call mati2csv(gapp(1,:,:,ne/2,na/2,2,1),'workpol_dalpha.csv',1)
+
+
 call vec2csv(V(1,1,:,ie,ia,2,2),'Vfun.csv',0)
 call vec2csv(dtype,'DriskGrid.csv',0)
 call vec2csv(alfi(:),'AlfGrid.csv',0)
