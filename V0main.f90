@@ -841,7 +841,7 @@ program V0main
 				enddo !id 
 				enddo !iai
 				
-			!OMP END PARALLEL DO	
+			!OMP END PARALLEL DO
 			
 				!------------------------------------------------!			
 				! Done making VN
@@ -879,7 +879,7 @@ program V0main
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
-				!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iee1,iee2,iee1wt,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,VUhere,VWhere,aapp,anapp,iaai,izz) 
+			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iee1,iee2,iee1wt,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,VUhere,VWhere,yL,yH,iaai,izz) 
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
@@ -934,7 +934,6 @@ program V0main
 								IF (Vtest2>Vtest1 ) THEN				     
 									Vtest1 = Vtest2
 									apol = iaa
-
 								elseif(iaa>apol+iaa_hiwindow) then
 									exit
 								EndIF
@@ -978,6 +977,8 @@ program V0main
 			  	EndDO !ie
 			  	EndDO !id
 			  	EndDO !iai
+
+			!OMP END PARALLEL DO
 
 			  	!update VW0
 			  	DO iai=1,nai	!Loop over alpha (ai)
