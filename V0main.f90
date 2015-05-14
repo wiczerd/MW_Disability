@@ -1078,12 +1078,24 @@ call veci2csv(gwork(1,1,:,ie,ia,2,2),'dipol.csv',0)
 call veci2csv(gapp(1,1,:,ie,ia,2,2),'workpol.csv',0)
 
 ! this plots work-rest and di application on the cross product of alphai and deltai and di
-call mati2csv(gwork(1,:,:,ne/2,na/2,2,2),'dipol_dalpha.csv',0)
-call mati2csv(gapp(1,:,:,ne/2,na/2,2,2),'workpol_dalpha.csv',0)
-!roll back to period 1
-call mati2csv(gwork(1,:,:,ne/2,na/2,2,1),'dipol_dalpha.csv',1)
-call mati2csv(gapp(1,:,:,ne/2,na/2,2,1),'workpol_dalpha.csv',1)
 
+
+call mati2csv(gwork(1,:,:,1,1,1,1),'dipol_dalpha.csv',0)
+call mati2csv(gapp(1,:,:,1,1,1,1),'workpol_dalpha.csv',0)
+!roll forward to period 2
+call mati2csv(gwork(1,:,:,1,1,1,2),'dipol_dalpha.csv',1)
+call mati2csv(gapp(1,:,:,1,1,1,2),'workpol_dalpha.csv',1)
+do iz=1,nz
+do ie=1,ne
+do ia=2,na
+	call mati2csv(gwork(1,:,:,ie,ia,iz,1),'dipol_dalpha.csv',1)
+	call mati2csv(gapp(1,:,:,ie,ia,iz,1),'workpol_dalpha.csv',1)
+	!roll forward to period 2
+	call mati2csv(gwork(1,:,:,ie,ia,iz,2),'dipol_dalpha.csv',1)
+	call mati2csv(gapp(1,:,:,ie,ia,iz,2),'workpol_dalpha.csv',1)
+enddo
+enddo
+enddo
 
 call vec2csv(V(1,1,:,ie,ia,2,2),'Vfun.csv',0)
 call vec2csv(dtype,'DriskGrid.csv',0)
