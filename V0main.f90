@@ -711,7 +711,7 @@ program V0main
 			  	EndDO !ie
 			  	EndDO !iz
 			  	EndDO !iai	
-			!OMP END PARALLEL DO
+			!$OMP END PARALLEL DO
 
 				if (print_lev > 2) then
 					call vec2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,iz,TT-it),"aU.csv",0)
@@ -841,7 +841,7 @@ program V0main
 				enddo !id 
 				enddo !iai
 				
-			!OMP END PARALLEL DO
+			!$OMP END PARALLEL DO
 			
 				!------------------------------------------------!			
 				! Done making VN
@@ -879,7 +879,7 @@ program V0main
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
-			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iee1,iee2,iee1wt,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,VUhere,VWhere,yL,yH,iaai,izz) 
+			! PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iee1,iee2,iee1wt,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,VUhere,VWhere,yL,yH,iaai,izz) 
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
@@ -978,7 +978,7 @@ program V0main
 			  	EndDO !id
 			  	EndDO !iai
 
-			!OMP END PARALLEL DO
+			! END PARALLEL DO
 
 			  	!update VW0
 			  	DO iai=1,nai	!Loop over alpha (ai)
