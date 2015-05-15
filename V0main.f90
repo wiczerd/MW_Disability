@@ -99,7 +99,7 @@ module helper_funs
 		real(8)			:: util
 		
 		
-		if ((win .EQ. 1) .and. (din .gt. 1)) THEN
+		if ((win .gt. 1) .and. (din .gt. 1)) then
 			! win >=2 => disutility from work
 			util = ((cin*dexp(theta*dble(din-1)+eta))**(1.-gam))/(1.-gam)
 		elseif( din .gt. 1) then
@@ -790,7 +790,7 @@ program V0main
 						
 							chere = b+R*agrid(ia)-agrid(iaa)
 							if(chere>0)then
-								Vtest2 = util(chere,id,2) 
+								Vtest2 = util(chere,id,1) 
 								
 								!Continuation if apply for DI
 								DO izz = 1,nz	 !Loop over z'
@@ -879,7 +879,7 @@ program V0main
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
-			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iee1,iee2,iee1wt,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,VUhere,VWhere,yL,yH,iaai,izz) 
+			!   PARALLEL DO default(shared) private(iai,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz) 
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
@@ -927,7 +927,7 @@ program V0main
 										& + Vc1
 								EndDO
 								EndDO
-								utilhere = util(chere,id,1)
+								utilhere = util(chere,id,2)
 								Vtest2 = utilhere + beta*Vc1 ! flow utility
 
 								! This imposes lots of monotonicity/ concavity that probably does not hold
@@ -978,7 +978,7 @@ program V0main
 			  	EndDO !id
 			  	EndDO !iai
 
-			!$OMP END PARALLEL DO
+			!  END PARALLEL DO
 
 			  	!update VW0
 			  	DO iai=1,nai	!Loop over alpha (ai)
@@ -1102,7 +1102,7 @@ call vec2csv(dtype,'DriskGrid.csv',0)
 call vec2csv(alfi(:),'AlfGrid.csv',0)
 call vec2csv(occz(:),'ZriskGrid.csv',0)
 call vec2csv(agrid(:),'Agrid.csv',0)
-call vec2csv(aW(1,1,1,ie,:,2,2),'aW.csv',0)
+
 
 
 !    .----.   @   @
