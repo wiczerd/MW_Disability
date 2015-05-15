@@ -99,11 +99,11 @@ module helper_funs
 		real(8)			:: util
 		
 		
-		if ((win .gt. 1) .and. (din .gt. 1)) then
+		if ((win .gt. 1) .or. (din .gt. 1)) then
 			! win >=2 => disutility from work
 			util = ((cin*dexp(theta*dble(din-1)+eta))**(1.-gam))/(1.-gam)
-		elseif( din .gt. 1) then
-			util = ((cin*dexp(theta*dble(din-1)))**(1.-gam))/(1.-gam)
+		!elseif( din .gt. 1) then
+		!	util = ((cin*dexp(theta*dble(din-1)))**(1.-gam))/(1.-gam)
 		else 
 			util = (cin**(1.-gam))/(1.-gam)
 		end if
@@ -331,7 +331,7 @@ program V0main
 	!************************************************************************************************!
 
 		integer  :: i, j, t, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp,apol, ibi, iai, ij , idi, izz, iaai, idd, &
-			    iee1, iee2, iz, unitno, print_lev, verbose, narg_in
+			    iee1, iee2, iz, unitno, print_lev, verbose, narg_in,iw
 		integer, dimension(5) :: maxer_i
 	
 	!************************************************************************************************!
@@ -409,14 +409,15 @@ program V0main
 		!d in{1,2,3}  : disability extent
 		!e inR+       :	earnings index
 		!a inR+	      : asset holdings
-	
+		
+		iw = 1 ! not working
 		!VFI with good guess
 		!Initialize
 		junk = (1.0+(beta*ptau(TT)*R**(1.0-gam))**(-1.0/gam))**(-1.0)
 		DO ie=1,ne
 		DO ia=1,na
 		DO id=1,nd
-			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,1)* (1./(1.-beta*ptau(TT)))
+			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,iw)* (1./(1.-beta*ptau(TT)))
 		ENDdo
 		ENDdo
 		ENDdo
@@ -432,14 +433,14 @@ program V0main
 			  	DO ia=1,na
 					chere = SSI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
 					Vc1 = beta*ptau(TT)*VR0(id,ie,iaa1) 
-					Vtest1 = util(chere,1,1) + Vc1 !arbitrary number
+					Vtest1 = util(chere,id,iw) + Vc1 !arbitrary number
 					Vtest1 = -1e6
 					apol = iaa1
 					DO iaa=iaa1,na
 						chere = SSI(egrid(ie))+R*agrid(ia)-agrid(iaa)
 						if( chere .gt. 0.) then !ensure positive consumption
 							Vc1 = beta*ptau(TT)*VR0(id,ie,iaa)
-							Vtest2 = util(chere ,1,1) + Vc1
+							Vtest2 = util(chere ,id,iw) + Vc1
 
 							if(Vtest2>Vtest1) then
 								Vtest1 = Vtest2
@@ -463,7 +464,7 @@ program V0main
 				exit	!Converged
 				do ie =1,ne
 				do id =2,ne
-					VR(id,ie,:) = VR(1,ie,:)*(exval**(theta*dble(id-1)))**(1-gam)
+					VR(id,ie,:) = VR(1,ie,:)*(dexp(theta*dble(id-1)))**(1-gam)
 					aR(id,ie,:) = aR(1,ie,:)
 				enddo
 				enddo
@@ -534,6 +535,7 @@ program V0main
 			endif
 
 			id = 1 ! other values are just multiples thereof
+			iw = 1 ! not working
 			!Loop to find V(..,it) as fixed point
 			j=1
 			DO WHILE (j<maxiter)
@@ -546,7 +548,7 @@ program V0main
 					DO ia=1,na
 						Vc1 = beta*((1-ptau(TT-it))*VD0(id,ie,apol,TT-it+1)+ptau(TT-it)*VD0(id,ie,iaa1,TT-it))
 						chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
-						!Vtest1 = util(chere,1,1) + Vc1
+						
 						Vtest1 = -1e6
 						apol = iaa1
 						!Find Policy
@@ -554,7 +556,7 @@ program V0main
 							chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
 							if(chere >0.) then
 								Vc1 = beta*((1-ptau(TT-it))*VD0(id,ie,iaa,TT-it+1)+ptau(TT-it)*VD0(id,ie,iaa,TT-it))
-								Vtest2 = util(chere,1,1)+ Vc1
+								Vtest2 = util(chere,id,iw)+ Vc1
 								if(Vtest2>Vtest1) then
 									Vtest1 = Vtest2
 									apol = iaa
@@ -583,7 +585,7 @@ program V0main
 			EndDO	!j: V-iter loop
 			! set the other value function/asset policies for other disability levels
 			do id = 2,nd
-				VD(id,ie,ia,TT-it) = VD(id,ie,ia,TT-it)*((exval**(theta*dble(id-1)))**(1-gam))
+				VD(id,ie,ia,TT-it) = VD(id,ie,ia,TT-it)*((dexp(theta*dble(id-1)))**(1-gam))
 				aD(id,ie,ia,TT-it) = aD(id,ie,ia,TT-it)
 			enddo
 		EndDO	!t loop, going backwards
@@ -666,11 +668,12 @@ program V0main
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!  
-			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iaa1,ia,iaa,chere,Vtest2,Vtest1,Vc1,iaai,izz)
+			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,iw,apol,iaa1,ia,iaa,chere,Vtest2,Vtest1,Vc1,iaai,izz)
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
 			  	DO iz=1,nz	!Loop over TFP
+			  		iw = 1 !not working
 					!Restart at bottom of asset grid for each of the above (ai,d,e,z)
 					apol = 1
 					iaa1 = 1
@@ -690,7 +693,7 @@ program V0main
 									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1)  !Probability of alpha_i X z_i draw 
 								enddo
 								enddo
-								Vtest2 = Vtest2 + util(chere,id,1)
+								Vtest2 = Vtest2 + util(chere,id,iw)
 								if(Vtest2>Vtest1) then
 									apol = iaa! set the policy
 									Vtest1 = Vtest2
@@ -734,12 +737,12 @@ program V0main
 			!Solve VN given guesses on VW, VN, and implied V
 			!------------------------------------------------! 
 
-			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz) 
+			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz) 
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
 			  	DO iz=1,nz	!Loop over TFP
-
+					iw = 1 ! not working
 					!******************************************************************************
 					!---------------------------------------------------------------!
 					!First Solve as if do NOT apply (since assets are a joint choice)
@@ -758,7 +761,7 @@ program V0main
 						DO iaa=iaa1napp,na
 							chere = b+R*agrid(ia)-agrid(iaa)
 							if(chere >0) then
-								Vtest2 = util(chere,id,1)
+								Vtest2 = util(chere,id,iw)
 								!Continuation if do not apply for DI
 								DO izz = 1,nz	 !Loop over z'
 								DO iaai = 1,nai !Loop over alpha_i'
@@ -790,7 +793,7 @@ program V0main
 						
 							chere = b+R*agrid(ia)-agrid(iaa)
 							if(chere>0)then
-								Vtest2 = util(chere,id,1) 
+								Vtest2 = util(chere,id,iw) 
 								
 								!Continuation if apply for DI
 								DO izz = 1,nz	 !Loop over z'
