@@ -337,9 +337,9 @@ program V0main
 	!************************************************************************************************!
 	! Value Functions- Stack z-risk j and indiv. exposure beta_i
 	!************************************************************************************************!
-	real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, VC, app2, Vc1, Vnapp, anapp,aapp, maxer, smthV,smthV0param, &
+	real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, VC, app2, Vc1, Vnapp, anapp,aapp, maxer_v, smthV,smthV0param, &
 				&	iee1wt
-		       
+        real(8), allocatable	:: maxer(:,:,:,:,:)
 	real(8), allocatable	:: VR0(:,:,:), VR(:,:,:), &			!Retirement
 				VD0(:,:,:,:), VD(:,:,:,:), &			!Disabled
 				VN(:,:,:,:,:,:,:), VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
@@ -366,16 +366,16 @@ program V0main
 	!************************************************************************************************!
 	! Allocate phat matrices
 	!************************************************************************************************!
-	! (disability extent, earn ind, assets)
+	! (disability extent, earn hist, assets)
 	allocate(VR0(nd,ne,na))
 	allocate(VR(nd,ne,na))
 	allocate(aR(nd,ne,na))
-	! (disability extent, earn ind, assets, age)
+	! (disability extent, earn hist, assets, age)
 	allocate(VD0(nd,ne,na,TT))
 	allocate(VD(nd,ne,na,TT))
 	allocate(aD(nd,ne,na,TT-1))
 	allocate(aiD(nd,ne,na,TT-1))	
-	! (occupation X ind exposure, ind disb. risk, ind. wage, disab. extent, earn ind, assets, agg shock, age)
+	! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
 	allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 	allocate(VN0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 	allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
@@ -389,6 +389,8 @@ program V0main
 	allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
 	allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
 	allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+
+	allocate(maxer(na,nz,ne,nd,nai))
 
 	narg_in = iargc()
 
@@ -431,9 +433,9 @@ program V0main
 		  	DO ie=1,ne
 				iaa1 = 1
 			  	DO ia=1,na
-					chere = SSI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
-					Vc1 = beta*ptau(TT)*VR0(id,ie,iaa1) 
-					Vtest1 = util(chere,id,iw) + Vc1 !arbitrary number
+				!	chere = SSI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
+				!	Vc1 = beta*ptau(TT)*VR0(id,ie,iaa1) 
+				!	Vtest1 = util(chere,id,iw) + Vc1 !arbitrary number
 					Vtest1 = -1e6
 					apol = iaa1
 					DO iaa=iaa1,na
@@ -476,7 +478,7 @@ program V0main
 					call vec2csv(VR(1,1,:),"VR.csv",0)
 				endif
 			endif
-		EndDO
+		EndDO ! iteration j
 		if (print_lev > 2) then
 			call vec2csv(aR(1,1,:),"aR.csv",0)
 			call vec2csv(VR(1,1,:),"VR.csv",0)
@@ -668,7 +670,8 @@ program V0main
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!  
-			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,iw,apol,iaa1,ia,iaa,chere,Vtest2,Vtest1,Vc1,iaai,izz)
+			!$OMP  parallel do default(shared) &
+			!$OMP& private(iai,id,ie,iz,iw,apol,iaa1,ia,iaa,chere,Vtest2,Vtest1,Vc1,iaai,izz)
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
@@ -685,7 +688,7 @@ program V0main
 							chere = UI(egrid(ie))+R*agrid(ia)-agrid(iaa)
 							if(chere>0) then 
 								!Continuation value if don't go on disability
-								Vtest2 = 0
+								Vtest2 = 0.
 								do izz = 1,nz	 !Loop over z'
 								do iaai = 1,nai !Loop over alpha_i'
 									Vc1 = (1.-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) & !Age and might go LTU
@@ -737,7 +740,8 @@ program V0main
 			!Solve VN given guesses on VW, VN, and implied V
 			!------------------------------------------------! 
 
-			!$OMP PARALLEL DO default(shared) private(iai,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz) 
+			!$OMP  parallel do default(shared) &
+			!$OMP& private(iai,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz) 
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
@@ -761,7 +765,7 @@ program V0main
 						DO iaa=iaa1napp,na
 							chere = b+R*agrid(ia)-agrid(iaa)
 							if(chere >0) then
-								Vtest2 = util(chere,id,iw)
+								Vtest2 = 0.
 								!Continuation if do not apply for DI
 								DO izz = 1,nz	 !Loop over z'
 								DO iaai = 1,nai !Loop over alpha_i'
@@ -770,7 +774,8 @@ program V0main
 									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1) 
 								EndDO
 								EndDO
-					
+								Vtest2 = Vtest2 + util(chere,id,iw)
+								
 								if( Vtest2 > Vtest1) then
 									apol = iaa 
 									Vtest1 = Vtest2 
@@ -793,8 +798,7 @@ program V0main
 						
 							chere = b+R*agrid(ia)-agrid(iaa)
 							if(chere>0)then
-								Vtest2 = util(chere,id,iw) 
-								
+								Vtest2 = 0.
 								!Continuation if apply for DI
 								DO izz = 1,nz	 !Loop over z'
 								DO iaai = 1,nai !Loop over alpha_i'
@@ -803,6 +807,7 @@ program V0main
 									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*Vc1 
 								EndDO
 								EndDO
+								Vtest2 = util(chere,id,iw) - nu + Vtest2
 
 								if (Vtest2>Vtest1) then	
 									apol = iaa
@@ -821,13 +826,13 @@ program V0main
 
 						!******************************************************
 						!***************** Discrete choice for application
-						smthV = dexp(smthV0param*Vnapp)/( dexp(smthV0param*Vnapp) +dexp(smthV0param*(Vapp-nu)) )
+						smthV = dexp(smthV0param*Vnapp)/( dexp(smthV0param*Vnapp) +dexp(smthV0param*Vapp) )
 						if( smthV .lt. 1e-5 .or. smthV .gt. 0.999999 .or. isnan(smthV)) then
-							if( Vapp -nu > Vnapp ) smthV =0.
-							if(Vnapp > Vapp - nu ) smthV =1.
+							if( Vapp  > Vnapp ) smthV =0.
+							if(Vnapp > Vapp  ) smthV =1.
 						endif
-						IF (Vapp-nu > Vnapp) THEN
-							!VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vapp - nu
+						IF (Vapp > Vnapp) THEN
+							!VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vapp
 							aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = aapp
 							gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 1
 						ELSE !Don't apply
@@ -837,14 +842,14 @@ program V0main
 						EndIF
 
 						
-						VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = smthV*Vnapp + (1. - smthV)*(Vapp - nu)
+						VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = smthV*Vnapp + (1. - smthV)*Vapp
 					EndDO !ia
 				enddo !iz 
 				enddo !ie 
 				enddo !id 
 				enddo !iai
 				
-			!$OMP END PARALLEL DO
+			!$OMP  END PARALLEL DO
 			
 				!------------------------------------------------!			
 				! Done making VN
@@ -882,7 +887,8 @@ program V0main
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
-			!   PARALLEL DO default(shared) private(iai,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz) 
+			!$OMP   parallel do default(shared) reduction(+:summer) &
+			!$OMP & private(iai,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz) 
 			  	DO iai=1,nai	!Loop over alpha (ai)
 				DO id=1,nd	!Loop over disability index
 			  	DO ie=1,ne	!Loop over earnings index
@@ -971,17 +977,19 @@ program V0main
 
 						summer = summer+ & 
 							& (V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))**2
-						if ((V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))**2 .gt. maxer ) then
-							maxer = (V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))**2
-							maxer_i = (/ ia,iz,ie,id,iai /)
-						endif
+						
+						maxer(ia,iz,ie,id,iai) = (V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it))**2
+
 					EndDO !ia
 				EndDO !iz
 			  	EndDO !ie
 			  	EndDO !id
 			  	EndDO !iai
 
-			!  END PARALLEL DO
+			!$OMP  END PARALLEL DO
+			
+				maxer_v = maxval(maxer)
+				maxer_i = maxloc(maxer)
 
 			  	!update VW0
 			  	DO iai=1,nai	!Loop over alpha (ai)
@@ -1020,7 +1028,7 @@ program V0main
 			  	DO ie=1,ne	!Loop over earnings index
 			  	DO iz=1,nz	!Loop over TFP
 				do ia =1,na
-					V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)					
+					V0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it)
 				enddo !ia		  	
 				EndDO !iai
 			  	EndDO !id
@@ -1034,7 +1042,7 @@ program V0main
 				!Check |V-V0|<eps
 				!------------------------------------------------!
 				WRITE(*,*) summer, j, ij, ibi, idi, it
-				WRITE(*,*) maxer, maxer_i(1), maxer_i(2), maxer_i(3), maxer_i(4), maxer_i(5)
+				WRITE(*,*) maxer_v, maxer_i(1), maxer_i(2), maxer_i(3), maxer_i(4), maxer_i(5)
 				
 				IF (summer < Vtol) THEN
 					exit !Converged
@@ -1117,7 +1125,7 @@ call vec2csv(agrid(:),'Agrid.csv',0)
 	! IF you love something.... 
 	!****************************************************************************!
 	deallocate(aR,aD,aN, aW,gwork, gapp)
-	deallocate(aiD)
+	deallocate(aiD,maxer)
 	deallocate(VR0,VR,VD0,VD,VN,VN0,VU,VU0,VW,VW0,V,V0)
 
 

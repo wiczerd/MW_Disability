@@ -244,7 +244,7 @@ subroutine setparams()
 		!Disability: pid(id,id';i,t) <---indv. type and age specific
 		DO i=1,ndi
 		DO t=1,TT-1
-	           pid(1,1,i,TT-t) = 1-pid1*dtau(TT-t)*dtype(i)	!Stay healthy
+	           pid(1,1,i,TT-t) = 1-pid1*dtau(TT-t)*dtype(i)		!Stay healthy
 		   pid(1,2,i,TT-t) = pid1*dtau(TT-t)*dtype(i)		!Partial Disability
 		   pid(1,3,i,TT-t) = 0					!Full Disability
 		   pid(2,1,i,TT-t) = 0					!Monotone
