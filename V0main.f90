@@ -767,7 +767,8 @@ program V0main
 						!**********Value if apply for DI 
 						Vtest1 = -1e6
 						apol = iaa1app
-						do iaa=iaa1app,na
+						iaa = iaa1app
+						do while (iaa <= na)
 							chere = b+R*agrid(ia)-agrid(iaa)
 							if(chere >0.) then
 								Vtest2 = 0.
@@ -789,19 +790,26 @@ program V0main
 								elseif(iaa > apol +iaa_hiwindow) then
 									exit
 								endif
-							else 
+							elseif(iaa<= iaa1app .and. Vtest1 <= -1e4 .and. apol <= iaa1app) then
+								iaa = 1 !started too much saving, go back towards zero
+							else
 								exit
 							endif
+							iaa = iaa + 1
 						enddo !iaa
 						Vapp = Vtest1
 						iaa1app = max(apol -iaa_lowindow,1) !concave, start next loop here
 						aapp = agrid(apol)					
+						if(Vapp <-1e4) then
+							print *, "ruh roh!"
+						endif
 
 						!*******************************************
 						!**************Value if do not apply for DI
 						Vtest1 = -1e6
 						apol = iaa1napp
-						do iaa=iaa1napp,na
+						iaa=iaa1napp
+						do while (iaa <= na)
 							chere = b+R*agrid(ia)-agrid(iaa)
 							if(chere >0.) then
 								Vtest2 = 0.
@@ -823,9 +831,12 @@ program V0main
 								elseif(iaa > apol+iaa_hiwindow) then
 									exit
 								endif
-							else	
+							elseif(iaa == iaa1napp .and. Vtest1 <= -1e4 .and. apol == iaa1napp) then
+								iaa = 1 !started too much saving, go back towards zero
+							else
 								exit
 							endif
+							iaa = iaa + 1
 						enddo !iaa
 						iaa1napp = max(apol-iaa_lowindow,1)
 						Vnapp = Vtest1 					
@@ -881,7 +892,20 @@ program V0main
 					enddo !iz 
 					enddo !ie 
 					enddo !id 
-					enddo !iai 	
+					enddo !iai 
+					
+					call mat2csv(gapp_dif(1,:,:,1,1,1,1),'dilat0_dalpha.csv',0)
+					call mat2csv(gapp_dif(1,:,:,1,1,1,2),'dilat0_dalpha.csv',1)
+					do iz=1,nz
+					do ie=1,ne
+					do ia=2,na
+						call mat2csv(gapp_dif(1,:,:,ie,ia,iz,1),'dilat0_dalpha.csv',1)
+						call mat2csv(gapp_dif(1,:,:,ie,ia,iz,2),'dilat0_dalpha.csv',1)
+					enddo
+					enddo
+					enddo
+					
+						
 			  	endif
 		  	
 			  	!update VN0
@@ -929,10 +953,10 @@ program V0main
 					!----------------------------------------------------------------
 					!Loop over current state: assets
 					do ia=1,na
-
 						Vtest1= -1.e5 ! just to initialize, does not matter
 						!Find saving Policy
-						do iaa = iaa1,na
+						iaa = iaa1 
+						do while (iaa <= na)
 							!Continuation value if don't go on disability
 							chere = wagehere+R*agrid(ia)-agrid(iaa)
 							if (chere >0.) then
@@ -952,16 +976,18 @@ program V0main
 								utilhere = util(chere,id,2)
 								Vtest2 = utilhere + beta*Vc1 ! flow utility
 
-								! This imposes lots of monotonicity/ concavity that probably does not hold
 								IF (Vtest2>Vtest1 ) THEN				     
 									Vtest1 = Vtest2
 									apol = iaa
 								elseif(iaa>apol+iaa_hiwindow) then
 									exit
-								EndIF
+								endif
+							elseif(iaa == iaa1 .and. Vtest1<=-5e4 .and. apol == iaa1 ) then
+								iaa = 1
 							else 
 								exit
 							endif
+							iaa = iaa+1
 						enddo	!iaa
 						iaa1 = max(iaa -iaa_lowindow,1)	!concave? start next loop here
 						VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = Vtest1
@@ -1106,26 +1132,26 @@ call veci2csv(gapp(1,1,:,ie,ia,2,2),'workpol.csv',0)
 ! this plots work-rest and di application on the cross product of alphai and deltai and di
  
 !                 nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
-call mati2csv(gwork(1,:,:,1,1,1,1),'dipol_dalpha.csv',0)
-call mati2csv(gapp(1,:,:,1,1,1,1),'workpol_dalpha.csv',0)
+call mati2csv(gapp(1,:,:,1,1,1,1),'dipol_dalpha.csv',0)
+call mati2csv(gwork(1,:,:,1,1,1,1),'workpol_dalpha.csv',0)
 !roll forward to period 2
-call mati2csv(gwork(1,:,:,1,1,1,2),'dipol_dalpha.csv',1)
-call mati2csv(gapp(1,:,:,1,1,1,2),'workpol_dalpha.csv',1)
+call mati2csv(gapp(1,:,:,1,1,1,2),'dipol_dalpha.csv',1)
+call mati2csv(gwork(1,:,:,1,1,1,2),'workpol_dalpha.csv',1)
 
-call mat2csv(gwork_dif(1,:,:,1,1,1,1),'dilat_dalpha.csv',0)
-call mat2csv(gapp_dif(1,:,:,1,1,1,1),'worklat_dalpha.csv',0)
-call mat2csv(gwork_dif(1,:,:,1,1,1,2),'dilat_dalpha.csv',1)
-call mat2csv(gapp_dif(1,:,:,1,1,1,2),'worklat_dalph.csv',1)
+call mat2csv(gapp_dif(1,:,:,1,1,1,1),'dilat_dalpha.csv',0)
+call mat2csv(gwork_dif(1,:,:,1,1,1,1),'worklat_dalpha.csv',0)
+call mat2csv(gapp_dif(1,:,:,1,1,1,2),'dilat_dalpha.csv',1)
+call mat2csv(gwork_dif(1,:,:,1,1,1,2),'worklat_dalph.csv',1)
 do iz=1,nz
 do ie=1,ne
 do ia=2,na
 
 	do it=1,TT-1
-		call mati2csv(gwork(1,:,:,ie,ia,iz,it),'dipol_dalpha.csv',1)
-		call mati2csv(gapp(1,:,:,ie,ia,iz,it),'workpol_dalpha.csv',1)
+		call mati2csv(gapp(1,:,:,ie,ia,iz,it),'dipol_dalpha.csv',1)
+		call mati2csv(gwork(1,:,:,ie,ia,iz,it),'workpol_dalpha.csv',1)
 
-		call mat2csv(gwork_dif(1,:,:,ie,ia,iz,it),'dilat_dalpha.csv',1)
-		call mat2csv(gapp_dif(1,:,:,ie,ia,iz,it),'worklat_dalpha.csv',1)
+		call mat2csv(gapp_dif(1,:,:,ie,ia,iz,it),'dilat_dalpha.csv',1)
+		call mat2csv(gwork_dif(1,:,:,ie,ia,iz,it),'worklat_dalpha.csv',1)
 	enddo
 enddo
 enddo
