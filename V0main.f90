@@ -404,6 +404,24 @@ program V0main
 	agrid(1) = .05*(agrid(1)+agrid(2))
 	call vec2csv(agrid,"agrid.csv")
 
+	!**** for diagnostic calculate wages at each wage-determining levels
+	open(1, file="wage_dist")
+	ibi =1
+	iz  =2
+	do it = 1,TT-1
+		do iai =1,nai
+			do id = 1,nd-1
+				wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
+				write(1, "(G20.12)", advance='no') wagehere
+			enddo
+			id = nd
+			wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
+			write(1,*) wagehere
+		enddo
+		write(1,*) " "! trailing space
+	enddo	
+	close(1)
+
 	!************************************************************************************************!
 	! Caculate things that are independent of occupation/person type
 	!	1) Value of Retired:  VR(d,e,a)
@@ -897,9 +915,9 @@ program V0main
 					do iz=1,nz
 					do ie=1,ne
 					do ia=1,na
-						call mat2csv(gapp_dif(1,:,:,ie,ia,iz,1),'dilat0_dalpha.csv',wo)
+						call mat2csv(gapp_dif((ij-1)*nbi+ibi,:,:,ie,ia,iz,1),'dilat0_dalpha.csv',wo)
 						if(wo == 0 ) wo =1
-						call mat2csv(gapp_dif(1,:,:,ie,ia,iz,2),'dilat0_dalpha.csv',wo)
+						call mat2csv(gapp_dif((ij-1)*nbi+ibi,:,:,ie,ia,iz,2),'dilat0_dalpha.csv',wo)
 					enddo
 					enddo
 					enddo

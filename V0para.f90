@@ -92,6 +92,7 @@ integer, parameter :: 	nai = 11, &		!Number of individual alpha types
 			iaa_lowindow = 10,& 	!how far below to begin search
 			iaa_hiwindow = 25	!how far above to keep searching
 
+
 real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
 !			alfi_mu  = 0.0,    & 	!Mean of alpha_i wage parameter (Log Normal)
 !			alfi_sig = 0.001,    & 	!Var of alpha_i wage parameter (Log Normal)
@@ -149,12 +150,13 @@ subroutine setparams()
 				emax = alfmu+2*alfsig
 				summy = 0
 				DO i=1,nai
-					node = COS(pival*(2*i+1)/(2*nai))
-					nodeL = COS(pival*(2*max(i-1,1)+1)/(2*nai))
-					nodeH = COS(pival*(2*min(i+1,nai)+1)/(2*nai))
-					alfi(i) = ((node+1)/2)*(emax-emin)+emin
+					k = nai-i+1
+					node = COS(pival*(2.*k-1.)/(2.*nai))
+					nodeL = COS(pival*(2.*max(k-1,1)-1.)/(2.*nai))
+					nodeH = COS(pival*(2.*min(k+1,nai)-1.)/(2*nai))
+					alfi(i) = ((node+1.)/2.)*(emax-emin)+emin
 					IF (i .EQ. 1) THEN
-						midH = ((nodeH-node)/2)+node
+						midH = ((nodeH-node)/2.)+node
 						!pialf(:,i) = DNORDF(((midH+1)/2)*(2-2)-2)
 						pialf(:,i) = alnorm((((midH+1)/2.)*(2-2)-2),lower)
 						summy = summy + pialf(1,1)
@@ -162,7 +164,7 @@ subroutine setparams()
 						pialf(:,i) = 1-summy	
 					ELSE
 						midL = node-((node-nodeL)/2.)
-						midH = ((nodeH-node)/2)+node
+						midH = ((nodeH-node)/2.)+node
 						pialf(:,i) = alnorm((((midH+1)/2)*(2-2)-2),lower)-alnorm((((midL+1)/2)*(2-2)-2),lower)	 
 						summy = summy + pialf(1,i)
 					EndIF
@@ -227,18 +229,18 @@ subroutine setparams()
 
 			!Earnings Grid
 				!Make linear from lowest possible wage (disabled entrant, lowest types)
-				emin = dexp(beti(1)*zgrid(1)+alfi(1)+wtau(1)+wd(nd))
+				emin = dexp(beti(1)*zgrid(1)+minval(alfi)+wtau(1)+wd(nd))
 				!... to highest, maximizing over t
 				!wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
-				emax = dexp(alfi(nai)+beti(nbi)*zgrid(nz)+wtau(TT-1)+wd(1))
-				step = (emax-emin)/(ne-1)
+				emax = dexp(beti(nbi)*zgrid(nz)+maxval(alfi)+wtau(TT-1)+wd(1))
+				step = (emax-emin)/dble(ne-1)
 				DO i=1,ne
-					egrid(i) = emin+step*(i-1)
+					egrid(i) = emin+step*dble(i-1)
 				ENDdo
 
 			!Assets Grid
 				DO i=1,na
-				 agrid(i)=real(i-1,8)/real(na-1,8)
+				 agrid(i)=dble(i-1)/dble(na-1)
 				 agrid(i)=agrid(i)**2*(amax-amin)+amin
 				ENDdo
 
