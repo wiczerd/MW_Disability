@@ -138,7 +138,7 @@ module helper_funs
 		integer, intent(in)	:: din, tin
 		real(8)			:: wage
 
-		wage = biin*zin*(aiin+wd(din)+wtau(tin))
+		wage = dexp( biin*zin + aiin+wd(din)+wtau(tin) ) 
 
 	end function
 
@@ -328,7 +328,7 @@ program V0main
 	!************************************************************************************************!
 
 		integer  :: i, j, t, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp,apol, ibi, iai, ij , idi, izz, iaai, idd, &
-			    iee1, iee2, iz, unitno, print_lev, verbose, narg_in,iw
+			    iee1, iee2, iz, unitno, print_lev, verbose, narg_in,iw,wo
 		integer, dimension(5) :: maxer_i
 	
 	!************************************************************************************************!
@@ -723,15 +723,14 @@ program V0main
 			!$OMP END PARALLEL do
 
 				if (print_lev > 2) then
-					call vec2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,iz,TT-it),"aU.csv",0)
-					call vec2csv(VU((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,iz,TT-it),"VU.csv",0)
-					
-					do iai=2,nai	!Loop over alpha (ai)
+					wo = 0
+					do iai=1,nai	!Loop over alpha (ai)
 					do id=1,nd	!Loop over disability index
 				  	do ie=1,ne	!Loop over earnings index
-				  	do iz=1,nz	!Loop over TFP			
-						call vec2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"aU.csv",1)
-						call vec2csv(VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"VU.csv",1)
+				  	do iz=1,nz	!Loop over TFP
+						call vec2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"aU.csv",wo)
+						call vec2csv(VU((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,TT-it),"VU.csv",wo)
+						if(wo == 0) wo = 1 
 					enddo
 					enddo
 					enddo
@@ -792,6 +791,7 @@ program V0main
 								endif
 							elseif(iaa<= iaa1app .and. Vtest1 <= -1e4 .and. apol <= iaa1app) then
 								iaa = 1 !started too much saving, go back towards zero
+								iaa1app = 1
 							else
 								exit
 							endif
@@ -833,6 +833,7 @@ program V0main
 								endif
 							elseif(iaa == iaa1napp .and. Vtest1 <= -1e4 .and. apol == iaa1napp) then
 								iaa = 1 !started too much saving, go back towards zero
+								iaa1napp = 1
 							else
 								exit
 							endif
@@ -877,30 +878,28 @@ program V0main
 				! Done making VN
 				  	
 			  	if (print_lev >3) then
-			  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"VN.csv",0)
-			  		call mat2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"aN.csv",0)
-			  		call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"gapp_dif.csv",0)
-			  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"gapp.csv",0)
+			  		wo = 0
 				  	do iai=1,nai	!Loop over alpha (ai)
 					do id=1,nd	!Loop over disability index
 				  	do ie=1,ne	!Loop over earnings index
-				  	do iz=2,nz	!Loop over TFP
-				  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"VN.csv",1)
-				  		call mat2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"aN.csv",1)
-				  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"gapp.csv",1)
-				  		call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"gapp_dif.csv",1)				  		
+				  	do iz=1,nz	!Loop over TFP
+				  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"VN.csv",wo)
+				  		call mat2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"aN.csv",wo)
+				  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"gapp.csv",wo)
+				  		call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"gapp_dif.csv",wo)
+						if(wo == 0 ) wo =1		  		
 					enddo !iz 
 					enddo !ie 
 					enddo !id 
 					enddo !iai 
 					
-					call mat2csv(gapp_dif(1,:,:,1,1,1,1),'dilat0_dalpha.csv',0)
-					call mat2csv(gapp_dif(1,:,:,1,1,1,2),'dilat0_dalpha.csv',1)
+					wo = 0
 					do iz=1,nz
 					do ie=1,ne
-					do ia=2,na
-						call mat2csv(gapp_dif(1,:,:,ie,ia,iz,1),'dilat0_dalpha.csv',1)
-						call mat2csv(gapp_dif(1,:,:,ie,ia,iz,2),'dilat0_dalpha.csv',1)
+					do ia=1,na
+						call mat2csv(gapp_dif(1,:,:,ie,ia,iz,1),'dilat0_dalpha.csv',wo)
+						if(wo == 0 ) wo =1
+						call mat2csv(gapp_dif(1,:,:,ie,ia,iz,2),'dilat0_dalpha.csv',wo)
 					enddo
 					enddo
 					enddo
@@ -983,7 +982,9 @@ program V0main
 									exit
 								endif
 							elseif(iaa == iaa1 .and. Vtest1<=-5e4 .and. apol == iaa1 ) then
+								!back it up
 								iaa = 1
+								iaa1 =1
 							else 
 								exit
 							endif
@@ -1046,16 +1047,15 @@ program V0main
 			  	enddo !iz
 
 				if (print_lev >3) then
-					call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"VW.csv",0)
-					call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"aW.csv",0)
-					call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+1,1,1,:,1,:) ,"gwork.csv",0)
+					wo = 0
 					do iai=1,nai	!Loop over alpha (ai)
 					do id=1,nd	!Loop over disability index
 					do ie=1,ne	!Loop over earnings index
-					do iz=2,nz	!Loop over TFP
-						call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"VW.csv",1)
-						call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"aW.csv",1)
-						call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,1,:) ,"gwork.csv",1)
+					do iz=1,nz	!Loop over TFP
+						call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"VW.csv",wo)
+						call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"aW.csv",wo)
+						call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"gwork.csv",wo)
+						if(wo==0) wo =1
 					enddo !iz 
 					enddo !ie 
 					enddo !id 
@@ -1131,27 +1131,18 @@ call veci2csv(gapp(1,1,:,ie,ia,2,2),'workpol.csv',0)
 
 ! this plots work-rest and di application on the cross product of alphai and deltai and di
  
-!                 nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
-call mati2csv(gapp(1,:,:,1,1,1,1),'dipol_dalpha.csv',0)
-call mati2csv(gwork(1,:,:,1,1,1,1),'workpol_dalpha.csv',0)
-!roll forward to period 2
-call mati2csv(gapp(1,:,:,1,1,1,2),'dipol_dalpha.csv',1)
-call mati2csv(gwork(1,:,:,1,1,1,2),'workpol_dalpha.csv',1)
-
-call mat2csv(gapp_dif(1,:,:,1,1,1,1),'dilat_dalpha.csv',0)
-call mat2csv(gwork_dif(1,:,:,1,1,1,1),'worklat_dalpha.csv',0)
-call mat2csv(gapp_dif(1,:,:,1,1,1,2),'dilat_dalpha.csv',1)
-call mat2csv(gwork_dif(1,:,:,1,1,1,2),'worklat_dalph.csv',1)
+wo  = 1
 do iz=1,nz
 do ie=1,ne
-do ia=2,na
-
+do ia=1,na
 	do it=1,TT-1
-		call mati2csv(gapp(1,:,:,ie,ia,iz,it),'dipol_dalpha.csv',1)
-		call mati2csv(gwork(1,:,:,ie,ia,iz,it),'workpol_dalpha.csv',1)
+!                 nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
+		call mati2csv(gapp(1,:,:,ie,ia,iz,it),'dipol_dalpha.csv',wo)
+		call mati2csv(gwork(1,:,:,ie,ia,iz,it),'workpol_dalpha.csv',wo)
 
-		call mat2csv(gapp_dif(1,:,:,ie,ia,iz,it),'dilat_dalpha.csv',1)
-		call mat2csv(gwork_dif(1,:,:,ie,ia,iz,it),'worklat_dalpha.csv',1)
+		call mat2csv(gapp_dif(1,:,:,ie,ia,iz,it),'dilat_dalpha.csv',wo)
+		call mat2csv(gwork_dif(1,:,:,ie,ia,iz,it),'worklat_dalpha.csv',wo)
+		if(wo ==1 ) wo =0
 	enddo
 enddo
 enddo
@@ -1173,7 +1164,7 @@ call vec2csv(agrid(:),'Agrid.csv',0)
 	!****************************************************************************!
 	! IF you love something.... 
 	!****************************************************************************!
-	deallocate(aR,aD,aN, aW,gwork, gapp)
+	deallocate(aR,aD,aN, aU, aW,gwork, gapp)
 	deallocate(aiD,maxer)
 	deallocate(VR0,VR,VD0,VD,VN,VN0,VU,VU0,VW,VW0,V,V0)
 	deallocate(gwork_dif,gapp_dif)

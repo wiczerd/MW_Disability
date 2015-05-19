@@ -6,7 +6,6 @@ module V0para
 !
 !************************************************************************************************!
 
-
 !use nrtype
 !use nr_lib, only:  cheb_nodes, cheb_weight, mynrmlpdf
 !INCLUDE 'link_fnl_shared.h'
@@ -26,7 +25,7 @@ real(8), parameter :: 	   beta= 0.996, & 	 !People are impatient
 			   xi0 = 0.16, &	 !Probability of DI accept for d=0
 			   xi1 = 0.22, &	 !Probability of DI accept for d=1
 	 		   xi2 = 0.50, &	 !Probability of DI accept for d=2
-			   nu = 0.10, &		 !Psychic cost of applying for DI	
+			   nu = 2.50, &		 !Psychic cost of applying for DI	
 			   ageW = 0.02, &	 !Coefficient on Age in Mincer
 			   ageW2 = -0.0001, &	 !Coefficient on Age^2 in Mincer
 			   ageD = 0.1, &	 !Coefficient on Age over 45 in Disability hazard (exponential)
@@ -94,11 +93,11 @@ integer, parameter :: 	nai = 11, &		!Number of individual alpha types
 			iaa_hiwindow = 25	!how far above to keep searching
 
 real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
-			alfi_mu  = 0.0,    & 	!Mean of alpha_i wage parameter (Log Normal)
-			alfi_sig = 0.0,    & 	!Var of alpha_i wage parameter (Log Normal)
-			beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
-			beti_sig = 0.0,    & 	!Var of beta_i wage parameter (Log Normal)
-			di_lambd = 1.0,    &	!Shape of disability dist. (Exponential)
+!			alfi_mu  = 0.0,    & 	!Mean of alpha_i wage parameter (Log Normal)
+!			alfi_sig = 0.001,    & 	!Var of alpha_i wage parameter (Log Normal)
+!			beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
+!			beti_sig = 0.0,    & 	!Var of beta_i wage parameter (Log Normal)
+!			di_lambd = 1.0,    &	!Shape of disability dist. (Exponential)
 			amax 	 = 10.0,   &	!Max on Asset Grid
 			amin = 0.0	   	!Min on Asset Grid
 								   	
@@ -150,38 +149,38 @@ subroutine setparams()
 				emax = alfmu+2*alfsig
 				summy = 0
 				DO i=1,nai
-				node = COS(pival*(2*i+1)/(2*nai))
-				nodeL = COS(pival*(2*max(i-1,1)+1)/(2*nai))
-				nodeH = COS(pival*(2*min(i+1,nai)+1)/(2*nai))
-				alfi(i) = ((node+1)/2)*(emax-emin)+emin
-				IF (i .EQ. 1) THEN
-				 midH = ((nodeH-node)/2)+node
-				 !pialf(:,i) = DNORDF(((midH+1)/2)*(2-2)-2)
-				 pialf(:,i) = alnorm((((midH+1)/2)*(2-2)-2),lower)
-				 summy = summy + pialf(1,1)
-				ELSEIF (i .EQ. nai) THEN
-				 pialf(:,i) = 1-summy	
-				ELSE
-				 midL = node-((node-nodeL)/2)
-				 midH = ((nodeH-node)/2)+node
-				 pialf(:,i) = alnorm((((midH+1)/2)*(2-2)-2),lower)-alnorm((((midL+1)/2)*(2-2)-2),lower)	 
-				 summy = summy + pialf(1,i)
-				EndIF
+					node = COS(pival*(2*i+1)/(2*nai))
+					nodeL = COS(pival*(2*max(i-1,1)+1)/(2*nai))
+					nodeH = COS(pival*(2*min(i+1,nai)+1)/(2*nai))
+					alfi(i) = ((node+1)/2)*(emax-emin)+emin
+					IF (i .EQ. 1) THEN
+						midH = ((nodeH-node)/2)+node
+						!pialf(:,i) = DNORDF(((midH+1)/2)*(2-2)-2)
+						pialf(:,i) = alnorm((((midH+1)/2.)*(2-2)-2),lower)
+						summy = summy + pialf(1,1)
+					ELSEIF (i .EQ. nai) THEN
+						pialf(:,i) = 1-summy	
+					ELSE
+						midL = node-((node-nodeL)/2.)
+						midH = ((nodeH-node)/2)+node
+						pialf(:,i) = alnorm((((midH+1)/2)*(2-2)-2),lower)-alnorm((((midL+1)/2)*(2-2)-2),lower)	 
+						summy = summy + pialf(1,i)
+					EndIF
 				EndDO
 
 
 				!Pdf of alpha- N(alfmu,alfsig)
 				 !Probability of landing in bin centered at node
 				DO i=1,nai	!Current ai
-				DO j=1,nai	!ai'
-				  pialf(i,j) = pialf(i,j)*(1-alfii)
-				EndDO
-				  pialf(i,i) = pialf(i,i) + alfii	!Larger probability of staying
+					DO j=1,nai	!ai'
+						pialf(i,j) = pialf(i,j)*(1-alfii)
+					EndDO
+					pialf(i,i) = pialf(i,i) + alfii	!Larger probability of staying
 				EndDO
 
 				!Extra disability risk
 				DO i=1,ndi
-					dtype(i) = dRiskL +(i-1)*(dRiskH-dRiskL)/(ndi)
+					dtype(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi)
 				EndDO
 
 
@@ -192,10 +191,13 @@ subroutine setparams()
 
 			!Age-Specific Things
 				!Wage Bonus
-				wtau(1) = ageW*(25+youngD/2)+ageW2*((25+youngD/2)**2)				     !Young
+				wtau(1) = ageW*(25.+youngD/2.)+ageW2*((25.+youngD/2.)**2)				     !Young
 				DO t=2,TT-1							
-					wtau(t) = ageW*(25+youngD+t*oldD-oldD/2)+ageW2*((25+youngD+t*oldD-oldD/2)**2) !Old
+					wtau(t) = ageW*(25.+youngD+t*oldD-oldD/2.)+ageW2*((25.+youngD+t*oldD-oldD/2.)**2) !Old
 				ENDDO
+				do t=1,TT-1
+					wtau(t) = log(wtau(t))
+				enddo
 
 				!Aging Probability (actually, probability of not aging)
 				! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlength units
@@ -209,14 +211,14 @@ subroutine setparams()
 				!Age-related disability risk
 				dtau(1) = 0.5	!Young's Risk
 				DO t=2,TT-1
-					dtau(t) = (exval**(ageD*t*oldD))	!Old (exponential)
+					dtau(t) = dexp(ageD*t*oldD)	!Old (exponential)
 				ENDDO		
 
 			!Disability Extent-Specific Things
 				!Wage Penalty 
 				wd(1) = 0	!Healthy, no penalty
-				wd(2) = -0.5	!Partially Disabled, small penalty	
-				wd(3) = -1.0	!Full Disabled, large penalty
+				wd(2) = -0.1	!Partially Disabled, small penalty	
+				wd(3) = -0.2	!Full Disabled, large penalty
 
 				!DI Acceptance probability
 				xi(1) = xi0
@@ -225,10 +227,10 @@ subroutine setparams()
 
 			!Earnings Grid
 				!Make linear from lowest possible wage (disabled entrant, lowest types)
-				emin = alfi(3)+beti(1)*zgrid(1)+wtau(1)+wd(3)
+				emin = dexp(beti(1)*zgrid(1)+alfi(1)+wtau(1)+wd(nd))
 				!... to highest, maximizing over t
-				wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
-				emax = alfi(1)+beti(1)*zgrid(3)+wtau(wtmax)+wd(1)
+				!wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
+				emax = dexp(alfi(nai)+beti(nbi)*zgrid(nz)+wtau(TT-1)+wd(1))
 				step = (emax-emin)/(ne-1)
 				DO i=1,ne
 					egrid(i) = emin+step*(i-1)
