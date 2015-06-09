@@ -35,7 +35,7 @@ real(8), parameter :: 	   beta= 0.996, & 	 !People are impatient
 			   DItest3 = 2.0, & 	 !Earnings Index threshold 3	
 			   alfii = 0.95, &	 !Peristance of Alpha_i type
 			   alfmu = 0.0,&	 !Mean of Alpha_i type
-		  	   alfsig = 0.5,&	 !StdDev of Alpha_i type (Normal)
+		  	   alfsig = 0.1,&	 !StdDev of Alpha_i type (Normal)
 			   dRiskL = 0.5,&	 !Lower bound on occupation-related extra disability risk (mult factor)
 			   dRiskH = 1.5, &	 !Upper bound on occupation-related extra disability risk (mult factor)
 			   zRiskL = 0.5,&	 !Lower bound on occupation-related extra economic risk (mult factor)
@@ -88,7 +88,7 @@ integer, parameter :: 	nai = 11, &		!Number of individual alpha types
 			ne  = 10, &		!Points on earnings grid
 			na  = 200, &		!Points on assets grid
 			nz  = 3,  &		!Number of Occ TFP Shocks
-			maxiter = 5000, &	!Tolerance parameter	
+			maxiter = 2000, &	!Tolerance parameter	
 			iaa_lowindow = 10,& 	!how far below to begin search
 			iaa_hiwindow = 25	!how far above to keep searching
 

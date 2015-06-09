@@ -14,6 +14,39 @@ module helper_funs
 	
 	use V0para
 	implicit none
+	
+	
+	
+	!------------------------------------------------------------------
+	! 12) val_struct: VR, VD, VN, VW, VU, V
+	!------------------------------------------------------------------
+	type val_struct
+		real(8), allocatable:: 	VR(:,:,:), &		!Retirement
+					VD(:,:,:,:), &		!Disabled
+					VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
+					VW(:,:,:,:,:,:,:), &	!Working
+					VU(:,:,:,:,:,:,:), &	!Unemployed
+					V(:,:,:,:,:,:,:)	!Participant
+		integer :: alloced 	! status indicator
+	end type	
+	
+	!------------------------------------------------------------------
+	!	13) pol_struct: aR, aD,aU,aN,aW,gapp,gwork, gapp_dif,gwork_dif
+	!------------------------------------------------------------------
+	type pol_struct
+		
+		real(8), allocatable ::	gapp_dif(:,:,:,:,:,:,:), &
+					gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
+		real(8), allocatable ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
+					aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
+		integer, allocatable ::	gapp(:,:,:,:,:,:,:), &
+
+					gwork(:,:,:,:,:,:,:) !integer choice of apply/work
+		integer :: alloced
+
+	end type
+
+	
 	contains
 	!**********************************************************!
 	!Public Policy Functions
@@ -32,7 +65,14 @@ module helper_funs
 	!	8)  mat2csv(A,fname,append)   A=matrix, fname=file, append={0,1}
 	!	9)  mati2csv(A,fname,append)  A=matrix, fname=file, append={0,1}: A is integer
 	!	10) vec2csv(A,fname,append)   A=matrix, fname=file, append={0,1}
+	!	11) veci2csv(A,fname,append)   A=matrix, fname=file, append={0,1}: A is integer
+	!User-Defined Types (Structures) for value functions and policy functions
+	!	12) val_struct: VR, VD, VN, VW, VU, V
+	!	13) pol_struct: aR, aD,aU,aN,aW,gapp,gwork, gapp_dif,gwork_dif
 	!**********************************************************!
+
+
+
 	!------------------------------------------------------------------------
 	!1)UI(e): Unemployment Insurance
 	!----------------
@@ -309,19 +349,23 @@ module helper_funs
 
 end module helper_funs
 
-!**************************************************************************************************************!
-!**************************************************************************************************************!
-!						MAIN PROGRAM						       !
-!**************************************************************************************************************!
-!**************************************************************************************************************!
 
-program V0main
+module sol_sim
 
 	use V0para
 	use helper_funs
+! module with subroutines to solve the model and simulate data from it 
 
 	implicit none
+	
+	contains
 
+	subroutine sol(val_funs, pol_funs)
+
+		implicit none
+	
+		type(val_struct), intent(inout), target :: val_funs
+		type(pol_struct), intent(inout), target :: pol_funs	
 
 	!************************************************************************************************!
 	! Counters and Indicies
@@ -337,90 +381,66 @@ program V0main
 	real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, VC, app2, Vc1, Vnapp, anapp,aapp, maxer_v, smthV,smthV0param, &
 				&	iee1wt
         real(8), allocatable	:: maxer(:,:,:,:,:)
-	real(8), allocatable	:: VR0(:,:,:), VR(:,:,:), &			!Retirement
-				VD0(:,:,:,:), VD(:,:,:,:), &			!Disabled
-				VN(:,:,:,:,:,:,:), VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
-				VW(:,:,:,:,:,:,:), VW0(:,:,:,:,:,:,:), &	!Working
-				VU(:,:,:,:,:,:,:), VU0(:,:,:,:,:,:,:), &	!Unemployed
-				V(:,:,:,:,:,:,:),  V0(:,:,:,:,:,:,:)	!Participant
+	real(8), allocatable :: VR0(:,:,:), &			!Retirement
+				VD0(:,:,:,:), &			!Disabled
+				VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
+				VW0(:,:,:,:,:,:,:), &	!Working
+				VU0(:,:,:,:,:,:,:), &	!Unemployed
+				V0(:,:,:,:,:,:,:)	!Participant
+				
+	real(8), pointer :: 	VR(:,:,:), &			!Retirement
+				VD(:,:,:,:), &			!Disabled
+				VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
+				VW(:,:,:,:,:,:,:), &	!Working
+				VU(:,:,:,:,:,:,:), &	!Unemployed
+				V(:,:,:,:,:,:,:)	!Participant
 	
-	real(8), allocatable	:: gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
+	real(8), pointer :: 	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
 	
-
-	!************************************************************************************************!
-	! Policies objects- Stack z-risk j and indiv. exposure beta_i
-	!	+Asset grids correspond to V-funs
-	!	+g-grids correspond to discrete choices
-	!************************************************************************************************!
-	real(8), allocatable	:: aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
+	real(8), pointer :: 	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
 				aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
-	integer, allocatable  	:: aiD(:,:,:,:), gapp(:,:,:,:,:,:,:), &
+	integer, pointer ::	gapp(:,:,:,:,:,:,:), &
 				gwork(:,:,:,:,:,:,:)
 	
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
 		real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH,VUhere, VWhere
+	!************************************************************************************************!
 
+		
 	!************************************************************************************************!
 	! Allocate phat matrices
 	!************************************************************************************************!
 	! (disability extent, earn hist, assets)
 	allocate(VR0(nd,ne,na))
-	allocate(VR(nd,ne,na))
-	allocate(aR(nd,ne,na))
-	! (disability extent, earn hist, assets, age)
 	allocate(VD0(nd,ne,na,TT))
-	allocate(VD(nd,ne,na,TT))
-	allocate(aD(nd,ne,na,TT-1))
-	allocate(aiD(nd,ne,na,TT-1))	
-	! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
-	allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 	allocate(VN0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 	allocate(VU0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 	allocate(VW0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(V(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 	allocate(V0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-	allocate(aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-	allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-	allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-	allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+	VR => val_funs%VR
+	aR => pol_funs%aR
+	! (disability extent, earn hist, assets, age)
+	VD => val_funs%VD
+	aD => pol_funs%aD
 
-	allocate(gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))	
+	! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
+	VN => val_funs%VN
+	VU => val_funs%VU
+	VW => val_funs%VW
+	V => val_funs%V
+	aN => pol_funs%aN
+	aW => pol_funs%aW
+	aU => pol_funs%aU
+	gwork => pol_funs%gwork
+	gapp => pol_funs%gapp
+
+	gapp_dif => pol_funs%gapp_dif
+	gwork_dif => pol_funs%gwork_dif
 
 
 	allocate(maxer(na,nz,ne,nd,nai))
-
-	narg_in = iargc()
-
-	verbose = 4
-	print_lev = 4
-
-	call setparams()
-	agrid(1) = .05*(agrid(1)+agrid(2))
-	call vec2csv(agrid,"agrid.csv")
-
-	!**** for diagnostic calculate wages at each wage-determining levels
-	open(1, file="wage_dist")
-	ibi =1
-	iz  =2
-	do it = 1,TT-1
-		do iai =1,nai
-			do id = 1,nd-1
-				wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
-				write(1, "(G20.12)", advance='no') wagehere
-			enddo
-			id = nd
-			wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
-			write(1,*) wagehere
-		enddo
-		write(1,*) " "! trailing space
-	enddo	
-	close(1)
 
 	!************************************************************************************************!
 	! Caculate things that are independent of occupation/person type
@@ -484,13 +504,13 @@ program V0main
 				enddo !ia
 			enddo !ie
 			IF (summer < Vtol) THEN
-				exit	!Converged
 				do ie =1,ne
 				do id =2,ne
 					VR(id,ie,:) = VR(1,ie,:)*(dexp(theta*dble(id-1)))**(1-gam)
 					aR(id,ie,:) = aR(1,ie,:)
 				enddo
 				enddo
+				exit	!Converged				
 			else
 				VR0 = VR	!New guess
 				j=j+1
@@ -547,18 +567,21 @@ program V0main
 	
 		!Work backwards from TT
 		do it = 1,TT-1
+
+			id = 1 ! other values are just multiples thereof
+			iw = 1 ! not working
+			
 			!Guess will be value at t+1
+			id = 1
 			do ia=1,na
 			do ie=1,ne
-				VD0(1,ie,ia,TT-it) = VD(1,ie,ia,TT-it+1)
+				VD0(id,ie,ia,TT-it) = VD(id,ie,ia,TT-it+1)
 			enddo
 			enddo
 			if(print_lev >3) then
 				call vec2csv(VD0(1,ie,:,TT-it),"VD0.csv",0)
 			endif
 
-			id = 1 ! other values are just multiples thereof
-			iw = 1 ! not working
 			!Loop to find V(..,it) as fixed point
 			j=1
 			do WHILE (j<maxiter)
@@ -579,6 +602,7 @@ program V0main
 							chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
 							if(chere >0.) then
 								Vc1 = beta*((1-ptau(TT-it))*VD0(id,ie,iaa,TT-it+1)+ptau(TT-it)*VD0(id,ie,iaa,TT-it))
+
 								Vtest2 = util(chere,id,iw)+ Vc1
 								if(Vtest2>Vtest1) then
 									Vtest1 = Vtest2
@@ -597,8 +621,9 @@ program V0main
 					enddo	!ia
 				enddo	!ie		
 				if(print_lev >3) then
-					call mat2csv(aD(1,1,:,:),"aD.csv",0)
-					call mat2csv(VD(1,1,:,:),"VD.csv",0)
+					wo =0
+					call vec2csv(aD(1,1,:,TT-it),"aD.csv",wo)
+					call vec2csv(VD(1,1,:,TT-it),"VD.csv",wo)
 				endif
 				IF (summer < Vtol) THEN
 					exit	!Converged
@@ -614,8 +639,9 @@ program V0main
 		enddo	!t loop, going backwards
 		
 		if (print_lev > 2) then
-			call mat2csv(aD(1,1,:,:),"aD.csv",0)
-			call mat2csv(VD(1,1,:,:),"VD.csv",0)
+			wo =0 
+			call mat2csv(aD(1,1,:,:),"aD.csv",wo)
+			call mat2csv(VD(1,1,:,:),"VD.csv",wo)
 		endif
 
 
@@ -740,7 +766,7 @@ program V0main
 			  	enddo !iai	
 			!$OMP END PARALLEL do
 
-				if (print_lev > 2) then
+				if (print_lev > 3) then
 					wo = 0
 					do iai=1,nai	!Loop over alpha (ai)
 					do id=1,nd	!Loop over disability index
@@ -903,8 +929,11 @@ program V0main
 				  	do iz=1,nz	!Loop over TFP
 				  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"VN.csv",wo)
 				  		call mat2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"aN.csv",wo)
+				  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"VU.csv",wo)
+				  		call mat2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"aU.csv",wo)
 				  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"gapp.csv",wo)
 				  		call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,:,iz,:) ,"gapp_dif.csv",wo)
+
 						if(wo == 0 ) wo =1		  		
 					enddo !iz 
 					enddo !ie 
@@ -942,7 +971,7 @@ program V0main
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
 			!$OMP   parallel do default(shared) reduction(+:summer) &
-			!$OMP & private(iai,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz) 
+			!$OMP & private(iai,id,ie,iz,apol,eprime,wagehere,iee1,iee2,egrid,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz) 
 			  	do iai=1,nai	!Loop over alpha (ai)
 				do id=1,nd	!Loop over disability index
 			  	do ie=1,ne	!Loop over earnings index
@@ -952,7 +981,7 @@ program V0main
 					eprime = Hearn(TT-it,ie,wagehere)
 					!linear interpolate for the portion that blocks off bounds on assets
 					if(eprime > minval(egrid) .and. eprime < maxval(egrid)) then
-						iee1 = finder(egrid,eprime)
+						iee1 = finder(egrid,eprime) !apparently this causes a race unless egrid is private
 						iee2 = min(ne,iee1+1)
 						iee1wt = (egrid(iee2)-eprime)/(egrid(iee2)-egrid(iee1))
 					elseif( eprime <= minval(egrid)  ) then 
@@ -1133,45 +1162,183 @@ program V0main
 
 
 
-!WRITE(*,*) aD(1,:,:,TT-5)
-!WRITE(*,*) '-----'
-!WRITE(*,*) VR
-!WRITE(*,*) '-----'
-!WRITE(*,*) summer, j
+	!WRITE(*,*) aD(1,:,:,TT-5)
+	!WRITE(*,*) '-----'
+	!WRITE(*,*) VR
+	!WRITE(*,*) '-----'
+	!WRITE(*,*) summer, j
 
-ie = INT(na/4)
-j = INT(nj/2)
-idi = INT(ndi/2)
-ia = INT(ne/3)
+	ie = INT(na/4)
+	j = INT(nj/2)
+	idi = INT(ndi/2)
+	ia = INT(ne/3)
 
-call veci2csv(gwork(1,1,:,ie,ia,2,2),'dipol.csv',0)
-call veci2csv(gapp(1,1,:,ie,ia,2,2),'workpol.csv',0)
+	! this plots work-rest and di application on the cross product of alphai and deltai and di
+	wo  = 0
+	do iz=1,nz
+	do ie=1,ne
+	do ia=1,na
+		do it=1,TT-1
+	!                 nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
+			call mati2csv(gapp(ibi,:,:,ie,ia,iz,it),'dipol_dalpha.csv',wo)
+			call mati2csv(gwork(ibi,:,:,ie,ia,iz,it),'workpol_dalpha.csv',wo)
 
-! this plots work-rest and di application on the cross product of alphai and deltai and di
- 
-wo  = 1
-do iz=1,nz
-do ie=1,ne
-do ia=1,na
-	do it=1,TT-1
-!                 nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
-		call mati2csv(gapp(1,:,:,ie,ia,iz,it),'dipol_dalpha.csv',wo)
-		call mati2csv(gwork(1,:,:,ie,ia,iz,it),'workpol_dalpha.csv',wo)
-
-		call mat2csv(gapp_dif(1,:,:,ie,ia,iz,it),'dilat_dalpha.csv',wo)
-		call mat2csv(gwork_dif(1,:,:,ie,ia,iz,it),'worklat_dalpha.csv',wo)
-		if(wo ==1 ) wo =0
+			call mat2csv(gapp_dif(ibi,:,:,ie,ia,iz,it),'dilat_dalpha.csv',wo)
+			call mat2csv(gwork_dif(ibi,:,:,ie,ia,iz,it),'worklat_dalpha.csv',wo)
+			if(wo ==0 ) wo =1
+		enddo
 	enddo
-enddo
-enddo
-enddo
+	enddo
+	enddo
 
-call vec2csv(V(1,1,:,ie,ia,2,2),'Vfun.csv',0)
-call vec2csv(dtype,'DriskGrid.csv',0)
-call vec2csv(alfi(:),'AlfGrid.csv',0)
-call vec2csv(occz(:),'ZriskGrid.csv',0)
-call vec2csv(agrid(:),'Agrid.csv',0)
+	call vec2csv(V(1,1,:,ie,ia,2,2),'Vfun.csv',0)
+	call vec2csv(dtype,'DriskGrid.csv',0)
+	call vec2csv(alfi(:),'AlfGrid.csv',0)
+	call vec2csv(occz(:),'ZriskGrid.csv',0)
+	call vec2csv(agrid(:),'Agrid.csv',0)
 
+
+	deallocate(maxer)
+	deallocate(VR0,VD0,VN0,VU0,VW0,V0)
+	end subroutine sol 
+
+
+end module sol_sim
+
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!						MAIN PROGRAM						       !
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+
+program V0main
+
+	use V0para
+	use helper_funs
+	use sol_sim
+
+	implicit none
+
+
+	!************************************************************************************************!
+	! Counters and Indicies
+	!************************************************************************************************!
+
+		integer  :: i, j, t, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp,apol, ibi, iai, ij , idi, izz, iaai, idd, &
+			    iee1, iee2, iz, unitno, print_lev, verbose, narg_in,iw,wo
+		integer, dimension(5) :: maxer_i
+	
+	!************************************************************************************************!
+	! Value Functions- Stack z-risk j and indiv. exposure beta_i
+	!************************************************************************************************!
+	real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, VC, app2, Vc1, Vnapp, anapp,aapp, maxer_v, smthV,smthV0param, &
+				&	iee1wt
+        real(8), allocatable	:: maxer(:,:,:,:,:)
+	real(8), allocatable	:: VR(:,:,:), &			!Retirement
+				VD(:,:,:,:), &			!Disabled
+				VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
+				VW(:,:,:,:,:,:,:), &	!Working
+				VU(:,:,:,:,:,:,:), &	!Unemployed
+				V(:,:,:,:,:,:,:)	!Participant
+	
+	real(8), allocatable	:: gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
+	
+
+	!************************************************************************************************!
+	! Policies objects- Stack z-risk j and indiv. exposure beta_i
+	!	+Asset grids correspond to V-funs
+	!	+g-grids correspond to discrete choices
+	!************************************************************************************************!
+	real(8), allocatable	:: aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
+				aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
+	integer, allocatable  	:: aiD(:,:,:,:), gapp(:,:,:,:,:,:,:), &
+				gwork(:,:,:,:,:,:,:)
+	
+	!************************************************************************************************!
+	! Other
+	!************************************************************************************************!
+		real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH,VUhere, VWhere
+	!************************************************************************************************!
+	! Structure to communicate everything
+		type(val_struct) :: val_sol
+		type(pol_struct) :: pol_sol
+		
+		
+	!************************************************************************************************!
+	! Allocate phat matrices
+	!************************************************************************************************!
+	! (disability extent, earn hist, assets)
+	allocate(VR(nd,ne,na), stat=val_sol%alloced)
+	allocate(aR(nd,ne,na), stat=pol_sol%alloced)
+	! (disability extent, earn hist, assets, age)
+	allocate(VD(nd,ne,na,TT), stat=val_sol%alloced)
+	allocate(aD(nd,ne,na,TT-1), stat=pol_sol%alloced)
+	allocate(aiD(nd,ne,na,TT-1))	
+	! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
+	allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(V(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+
+	allocate(gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=pol_sol%alloced)
+	allocate(gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=pol_sol%alloced)
+
+
+	allocate(maxer(na,nz,ne,nd,nai))
+
+	narg_in = iargc()
+
+	verbose = 4
+	print_lev = 4
+
+	! assign structures
+	val_sol%VR = VR 
+	val_sol%VD = VD 
+	val_sol%VW = VW 
+	val_sol%VU = VU 
+	val_sol%VN = VN
+	val_sol%V = V		 
+
+	pol_sol%aR = aR
+	pol_sol%aD = aD
+	pol_sol%aW = aW
+	pol_sol%aN = aN
+	pol_sol%aU = aU
+	pol_sol%gapp	= gapp
+	pol_sol%gwork	= gwork
+	pol_sol%gapp_dif= gapp_dif
+	pol_sol%gwork_dif= gwork_dif
+	
+
+	call setparams()
+	agrid(1) = .05*(agrid(1)+agrid(2))
+	call vec2csv(agrid,"agrid.csv")
+
+	!**** for diagnostic calculate wages at each wage-determining levels
+	open(1, file="wage_dist.csv")
+	ibi =1
+	iz  =2
+	do it = 1,TT-1
+		do iai =1,nai
+			do id = 1,nd-1
+				wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
+				write(1, "(G20.12)", advance='no') wagehere
+			enddo
+			id = nd
+			wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
+			write(1,*) wagehere
+		enddo
+		write(1,*) " "! trailing space
+	enddo	
+	close(1)
+
+
+	call sol(val_sol,pol_sol)
 
 
 !    .----.   @   @
@@ -1184,7 +1351,7 @@ call vec2csv(agrid(:),'Agrid.csv',0)
 	!****************************************************************************!
 	deallocate(aR,aD,aN, aU, aW,gwork, gapp)
 	deallocate(aiD,maxer)
-	deallocate(VR0,VR,VD0,VD,VN,VN0,VU,VU0,VW,VW0,V,V0)
+	deallocate(VR,VD,VN,VU,VW,V)
 	deallocate(gwork_dif,gapp_dif)
 
 
