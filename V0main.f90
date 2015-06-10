@@ -386,18 +386,18 @@ module sol_sim
 					VU0(:,:,:,:,:,:,:), &	!Unemployed
 					V0(:,:,:,:,:,:,:)	!Participant
 				
-		real(8), allocatable ::	VR(:,:,:), &			!Retirement
+		real(8), pointer ::	VR(:,:,:), &			!Retirement
 					VD(:,:,:,:), &			!Disabled
 					VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
 					VW(:,:,:,:,:,:,:), &	!Working
 					VU(:,:,:,:,:,:,:), &	!Unemployed
 					V(:,:,:,:,:,:,:)	!Participant
 	
-		real(8), allocatable ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
+		real(8), pointer ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
 	
-		real(8), allocatable ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
+		real(8), pointer ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
 					aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
-		integer, allocatable ::	gapp(:,:,:,:,:,:,:), &
+		integer, pointer ::	gapp(:,:,:,:,:,:,:), &
 					gwork(:,:,:,:,:,:,:)
 	
 		!************************************************************************************************!
@@ -418,43 +418,43 @@ module sol_sim
 		allocate(VW0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 		allocate(V0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 		! there must be a way to use pointers, but it doesn't seem to work
-		!VR => val_funs%VR
-		!aR => pol_funs%aR
-		!VD => val_funs%VD
-		!aD => pol_funs%aD
-		!VN => val_funs%VN
-		!VU => val_funs%VU
-		!VW => val_funs%VW
-		!V => val_funs%V
-		!aN => pol_funs%aN
-		!aW => pol_funs%aW
-		!aU => pol_funs%aU
-		!gwork => pol_funs%gwork
-		!gapp => pol_funs%gapp
+		VR => val_funs%VR
+		aR => pol_funs%aR
+		VD => val_funs%VD
+		aD => pol_funs%aD
+		VN => val_funs%VN
+		VU => val_funs%VU
+		VW => val_funs%VW
+		V => val_funs%V
+		aN => pol_funs%aN
+		aW => pol_funs%aW
+		aU => pol_funs%aU
+		gwork => pol_funs%gwork
+		gapp => pol_funs%gapp
 
-		!gapp_dif => pol_funs%gapp_dif
-		!gwork_dif => pol_funs%gwork_dif
+		gapp_dif => pol_funs%gapp_dif
+		gwork_dif => pol_funs%gwork_dif
 
-		! (disability extent, earn hist, assets)
-		allocate(VR(nd,ne,na))
-		allocate(aR(nd,ne,na))
-		! (disability extent, earn hist, assets, age)
-		allocate(VD(nd,ne,na,TT))
-		allocate(aD(nd,ne,na,TT-1))
+!		! (disability extent, earn hist, assets)
+!		allocate(VR(nd,ne,na))
+!		allocate(aR(nd,ne,na))
+!		! (disability extent, earn hist, assets, age)
+!		allocate(VD(nd,ne,na,TT))
+!		allocate(aD(nd,ne,na,TT-1))
 
-		! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
-		allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-		allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-		allocate(VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-		allocate(V(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-		allocate(aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-		allocate(aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-		allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-		allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-		allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+!		! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
+!		allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+!		allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+!		allocate(VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+!		allocate(V(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+!		allocate(aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+!		allocate(aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+!		allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+!		allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+!		allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
 
-		allocate(gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-		allocate(gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+!		allocate(gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+!		allocate(gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 
 		allocate(maxer(na,nz,ne,nd,nai))
 
@@ -1210,29 +1210,29 @@ module sol_sim
 	call vec2csv(occz(:),'ZriskGrid.csv',0)
 	call vec2csv(agrid(:),'Agrid.csv',0)
 
-	val_funs%VR = VR
-	pol_funs%aR = aR
-	val_funs%VD = VD
-	pol_funs%aD = aD
-	val_funs%VN = VN
-	val_funs%VU = VU
-	val_funs%VW = VW
-	val_funs%V = V 
-	pol_funs%aN = aN
-	pol_funs%aW = aW
-	pol_funs%aU = aU
-	pol_funs%gwork = gwork
-	pol_funs%gapp = gapp
+!	val_funs%VR = VR
+!	pol_funs%aR = aR
+!	val_funs%VD = VD
+!	pol_funs%aD = aD
+!	val_funs%VN = VN
+!	val_funs%VU = VU
+!	val_funs%VW = VW
+!	val_funs%V = V 
+!	pol_funs%aN = aN
+!	pol_funs%aW = aW
+!	pol_funs%aU = aU
+!	pol_funs%gwork = gwork
+!	pol_funs%gapp = gapp
 
-	pol_funs%gapp_dif = gapp_dif
-	pol_funs%gwork_dif = gwork_dif
+!	pol_funs%gapp_dif = gapp_dif
+!	pol_funs%gwork_dif = gwork_dif
 
 
 
 	deallocate(maxer)
 	deallocate(VR0,VD0,VN0,VU0,VW0,V0)
-	deallocate(VR,VD,VN,VU,VW,V)
-	deallocate(aR,aD,aN,aW,aU,gwork,gapp,gapp_dif,gwork_dif)
+!	deallocate(VR,VD,VN,VU,VW,V)
+!	deallocate(aR,aD,aN,aW,aU,gwork,gapp,gapp_dif,gwork_dif)
 	end subroutine sol 
 
 
