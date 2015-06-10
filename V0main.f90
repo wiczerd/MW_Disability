@@ -373,96 +373,96 @@ module sol_sim
 			    iee1, iee2, iz, unitno, print_lev, verbose, narg_in,iw,wo
 		integer, dimension(5) :: maxer_i
 	
-	!************************************************************************************************!
-	! Value Functions- Stack z-risk j and indiv. exposure beta_i
-	!************************************************************************************************!
-	real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, VC, app2, Vc1, Vnapp, anapp,aapp, maxer_v, smthV,smthV0param, &
-				&	iee1wt
-        real(8), allocatable	:: maxer(:,:,:,:,:)
-	real(8), allocatable :: VR0(:,:,:), &			!Retirement
-				VD0(:,:,:,:), &			!Disabled
-				VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
-				VW0(:,:,:,:,:,:,:), &	!Working
-				VU0(:,:,:,:,:,:,:), &	!Unemployed
-				V0(:,:,:,:,:,:,:)	!Participant
+		!************************************************************************************************!
+		! Value Functions- Stack z-risk j and indiv. exposure beta_i
+		!************************************************************************************************!
+		real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, VC, app2, Vc1, Vnapp, anapp,aapp, maxer_v, smthV,smthV0param, &
+					&	iee1wt
+		real(8), allocatable	:: maxer(:,:,:,:,:)
+		real(8), allocatable :: VR0(:,:,:), &			!Retirement
+					VD0(:,:,:,:), &			!Disabled
+					VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
+					VW0(:,:,:,:,:,:,:), &	!Working
+					VU0(:,:,:,:,:,:,:), &	!Unemployed
+					V0(:,:,:,:,:,:,:)	!Participant
 				
-	real(8), allocatable ::	VR(:,:,:), &			!Retirement
-				VD(:,:,:,:), &			!Disabled
-				VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
-				VW(:,:,:,:,:,:,:), &	!Working
-				VU(:,:,:,:,:,:,:), &	!Unemployed
-				V(:,:,:,:,:,:,:)	!Participant
+		real(8), allocatable ::	VR(:,:,:), &			!Retirement
+					VD(:,:,:,:), &			!Disabled
+					VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
+					VW(:,:,:,:,:,:,:), &	!Working
+					VU(:,:,:,:,:,:,:), &	!Unemployed
+					V(:,:,:,:,:,:,:)	!Participant
 	
-	real(8), allocatable ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
+		real(8), allocatable ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
 	
-	real(8), allocatable ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
-				aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
-	integer, allocatable ::	gapp(:,:,:,:,:,:,:), &
-				gwork(:,:,:,:,:,:,:)
+		real(8), allocatable ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
+					aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
+		integer, allocatable ::	gapp(:,:,:,:,:,:,:), &
+					gwork(:,:,:,:,:,:,:)
 	
-	!************************************************************************************************!
-	! Other
-	!************************************************************************************************!
-		real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH,VUhere, VWhere
-	!************************************************************************************************!
+		!************************************************************************************************!
+		! Other
+		!************************************************************************************************!
+			real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH,VUhere, VWhere
+		!************************************************************************************************!
 
 		
-	!************************************************************************************************!
-	! Allocate phat matrices
-	!************************************************************************************************!
-	! (disability extent, earn hist, assets)
-	allocate(VR0(nd,ne,na))
-	allocate(VD0(nd,ne,na,TT))
-	allocate(VN0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(VU0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(VW0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(V0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	! there must be a way to use pointers, but it doesn't seem to work
-	!VR => val_funs%VR
-	!aR => pol_funs%aR
-	!VD => val_funs%VD
-	!aD => pol_funs%aD
-	!VN => val_funs%VN
-	!VU => val_funs%VU
-	!VW => val_funs%VW
-	!V => val_funs%V
-	!aN => pol_funs%aN
-	!aW => pol_funs%aW
-	!aU => pol_funs%aU
-	!gwork => pol_funs%gwork
-	!gapp => pol_funs%gapp
+		!************************************************************************************************!
+		! Allocate phat matrices
+		!************************************************************************************************!
+		! (disability extent, earn hist, assets)
+		allocate(VR0(nd,ne,na))
+		allocate(VD0(nd,ne,na,TT))
+		allocate(VN0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(VU0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(VW0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(V0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		! there must be a way to use pointers, but it doesn't seem to work
+		!VR => val_funs%VR
+		!aR => pol_funs%aR
+		!VD => val_funs%VD
+		!aD => pol_funs%aD
+		!VN => val_funs%VN
+		!VU => val_funs%VU
+		!VW => val_funs%VW
+		!V => val_funs%V
+		!aN => pol_funs%aN
+		!aW => pol_funs%aW
+		!aU => pol_funs%aU
+		!gwork => pol_funs%gwork
+		!gapp => pol_funs%gapp
 
-	!gapp_dif => pol_funs%gapp_dif
-	!gwork_dif => pol_funs%gwork_dif
+		!gapp_dif => pol_funs%gapp_dif
+		!gwork_dif => pol_funs%gwork_dif
 
-	! (disability extent, earn hist, assets)
-	allocate(VR(nd,ne,na))
-	allocate(aR(nd,ne,na))
-	! (disability extent, earn hist, assets, age)
-	allocate(VD(nd,ne,na,TT))
-	allocate(aD(nd,ne,na,TT-1))
+		! (disability extent, earn hist, assets)
+		allocate(VR(nd,ne,na))
+		allocate(aR(nd,ne,na))
+		! (disability extent, earn hist, assets, age)
+		allocate(VD(nd,ne,na,TT))
+		allocate(aD(nd,ne,na,TT-1))
 
-	! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
-	allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(V(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-	allocate(aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-	allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-	allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-	allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+		! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
+		allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(V(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+		allocate(aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+		allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+		allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
+		allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
 
-	allocate(gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-	allocate(gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 
-	allocate(maxer(na,nz,ne,nd,nai))
+		allocate(maxer(na,nz,ne,nd,nai))
 
-	!************************************************************************************************!
-	! Caculate things that are independent of occupation/person type
-	!	1) Value of Retired:  VR(d,e,a)
-	!	2) Value of Disabled: VD(d,e,a)
-	!************************************************************************************************!
+		!************************************************************************************************!
+		! Caculate things that are independent of occupation/person type
+		!	1) Value of Retired:  VR(d,e,a)
+		!	2) Value of Disabled: VD(d,e,a)
+		!************************************************************************************************!
 
 	!1) Calculate Value of Retired: VR(d,e,a)
 		!d in{1,2,3}  : disability extent
@@ -477,9 +477,9 @@ module sol_sim
 		do ia=1,na
 		do id=1,nd
 			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,iw)* (1./(1.-beta*ptau(TT)))
-		ENDdo
-		ENDdo
-		ENDdo
+		enddo
+		enddo
+		enddo
 		if(print_lev >3) then
 			call vec2csv(VR0(1,1,:),"VR0.csv",0)
 		endif		
@@ -579,7 +579,7 @@ module sol_sim
 		!t in[1,2...TT-1]  :age
 	
 		!Work backwards from TT
-		do it = 1,TT-1
+		do it = TT-1,1,-1
 
 			id = 1 ! other values are just multiples thereof
 			iw = 1 ! not working
@@ -671,7 +671,7 @@ module sol_sim
 		
 	!************************************************************************************************!
 		!Work Backwards TT-1,TT-2...1!
-		do it=1,TT-1
+		do it=TT-1,1,-1
 
 			!----Initialize---!
 			do iai=1,nai

@@ -88,7 +88,7 @@ integer, parameter :: 	nai = 11, &		!Number of individual alpha types
 			ne  = 10, &		!Points on earnings grid
 			na  = 200, &		!Points on assets grid
 			nz  = 3,  &		!Number of Occ TFP Shocks
-			maxiter = 2, &	!Tolerance parameter	
+			maxiter = 2000, &	!Tolerance parameter	
 			iaa_lowindow = 10,& 	!how far below to begin search
 			iaa_hiwindow = 25	!how far above to keep searching
 
