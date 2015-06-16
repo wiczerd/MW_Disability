@@ -88,7 +88,7 @@ integer, parameter :: 	nai = 11, &		!Number of individual alpha types
 			ne  = 10, &		!Points on earnings grid
 			na  = 200, &		!Points on assets grid
 			nz  = 3,  &		!Number of Occ TFP Shocks
-			maxiter = 2000, &	!Tolerance parameter	
+			maxiter = 2, &	!Tolerance parameter	
 			iaa_lowindow = 10,& 	!how far below to begin search
 			iaa_hiwindow = 25	!how far above to keep searching
 
@@ -124,10 +124,9 @@ real(8) :: 		alfi(nai), &		!Alpha_i grid- individual wage type parameter
 contains
 subroutine setparams()
 
-			character(len=24) :: param_name
 			logical, parameter :: lower= .FALSE. 
-			integer:: i, j, k, unitno, t, ii,wtmax
-			real(8):: summy, meps2(ne), agrid2(na), emin, emax, step, &
+			integer:: i, j, k, t
+			real(8):: summy, emin, emax, step, &
 				  node, nodeH, nodeL, midL, midH
 			real(8), parameter :: pival = 3.14159265	 !The number pi
 
@@ -344,7 +343,7 @@ function alnorm ( x, upper )
   real ( kind = 8 ), parameter :: ltone = 7.0D+00
   real ( kind = 8 ), parameter :: p = 0.398942280444D+00
   real ( kind = 8 ), parameter :: q = 0.39990348504D+00
-  real ( kind = 8 ), parameter :: r = 0.398942280385D+00
+  real ( kind = 8 ), parameter :: rr = 0.398942280385D+00
   logical up
   logical upper
   real ( kind = 8 ), parameter :: utzero = 18.66D+00
@@ -383,7 +382,7 @@ function alnorm ( x, upper )
 
   else
 
-    alnorm = r * exp ( - y ) &
+    alnorm = rr * exp ( - y ) &
       / ( z + c1 + d1 &
       / ( z + c2 + d2 &
       / ( z + c3 + d3 &
