@@ -65,8 +65,14 @@ module helper_funs
 
 					gwork(:,:,:,:,:,:,:) !integer choice of apply/work
 		integer :: alloced
-
 	end type
+
+	type moments_struct
+		real(8), allocatable :: work_coefs(:), di_coefs(:)
+		real(8) :: di_rate, work_rate,accept_rate
+		integer :: alloced
+
+	end type 
 
 	
 	contains
@@ -402,7 +408,7 @@ module sol_sim
 		!************************************************************************************************!
 		! Other
 		!************************************************************************************************!
-			real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH,VUhere, VWhere
+			real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH, emin, emax, VUhere, VWhere
 		!************************************************************************************************!
 
 		
@@ -456,6 +462,9 @@ module sol_sim
 		allocate(gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
 
 		allocate(maxer(na,nz,ne,nd,nai))
+		emin = minval(egrid)
+		emax = maxval(egrid)
+		
 
 		!************************************************************************************************!
 		! Caculate things that are independent of occupation/person type
@@ -968,7 +977,6 @@ module sol_sim
 
 						if(wo == 0 ) wo =1		  		
 					enddo !iz 
-					enddo !ie 
 					enddo !id 
 					enddo !iai 
 					
@@ -1130,14 +1138,13 @@ module sol_sim
 					do ie=1,ne	!Loop over earnings index
 					do iz=1,nz	!Loop over TFP
 						! matrix in disability and assets
-						call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,:,ie,:,iz,:) ,"VW_it.csv",wo)
-						call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,:,ie,:,iz,:) ,"aW_it.csv",wo)
-						call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+iai,:,ie,:,iz,:) ,"gwork_it.csv",wo)
-						call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nai+iai,:,ie,:,iz,:) ,"gwork_idf_it.csv",wo)
+						call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+iai,:,ie,:,iz,it) ,"VW_it.csv",wo)
+						call mat2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+iai,:,ie,:,iz,it) ,"aW_it.csv",wo)
+						call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+iai,:,ie,:,iz,it) ,"gwork_it.csv",wo)
+						call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nai+iai,:,ie,:,iz,it) ,"gwork_idf_it.csv",wo)
 						if(wo==0) wo =1
 					enddo !iz 
 					enddo !ie 
-					enddo !id 
 					enddo !iai 	
 				endif
 
@@ -1254,6 +1261,280 @@ module sol_sim
 	deallocate(aR,aD,aN,aW,aU,gwork,gapp,gapp_dif,gwork_dif)
 	end subroutine sol 
 
+
+	subroutine draw_deli(del_i,del_i_int, seed0, success)
+	! draws depreciation rates and indices on the delta grid (i.e at the discrete values)
+		implicit none
+
+		integer, intent(in) :: seed0
+		integer, intent(out) :: success
+		real(8), dimension(:) :: del_i
+		integer, dimension(:) :: del_i_int
+		integer :: ss, Nsim, di_int,m,i
+		real(8) :: dtypeL, dtypeH,dtype_i
+		integer, dimension(100) :: bdayseed
+
+		call random_seed(size = ss)
+		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
+		call random_seed(put = bdayseed(1:ss) )
+
+		Nsim = size(del_i)
+		dtypeL = minval(dtype)
+		dtypeH = maxval(dtype)
+
+		do i=1,Nsim
+			call random_number(dtype_i) ! draw uniform on 0,1
+			dtype_i = dtype_i*(dtypeH-dtypeL) + dtypeL !change domain of uniform
+			di_int = finder(dtype,dtype_i)
+			! round up or down:
+			if( (dtype_i - dtype(di_int))/(dtype(di_int+1)- dtype(di_int+1)) >0.5 ) di_int = di_int + 1
+			if(del_contin .eqv. .true.) then
+				del_i(i) = dtype_i
+			else
+				del_i(i) = dtype(di_int)
+			endif
+			del_i_int(i) = di_int
+		enddo
+		success = 1
+		
+	end subroutine draw_deli
+	
+	subroutine draw_alit(al_it,al_it_int, seed0, success)
+	! draws alpha shocks and idices on the alpha grid (i.e at the discrete values)
+		implicit none
+
+		integer, intent(in) :: seed0
+		integer, intent(out),optional :: success
+		real(8), dimension(:,:) :: al_it
+		integer, dimension(:,:) :: al_it_int
+		integer :: ss, Nsim, alfi_int, t,m,i
+		real(8) :: alfiL, alfiH,alfi_innov,alfi_i
+		integer, dimension(100) :: bdayseed
+
+		call random_seed(size = ss)
+		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
+		call random_seed(put = bdayseed(1:ss) )
+
+		Nsim = size(al_it,1)
+		alfiL = minval(alfi)
+		alfiH = maxval(alfi)
+
+		do i=1,Nsim
+
+			! draw starting values
+			t =1
+			
+			alfi_innov = random_normal() ! draw normal disturbances on 0,1
+			! transform it by the ergodic distribution for the first period:
+			alfi_i = alfi_innov*alfsig + alfmu
+
+			if(alfi_i >alfiH .or. alfi_i < alfiL) success = 1+success !count how often we truncate
+			!impose bounds
+			alfi_i = max(alfi_i,alfiL)
+			alfi_i = min(alfi_i,alfiH)
+			alfi_int = finder(alfi,alfi_i)
+			! round up or down:
+			if( (alfi_i - alfi(alfi_int))/(alfi(alfi_int+1)- alfi(alfi_int+1)) >0.5 ) alfi_int = alfi_int + 1
+			if(al_contin .eqv. .true.) then
+				al_it(i,t) = alfi_i ! log of wage shock
+			else
+				al_it(i,t) = alfi(alfi_int) ! log of wage shock, on grid
+			endif
+			al_it_int(i,t) = alfi_int
+			
+			! draw sequence:
+
+			do t=2,Tsim
+				alfi_innov = random_normal()
+				alfi_innov = alfi_innov*alfsig*(1.-alfrho**2) ! mean 0 with conditional standard deviation implied by (alfsig, alfrho)
+				alfi_i = alfrho*alfi_i + (1-alfrho)*alfmu + alfi_innov
+				if(alfi_i >alfiH .or. alfi_i < alfiL) success = 1+success !count how often we truncate
+				alfi_i = max(alfi_i,alfiL)
+				alfi_i = min(alfi_i,alfiH)
+				alfi_int = finder(alfi,alfi_i)
+				if( (alfi_i - alfi(alfi_int))/(alfi(alfi_int+1)- alfi(alfi_int+1)) >0.5 ) alfi_int = alfi_int + 1
+				if(al_contin .eqv. .true.) then
+					al_it(i,t) = alfi_i ! log of wage shock
+				else
+					al_it(i,t) = alfi(alfi_int) ! log of wage shock, on grid
+				endif
+				al_it_int(i,t) = alfi_int					
+
+			enddo
+		enddo
+		if(success > 0.2*Nsim*Tsim) success = 0
+		if(success <= 0.2*Nsim*Tsim) success = 1
+		
+	end subroutine draw_alit
+
+	subroutine draw_ji(j_i,seed0, success)
+		implicit none
+		integer	:: j_i(:)
+		integer	:: i,m,ss
+		integer,intent(in)  :: seed0
+		integer,intent(out) :: success
+		integer, dimension(100) :: bdayseed
+		real(8)	:: Njcumdist(nj)
+		real(8) :: draw_i
+
+		i =1
+		Njcumdist = Njdist(i)
+		do i=2,nj
+			Njcumdist(i) = Njdist(i) + Njcumdist(i-1)
+		enddo
+
+		call random_seed(size = ss)
+		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
+		call random_seed(put = bdayseed(1:ss) )
+		
+		do i=1,Nsim
+			call random_number(draw_i)
+			j_i(i) = finder(Njcumdist,draw_i)
+		enddo
+
+		success = 1
+		
+	end subroutine draw_ji
+
+	subroutine draw_zjt(z_jt, j_i, seed0, success)
+		implicit none
+
+		integer :: z_jt(:,:), j_i(:)
+		integer	:: it,i,ij,iz,izp,m,ss
+		integer,intent(in) :: seed0
+		integer,intent(out) :: success
+		integer, dimension(100) :: bdayseed
+		real(8) :: z_innov, z_jt_t
+		real(8), allocatable :: cumpi_j(:,:)
+		integer, allocatable :: z_jt_macro(:,:) !this will be the panel across occupations -> z_jt by i's j
+
+		allocate(z_jt_macro(nj,TT))
+		allocate(cumpi_j(nz,nz))
+		
+		call random_seed(size = ss)
+		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
+		call random_seed(put = bdayseed(1:ss) )
+
+		!draw on zgrid
+		do ij=1,nj
+			do iz=1,nz
+				izp = 1
+				cumpi_j(iz,izp) = piz(iz,izp,ij)
+				do izp=2,nz
+					cumpi_j(iz,izp) = piz(iz,izp,ij) + cumpi_j(iz,izp-1)
+				enddo
+			enddo
+			! start everyone from normal, alternatively could start from random draw on ergodic dist
+			z_jt_t = 3
+			do it = 1,TT
+				call random_number(z_innov)
+				! use conditional probability
+				z_jt_t = finder(cumpi_j(z_jt_t,:),z_innov )
+				z_jt_macro(ij,it) = z_jt_t
+			enddo
+		enddo
+
+		do i=1,Nsim
+			do it=1,TT
+			!fill in shock values from z_jt_macro for each indiv
+				z_jt(i,it) = z_jt_macro(j_i(i) , it)
+			
+			enddo
+		enddo
+
+		success = 1
+		
+		deallocate(z_jt_macro)
+		deallocate(cumpi_j)
+	end subroutine draw_zjt
+	
+
+	subroutine sim(val_funs, pol_funs,moments)
+		
+		implicit none
+	
+		type(val_struct), intent(inout), target :: val_funs
+		type(pol_struct), intent(inout), target :: pol_funs	
+		type(moments_struct), intent(inout), target :: moments
+
+	!************************************************************************************************!
+	! Counters and Indicies
+	!************************************************************************************************!
+
+		integer  :: i, j, ia, ie, id, it, ibi, iai, ij , idi, izz, iaai,  &
+			    iz, print_lev, verbose, iw,wo, seed0, status
+	
+		!************************************************************************************************!
+		! Value Functions- Stack z-risk j and indiv. exposure beta_i
+		!************************************************************************************************!
+		real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, Vc1, Vnapp, anapp,aapp
+				
+		real(8), allocatable ::	del_i(:) ! shocks to be drawn
+		real(8), allocatable ::	al_it(:,:), z_jt(:,:) ! shocks to be drawn
+		integer, allocatable :: del_i_int(:), j_i(:) ! integer valued shocks
+		integer, allocatable :: al_it_int(:,:)! integer valued shocks
+
+		real(8), allocatable :: d_it(:,:), e_it(:,:), a_it(:,:)
+		
+		real(8), pointer ::	VR(:,:,:), &			!Retirement
+					VD(:,:,:,:), &			!Disabled
+					VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
+					VW(:,:,:,:,:,:,:), &	!Working
+					VU(:,:,:,:,:,:,:), &	!Unemployed
+					V(:,:,:,:,:,:,:)	!Participant
+	
+		real(8), pointer ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
+	
+		real(8), pointer ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
+					aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
+		integer, pointer ::	gapp(:,:,:,:,:,:,:), &
+					gwork(:,:,:,:,:,:,:)
+	
+		!************************************************************************************************!
+		! Other
+		!************************************************************************************************!
+		real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH, emin, emax, VUhere, VWhere
+		!************************************************************************************************!
+
+		
+		!************************************************************************************************!
+		! Pointers
+		!************************************************************************************************!
+		! (disability extent, earn hist, assets)
+		VR => val_funs%VR
+		aR => pol_funs%aR
+		VD => val_funs%VD
+		aD => pol_funs%aD
+		VN => val_funs%VN
+		VU => val_funs%VU
+		VW => val_funs%VW
+		V => val_funs%V
+		aN => pol_funs%aN
+		aW => pol_funs%aW
+		aU => pol_funs%aU
+		gwork => pol_funs%gwork
+		gapp => pol_funs%gapp
+
+		gapp_dif => pol_funs%gapp_dif
+		gwork_dif => pol_funs%gwork_dif
+
+		allocate(z_jt(Nsim, Tsim))
+		allocate(del_i(Nsim))
+		allocate(al_it(Nsim,Tsim))
+		allocate(j_i(Nsim))
+
+		allocate(del_i_int(Nsim))
+		allocate(al_it_int(Nsim,Tsim))
+
+		seed0 = 941987 
+
+		call draw_deli(del_i,del_i_int, seed0, status)
+
+
+		deallocate(z_jt,del_i,al_it,j_i)
+		deallocate(del_i_int,al_it_int)
+
+	end subroutine sim
 
 end module sol_sim
 
