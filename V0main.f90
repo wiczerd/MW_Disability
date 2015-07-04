@@ -362,13 +362,14 @@ module sol_sim
 	
 	contains
 
-	subroutine sol(val_funs, pol_funs)
+	subroutine sol(val_funs, pol_funs,print_lev, verbose)
 
 		implicit none
 	
 		type(val_struct), intent(inout), target :: val_funs
 		type(pol_struct), intent(inout), target :: pol_funs	
 
+		integer, intent(in), optional :: print_lev, verbose
 	!************************************************************************************************!
 	! Counters and Indicies
 	!************************************************************************************************!
@@ -409,7 +410,6 @@ module sol_sim
 		!************************************************************************************************!
 			real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH, emin, emax, VUhere, VWhere
 		!************************************************************************************************!
-
 		
 		!************************************************************************************************!
 		! Allocate phat matrices
@@ -463,14 +463,14 @@ module sol_sim
 		allocate(maxer(na,nz,ne,nd,nai))
 		emin = minval(egrid)
 		emax = maxval(egrid)
-		
 
+		if(present(print_lev) .eqv. .false.) print_lev = 3
+		if(present(verbose) .eqv. .false.) verbose = 3
 		!************************************************************************************************!
 		! Caculate things that are independent of occupation/person type
 		!	1) Value of Retired:  VR(d,e,a)
 		!	2) Value of Disabled: VD(d,e,a)
-		!************************************************************************************************!
-
+		
 	!1) Calculate Value of Retired: VR(d,e,a)
 		!d in{1,2,3}  : disability extent
 		!e inR+       :	earnings index
@@ -651,11 +651,11 @@ module sol_sim
 			enddo	!j: V-iter loop
 		enddo	!t loop, going backwards
 		! set the other value function/asset policies for other disability levels
+		i =1 ! set them all relative to the i = 1 value
 		do id = 2,nd
-			i =1 ! set them all relative to the i = 1 value
 			do ie =1,ne
 			do ia =1,na
-				VD(id,ie,ia,TT-it) = VD(i,ie,ia,TT-it)*((dexp(theta*dble(id-1)))**(1-gam))
+				VD(id,ie,ia,TT-it) = VD(i,ie,ia,TT-it)*( (dexp(theta*dble(id-1)))**(1-gam) )
 				if(TT-it .le. TT-1) aD(id,ie,ia,TT-it) = aD(i,ie,ia,TT-it) 
 			enddo
 			enddo
@@ -990,7 +990,7 @@ module sol_sim
 					do ie=1,ne
 					do ia=1,na
 						if(wo == 0 ) wo =1
-						call mat2csv(gapp_dif((ij-1)*nbi+ibi,:,:,ie,ia,iz,it),'dilat0_dalpha_it.csv',wo)
+						call mat2csv(gapp_dif((ij-1)*nbi+ibi,:,:,ie,ia,iz,TT-it),'dilat0_dalpha_it.csv',wo)
 					enddo
 					enddo
 					enddo
@@ -1210,11 +1210,11 @@ module sol_sim
 		do ia=1,na
 			do it=1,TT-1
 		!				nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
-				call mati2csv(gapp(ibi,:,:,ie,ia,iz,it),'dipol_dalpha.csv',wo)
-				call mati2csv(gwork(ibi,:,:,ie,ia,iz,it),'workpol_dalpha.csv',wo)
+				call mati2csv(gapp(ibi,:,:,ie,ia,iz,TT-it),'dipol_dalpha.csv',wo)
+				call mati2csv(gwork(ibi,:,:,ie,ia,iz,TT-it),'workpol_dalpha.csv',wo)
 
-				call mat2csv(gapp_dif(ibi,:,:,ie,ia,iz,it),'dilat_dalpha.csv',wo)
-				call mat2csv(gwork_dif(ibi,:,:,ie,ia,iz,it),'worklat_dalpha.csv',wo)
+				call mat2csv(gapp_dif(ibi,:,:,ie,ia,iz,TT-it),'dilat_dalpha.csv',wo)
+				call mat2csv(gwork_dif(ibi,:,:,ie,ia,iz,TT-it),'worklat_dalpha.csv',wo)
 				if(wo ==0 ) wo =1
 			enddo
 		enddo
@@ -1371,18 +1371,24 @@ module sol_sim
 
 		i =1
 		Njcumdist = Njdist(i)
-		do i=2,nj
-			Njcumdist(i) = Njdist(i) + Njcumdist(i-1)
-		enddo
-
-		call random_seed(size = ss)
-		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
-		call random_seed(put = bdayseed(1:ss) )
+		if(nj>1) then
+			do i=2,nj
+				Njcumdist(i) = Njdist(i) + Njcumdist(i-1)
+			enddo
 		
-		do i=1,Nsim
-			call random_number(draw_i)
-			j_i(i) = finder(Njcumdist,draw_i)
-		enddo
+			call random_seed(size = ss)
+			forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
+			call random_seed(put = bdayseed(1:ss) )
+		
+			do i=1,Nsim
+				call random_number(draw_i)
+				j_i(i) = finder(Njcumdist,draw_i)
+			enddo
+
+		else
+			j_i = 1
+		endif
+
 
 		success = 1
 		
@@ -1897,7 +1903,7 @@ program V0main
 	close(1)
 
 
-	call sol(val_sol,pol_sol)
+	call sol(val_sol,pol_sol,print_lev,verbose)
 
 
 !    .----.   @   @
