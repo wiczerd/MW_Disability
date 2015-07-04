@@ -375,7 +375,7 @@ module sol_sim
 	!************************************************************************************************!
 
 		integer  :: i, j, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp,apol, ibi, iai, ij , idi, izz, iaai,  &
-			    iee1, iee2, iz, print_lev, verbose, iw,wo
+			    iee1, iee2, iz, iw,wo
 		integer, dimension(5) :: maxer_i
 	
 		!************************************************************************************************!
