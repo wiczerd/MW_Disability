@@ -362,14 +362,13 @@ module sol_sim
 	
 	contains
 
-	subroutine sol(val_funs, pol_funs,print_lev, verbose)
+	subroutine sol(val_funs, pol_funs)
 
 		implicit none
 	
 		type(val_struct), intent(inout), target :: val_funs
 		type(pol_struct), intent(inout), target :: pol_funs	
 
-		integer, intent(in), optional :: print_lev, verbose
 	!************************************************************************************************!
 	! Counters and Indicies
 	!************************************************************************************************!
@@ -464,8 +463,6 @@ module sol_sim
 		emin = minval(egrid)
 		emax = maxval(egrid)
 
-		if(present(print_lev) .eqv. .false.) print_lev = 3
-		if(present(verbose) .eqv. .false.) verbose = 3
 		!************************************************************************************************!
 		! Caculate things that are independent of occupation/person type
 		!	1) Value of Retired:  VR(d,e,a)
@@ -1903,7 +1900,7 @@ program V0main
 	close(1)
 
 
-	call sol(val_sol,pol_sol,print_lev,verbose)
+	call sol(val_sol,pol_sol)
 
 
 !    .----.   @   @

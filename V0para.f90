@@ -128,7 +128,7 @@ real(8) :: gam= 2.0, & 		!IES
 	eta = -0.20, &	!Util cost of participation
 	theta = -0.22	!Util cost of disability	
 
-!integer :: print_lev, verbose
+integer :: print_lev, verbose
 		
 contains
 subroutine setparams()
