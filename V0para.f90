@@ -118,7 +118,8 @@ real(8) :: 	nu = 2.50, &		!Psychic cost of applying for DI
 		alfsig = 0.1,&		!Unconditional StdDev of Alpha_i type (Normal)
 		b = 0.05,&		!Home production
 		rhho = 0.2,&		!Probability of finding a job when long-term unemployed (David)
-		pphi = 0.2		!Probability moving to LTU (5 months)
+		pphi = 0.2, &		!Probability moving to LTU (5 months)
+		prob_t(TT)		!Probability of being in each age group to start
 
  !Preferences----------------------------------------------------------------!
  ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
@@ -127,6 +128,7 @@ real(8) :: gam= 2.0, & 		!IES
 	eta = -0.20, &	!Util cost of participation
 	theta = -0.22	!Util cost of disability	
 
+integer :: print_lev, verbose
 		
 contains
 subroutine setparams()
@@ -216,6 +218,13 @@ subroutine setparams()
 	ENDDO
 	ptau(TT) = 1-((Longev-25+youngD+oldN*oldD)*tlength-1)**(-1)
 
+	!initial age structure
+	prob_t(1) = (youngD )/(Longev - 25.)
+	do t=2,TT-1
+		prob_t(t) = oldD/(Longev - 25.)
+	enddo
+	prob_t(TT) = 1.-sum(prob_t)
+	
 	!Age-related disability risk
 	dtau(1) = 0.5	!Young's Risk
 	DO t=2,TT-1
@@ -430,8 +439,7 @@ FUNCTION random_normal() RESULT(fn_val)
 
 	!     Local variables
 	REAL     :: s = 0.449871, t = -0.386595, a = 0.19600, b = 0.25472,           &
-		    r1 = 0.27597, r2 = 0.27846, u, v, x, y, q, half = 0.5,   &
-                      vsmall = TINY(1.0), vlarge = HUGE(1.0)
+		    r1 = 0.27597, r2 = 0.27846, u, v, x, y, q, half = 0.5
 
 	!     Generate P = (u,v) uniform in rectangle enclosing acceptance region
 
