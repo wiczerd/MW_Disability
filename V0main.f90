@@ -646,17 +646,20 @@ module sol_sim
 				VD0(id,:,:,TT-it) = VD(id,:,:,TT-it)	!New guess
 				j=j+1
 			enddo	!j: V-iter loop
+			! set the other value for other disability levels
+			i =1 
+			do id = 2,nd
+				do ie =1,ne
+				do ia =1,na
+					VD(id,ie,ia,TT-it) = VD(i,ie,ia,TT-it)*( (dexp(theta*dble(id-1)))**(1-gam) )
+					if(TT-it .le. TT-1) aD(id,ie,ia,TT-it) = aD(i,ie,ia,TT-it) 
+				enddo
+				enddo
+			enddo
 		enddo	!t loop, going backwards
-		! set the other value function/asset policies for other disability levels
-		i =1 ! set them all relative to the i = 1 value
-		do id = 2,nd
-			do ie =1,ne
-			do ia =1,na
-				VD(id,ie,ia,TT-it) = VD(i,ie,ia,TT-it)*( (dexp(theta*dble(id-1)))**(1-gam) )
-				if(TT-it .le. TT-1) aD(id,ie,ia,TT-it) = aD(i,ie,ia,TT-it) 
-			enddo
-			enddo
-		enddo
+
+
+
 		VD0 = VD
 		if (print_lev > 2) then
 			wo =0 
