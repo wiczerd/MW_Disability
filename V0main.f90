@@ -33,7 +33,7 @@ module helper_funs
 	!	9)  mati2csv(A,fname,append)  A=matrix, fname=file, append={0,1}: A is integer
 	!	10) vec2csv(A,fname,append)   A=matrix, fname=file, append={0,1}
 	!	11) veci2csv(A,fname,append)   A=matrix, fname=file, append={0,1}: A is integer
-	!User-Defined Types (Structures) for value functions and policy functions
+	!User-Defined Types (Structures) for value functiIons and policy functions
 	!	a) val_struct: VR, VD, VN, VW, VU, V
 	!	b) pol_struct: aR, aD,aU,aN,aW,gapp,gwork, gapp_dif,gwork_dif
 	!**********************************************************!
@@ -74,6 +74,12 @@ module helper_funs
 
 	end type 
 
+	type hist_struct
+		real(8), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
+		real(8), allocatable :: wage_hist(:,:) !realized wages
+		real(8), allocatable :: obsX_hist(:,:) ! a bunch of explanitory variables stacked on each other
+		integer :: alloced
+	end type
 	
 	contains
 
@@ -567,10 +573,11 @@ module sol_sim
 		do ie=1,ne
 		do ia=1,na
 			VD(id,ie,ia,TT) = VR(id,ie,ia)
-			VD0(id,ie,ia,TT) = VR(id,ie,ia)				
+			VD0(id,ie,ia,TT) = VR(id,ie,ia)
 		enddo
 		enddo
 		enddo
+
 
 
 	       !----------------------------------------------------------------!
@@ -579,6 +586,7 @@ module sol_sim
 		!e inR+       	   :earnings index
 		!a inR+	      	   :asset holdings
 		!t in[1,2...TT-1]  :age
+
 	
 		!Work backwards from TT
 		do it = 1,TT-1
@@ -587,18 +595,16 @@ module sol_sim
 			iw = 1 ! not working
 			
 			!Guess will be value at t+1
-			do ia=1,na
-			do ie=1,ne
-				VD0(id,ie,ia,TT-it) = VD(id,ie,ia,TT-it+1)
-			enddo
-			enddo
+			
+			VD0(id,:,:,TT-it) = VD(id,:,:,TT-it+1)
+
 			if(print_lev >3) then
-				call vec2csv(VD0(1,ie,:,TT-it),"VD0.csv",0)
+				call mat2csv(VD0(id,:,:,TT-it),"VD0.csv",0)
 			endif
 
 			!Loop to find V(..,it) as fixed point
 			j=1
-			do WHILE (j<maxiter)
+			do WHILE (j<=maxiter)
 				summer = 0
 				id =1
 				!Loop over earnings index
@@ -652,9 +658,9 @@ module sol_sim
 				do ie =1,ne
 				do ia =1,na
 					VD(id,ie,ia,TT-it) = VD(i,ie,ia,TT-it)*( (dexp(theta*dble(id-1)))**(1-gam) )
-					if(TT-it .le. TT-1) aD(id,ie,ia,TT-it) = aD(i,ie,ia,TT-it) 
 				enddo
 				enddo
+				if(TT-it .le. TT-1) aD(id,:,:,TT-it) = aD(i,:,:,TT-it) 
 			enddo
 		enddo	!t loop, going backwards
 
@@ -749,7 +755,7 @@ module sol_sim
 			!Loop over V=max(VU,VW)	
 			j=1
 			smthV0param  =1. ! will tighten this down
-			do WHILE (j<maxiter)
+			do WHILE (j<=maxiter)
 				maxer = 0.
 				summer = 0.	!Use to calc |V-V0|<eps
 				! lots f printing every 100 iterations (mod 1 because Fortran is designed by idiots using base-1 indexing)
@@ -990,7 +996,7 @@ module sol_sim
 					do ie=1,ne
 					do ia=1,na
 						if(wo == 0 ) wo =1
-						call mat2csv(gapp_dif((ij-1)*nbi+ibi,:,:,ie,ia,iz,TT-it),'dilat0_dalpha_it.csv',wo)
+						call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dilat0_dalpha_it.csv',wo)
 					enddo
 					enddo
 					enddo
@@ -1204,17 +1210,18 @@ module sol_sim
 		
 		! this plots work-rest and di application on the cross product of alphai and deltai and di
 		ibi = 1
+		idi = 1
 		wo  = 0
 		do iz=1,nz
 		do ie=1,ne
 		do ia=1,na
 			do it=1,TT-1
 		!				nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
-				call mati2csv(gapp(ibi,:,:,ie,ia,iz,TT-it),'dipol_dalpha.csv',wo)
-				call mati2csv(gwork(ibi,:,:,ie,ia,iz,TT-it),'workpol_dalpha.csv',wo)
+				call mati2csv(gapp(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dipol_dalpha.csv',wo)
+				call mati2csv(gwork(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'workpol_dalpha.csv',wo)
 
-				call mat2csv(gapp_dif(ibi,:,:,ie,ia,iz,TT-it),'dilat_dalpha.csv',wo)
-				call mat2csv(gwork_dif(ibi,:,:,ie,ia,iz,TT-it),'worklat_dalpha.csv',wo)
+				call mat2csv(gapp_dif(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dilat_dalpha.csv',wo)
+				call mat2csv(gwork_dif(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'worklat_dalpha.csv',wo)
 				if(wo ==0 ) wo =1
 			enddo
 		enddo
@@ -1408,7 +1415,7 @@ module sol_sim
 		real(8), allocatable :: cumpi_j(:,:)
 		integer, allocatable :: z_jt_macro(:,:) !this will be the panel across occupations -> z_jt by i's j
 
-		allocate(z_jt_macro(nj,TT))
+		allocate(z_jt_macro(nj,Tsim))
 		allocate(cumpi_j(nz,nz))
 		
 		call random_seed(size = ss)
@@ -1493,16 +1500,16 @@ module sol_sim
 		success = 1
 	end subroutine draw_age_it
 
-	subroutine sim(val_funs, pol_funs,moments)
+	subroutine sim(val_funs, pol_funs,hists)
 		
 		implicit none
 	
 		type(val_struct), intent(inout), target :: val_funs
 		type(pol_struct), intent(inout), target :: pol_funs	
-		type(moments_struct), intent(inout), target :: moments
+		type(hist_struct), intent(inout), target :: hists
 
 
-		integer :: i, ii, iter, it,  &
+		integer :: i, ii, iter, it, j,  &
 			&  seed0, seed1, status, m,ss
 		integer :: bdayseed(100)
 						
@@ -1565,6 +1572,7 @@ module sol_sim
 		gwork_dif => pol_funs%gwork_dif
 
 		allocate(z_jt(Nsim, Tsim))
+		allocate(z_jt_int(Nsim, Tsim))		
 		allocate(del_i(Nsim))
 		allocate(al_it(Nsim,Tsim))
 		allocate(j_i(Nsim))
@@ -1589,7 +1597,7 @@ module sol_sim
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
-
+		if(verbose >2) print *, "Drawing types and shocks"	
 		call draw_age_it(age_it,seed0,status)
 		call draw_deli(del_i,del_i_int, seed1, status)
 		call draw_alit(al_it,al_it_int, seed0, status)
@@ -1637,7 +1645,6 @@ module sol_sim
 				enddo
 				d_it(i,it) = d_it(drawi,drawt)
 				a_it(i,it) = a_it(drawi,drawt)
-				!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 				
 				do it=1,Tsim
 					!set the state
@@ -1650,6 +1657,8 @@ module sol_sim
 					e_hr 	= e_it(i,it)
 					a_hr 	= a_it(i,it)
 					wage_hr	= wage(bet_hr,al_hr,d_hr,z_hr,age_hr)
+					hists%wage_hist(i,it) = wage_hr
+					
 					status_hr = status_it(i,it)
 					e_hrL = finder(egrid, e_hr)
 					if(e_hr< maxval(egrid)-1e-6) then
@@ -1764,9 +1773,20 @@ module sol_sim
 			enddo! 1,Nsim
 		enddo! iter
 
+		!fill the histories
+		hists%work_dif_hist = work_dif_it
+		hists%app_dif_hist  = app_dif_it
+		hists%obsX_hist = 0.
+		do i=1,Nsim
+			do it=1,Tsim
+				do j=1,TT-1
+					if(age_it(i,it) .eq. j ) hists%obsX_hist(i + (Nsim-1)*j,it) = 1
+				enddo
+			enddo
+		enddo
 		
 		deallocate(d_it,a_it,e_it)
-		deallocate(z_jt,del_i,al_it,j_i)
+		deallocate(z_jt,z_jt_int,del_i,al_it,j_i)
 		deallocate(app_dif_it,app_it,work_it,work_dif_it)
 		deallocate(del_i_int,al_it_int,z_jt_int)
 
@@ -1798,7 +1818,7 @@ program V0main
 	!************************************************************************************************!
 	! Value Functions- Stack z-risk j and indiv. exposure beta_i
 	!************************************************************************************************!
-        real(8), allocatable	:: maxer(:,:,:,:,:)
+
 	real(8), allocatable	:: VR(:,:,:), &		!Retirement
 				VD(:,:,:,:), &		!Disabled
 				VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
@@ -1827,58 +1847,45 @@ program V0main
 	! Structure to communicate everything
 		type(val_struct) :: val_sol
 		type(pol_struct) :: pol_sol
+		type(hist_struct):: hists_sim
+		type(moments_struct):: moments_sim
+		
 		
 		
 	!************************************************************************************************!
 	! Allocate phat matrices
 	!************************************************************************************************!
 	! (disability extent, earn hist, assets)
-	allocate(VR(nd,ne,na), stat=val_sol%alloced)
-	allocate(aR(nd,ne,na), stat=pol_sol%alloced)
+	allocate(val_sol%VR(nd,ne,na), stat=val_sol%alloced)
+	allocate(pol_sol%aR(nd,ne,na), stat=pol_sol%alloced)
 	! (disability extent, earn hist, assets, age)
-	allocate(VD(nd,ne,na,TT), stat=val_sol%alloced)
-	allocate(aD(nd,ne,na,TT-1), stat=pol_sol%alloced)
+	allocate(val_sol%VD(nd,ne,na,TT), stat=val_sol%alloced)
+	allocate(pol_sol%aD(nd,ne,na,TT-1), stat=pol_sol%alloced)
 	allocate(aiD(nd,ne,na,TT-1))	
 	! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
-	allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(V(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(val_sol%VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(val_sol%VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(val_sol%VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(val_sol%V(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(pol_sol%aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(pol_sol%aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(pol_sol%aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(pol_sol%gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(pol_sol%gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
 
-	allocate(gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=pol_sol%alloced)
-	allocate(gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=pol_sol%alloced)
+	allocate(pol_sol%gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=pol_sol%alloced)
+	allocate(pol_sol%gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=pol_sol%alloced)
 
-
-	allocate(maxer(na,nz,ne,nd,nai))
+	allocate(hists_sim%wage_hist(Nsim,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%work_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%app_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%obsX_hist(Nsim*Nk,Tsim), stat=hists_sim%alloced)
 
 	narg_in = iargc()
 
 	verbose = 4
 	print_lev = 4
 
-	! assign structures
-	val_sol%VR = VR 
-	val_sol%VD = VD 
-	val_sol%VW = VW 
-	val_sol%VU = VU 
-	val_sol%VN = VN
-	val_sol%V = V		 
-
-	pol_sol%aR = aR
-	pol_sol%aD = aD
-	pol_sol%aW = aW
-	pol_sol%aN = aN
-	pol_sol%aU = aU
-	pol_sol%gapp	= gapp
-	pol_sol%gwork	= gwork
-	pol_sol%gapp_dif= gapp_dif
-	pol_sol%gwork_dif= gwork_dif
-	
 
 	call setparams()
 	agrid(1) = .05*(agrid(1)+agrid(2))
@@ -1902,9 +1909,10 @@ program V0main
 	enddo	
 	close(1)
 
-
+	if(verbose >2) print *, "Solving the model"
 	call sol(val_sol,pol_sol)
-
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(val_sol, pol_sol, hists_sim)
 
 !    .----.   @   @
 !   / .-"-.`.  \v/
@@ -1915,7 +1923,7 @@ program V0main
 	! IF you love something.... 
 	!****************************************************************************!
 	deallocate(aR,aD,aN, aU, aW,gwork, gapp)
-	deallocate(aiD,maxer)
+	deallocate(aiD)
 	deallocate(VR,VD,VN,VU,VW,V)
 	deallocate(gwork_dif,gapp_dif)
 

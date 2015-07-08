@@ -73,12 +73,13 @@ integer, parameter :: 	nai = 11, &		!Number of individual alpha types
 		ne  = 10, &		!Points on earnings grid
 		na  = 200, &		!Points on assets grid
 		nz  = 3,  &		!Number of Occ TFP Shocks
-		maxiter = 2, &	!Tolerance parameter	
+		maxiter = 1, &	!Tolerance parameter	
 		iaa_lowindow = 10,& 	!how far below to begin search
 		iaa_hiwindow = 25, &	!how far above to keep searching
 		Nsim = 10000, &		!how many agents to draw
 		Ndat = 5000, & 		!size of data, for estimation
-		Tsim = int(Longev) + 1	!how many periods to solve
+		Tsim = int(Longev)+1, &	!how many periods to solve
+		Nk   = 6		!number of regressors
 
 logical, parameter ::	del_contin = .false., &	!make delta draws take continuous values or stay on the grid
 		al_contin = .false. 	!make alpha draws continuous
