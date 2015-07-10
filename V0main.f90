@@ -912,6 +912,9 @@ module sol_sim
 								!Continuation if do not apply for DI
 								do izz = 1,nz	 !Loop over z'
 								do iaai = 1,nai !Loop over alpha_i'
+								
+								!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+								!  Make this a max s.t. can go to V0 or can go to VN0
 									Vc1 = (1-ptau(TT-it))*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it+1) &
 										& +rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) !Age and might go on DI
 									Vc1 = Vc1+ptau(TT-it)*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it) &
@@ -927,7 +930,7 @@ module sol_sim
 								elseif(iaa > apol+iaa_hiwindow) then
 									exit
 								endif
-							elseif(iaa == iaa1napp .and. Vtest1 <= -1e4 .and. apol == iaa1napp) then
+							elseif(iaa .eq. iaa1napp .and. Vtest1 <= -1e4 .and. apol .eq. iaa1napp) then
 								iaa = 1 !started too much saving, go back towards zero
 								iaa1napp = 1
 							else
@@ -1488,9 +1491,9 @@ module sol_sim
 			call random_number(rand_age)
 
 			age_it(i,it) = finder(cumpi_t0,rand_age)
-			do it=2,TT
+			do it=2,Tsim
 				call random_number(rand_age)
-				if(rand_age > 1. - ptau(age_it(i,it-1)) ) then
+				if(rand_age < 1- ptau(age_it(i,it-1)) .and. age_it(i,it-1) < TT ) then
 					age_it(i,it) = age_it(i,it-1)+1
 				else 
 					age_it(i,it) = age_it(i,it-1)
@@ -1509,7 +1512,7 @@ module sol_sim
 		type(hist_struct), intent(inout), target :: hists
 
 
-		integer :: i, ii, iter, it, j,  &
+		integer :: i, ii, iter, it, j, idi, id, &
 			&  seed0, seed1, status, m,ss
 		integer :: bdayseed(100)
 						
@@ -1539,14 +1542,17 @@ module sol_sim
 					aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
 		integer, pointer ::	gapp(:,:,:,:,:,:,:), &
 					gwork(:,:,:,:,:,:,:)
+		
+		real(8) :: cumpid(nd,nd,ndi,TT-1),cumptau(TT)
 	
 		! Other
-		real(8)	:: wage_hr,al_hr, junk , a_hr, e_hr, bet_hr,z_hr
+		real(8)	:: wage_hr,al_hr, junk , a_hr, e_hr, bet_hr,z_hr, work_dif_hr, app_dif_hr
 		real(8) :: work_hrLL,work_hrHL,work_hrLH,work_hrHH, &
 			&  app_hrLL,app_hrHL,app_hrLH,app_hrHH, &
 			&  a_hrHH,a_hrHL,a_hrLH,a_hrLL, &
 			&  e_hrwt,a_hrwt
-		integer :: ali_hr,d_hr,age_hr,del_hr, zi_hr, j_hr, beti,status_hr,status_tmrw,a_hrH,a_hrL,e_hrH,e_hrL,drawi,drawt
+		integer :: ali_hr,d_hr,age_hr,del_hr, zi_hr, j_hr, &
+			& beti, status_hr,status_tmrw,a_hrH,a_hrL,e_hrH,e_hrL,drawi,drawt
 		!************************************************************************************************!
 
 		
@@ -1612,39 +1618,66 @@ module sol_sim
 			call mat2csv(z_jt,"z_jt.csv")
 			call mati2csv(al_it_int,"al_it_int.csv")
 			call mati2csv(z_jt_int,"z_jt_int.csv")
+			call mati2csv(age_it,"age_it.csv")
 		endif
+		
+		!set up cumpid,cumptau
+		do idi=1,ndi
+		do it =1,TT-1
+		do id =1,nd
+			i=1
+			cumpid(id,i,idi,it) = pid(id,i,idi,it)
+			do i =2,nd
+				cumpid(id,i,idi,it) = pid(id,i,idi,it)+cumpid(id,i-1,idi,it)
+			enddo
+		enddo
+		enddo
+		enddo
+		it = 1
+		cumptau(it)=cumptau(it)
+		do it =2,TT
+			cumptau(it) = cumptau(it-1)+ptau(it)
+		enddo
 
 		! will draw these from endogenous distributions the second time around
-		d_it = 1.
+		d_it = 1
 		a_it = 0.
+		e_it = minval(egrid)
 
 		!use only 1 value of beta
 		beti = 1
 		bet_hr = 1.
 		
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
-		do iter=1,3
+		do iter=1,4
 			do i=1,Nsim
 				!fixed traits
-				del_hr = del_i(i)
+				del_hr = del_i_int(i)
 				j_hr = j_i(i)
 
 				!initialize stuff
 				it = 1
 				status_hr = 1
+				status_it(i,it) = 1
 
-				!need to draw these from age-specific distributions.
-				do ii=1,Nsim
-					call random_number(junk)
-					drawi = floor(junk*Nsim)
-					call random_number(junk)
-					drawt = floor(junk*Tsim)
-					if(age_it(drawi,drawt) == age_it(i,it)) then
-						exit
-					endif
-				enddo
-				d_it(i,it) = d_it(drawi,drawt)
-				a_it(i,it) = a_it(drawi,drawt)
+				!need to draw these from age-specific distributions for iterations > 1
+				if(iter>1) then
+					do ii=1,Nsim*Tsim
+						call random_number(junk)
+						drawi = max(1,nint(junk*Nsim))
+						call random_number(junk)
+						drawt = max(1,nint(junk*Tsim))
+						if((age_it(drawi,drawt) .eq. age_it(i,it)) & 
+							& .and. (status_it(drawi,drawt)  < 4)) then
+							exit
+						endif
+					enddo
+					d_it(i,it) = d_it(drawi,drawt)
+					a_it(i,it) = a_it(drawi,drawt)
+					e_it(i,it) = e_it(drawi,drawt)
+					status_it(i,it) = status_it(drawi,drawt)
+				endif
+
 				
 				do it=1,Tsim
 					!set the state
@@ -1660,16 +1693,16 @@ module sol_sim
 					hists%wage_hist(i,it) = wage_hr
 					
 					status_hr = status_it(i,it)
-					e_hrL = finder(egrid, e_hr)
-					if(e_hr< maxval(egrid)-1e-6) then
+					e_hrL = min(finder(egrid, e_hr),1)
+					if(e_hr< maxval(egrid)-1e-6 .and. e_hrL < ne) then
 						e_hrH = e_hrL+1
 						e_hrwt = (egrid(e_hrH)-e_hr)/(egrid(e_hrH)-egrid(e_hrL))
 					else
 						e_hrH = e_hrL
 						e_hrwt = 1.
 					endif
-					a_hrL = finder(agrid, a_hr)
-					if(e_hr< maxval(agrid)-1e-6) then
+					a_hrL = min(finder(agrid, a_hr),1)
+					if(a_hr< maxval(agrid)-1e-6 .and. a_hrL < na) then
 						a_hrH = a_hrL+1
 						a_hrwt = (agrid(a_hrH)-a_hr)/(agrid(a_hrH)-agrid(a_hrL))
 					else
@@ -1679,100 +1712,123 @@ module sol_sim
 					!random number will be used in several potential shocks
 					call random_number(junk)
 					
-					! evalutate gwork and gapp by bilinear interpolation on e and a
-					if(status_hr < 4) then !choose work or rest
-						!low grid e, low grid a
-						work_hrLL = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
-						!low grid e, high grid a
-						work_hrLH = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
-						!high grid e, low grid a
-						work_hrHL = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
-						!high grid e, high grid a
-						work_hrLL = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
+					!make decisions if not yet retired
+					if(age_hr < TT) then 
+						! evalutate gwork and gapp by bilinear interpolation on e and a
+						if(status_hr < 4) then !choose work or rest
+							!low grid e, low grid a
+							work_hrLL = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
+							!low grid e, high grid a
+							work_hrLH = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
+							!high grid e, low grid a
+							work_hrHL = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
+							!high grid e, high grid a
+							work_hrHH = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
 
-						work_dif_it(i,it) = e_hrwt*a_hrwt*work_hrLL + e_hrwt*(1.-a_hrwt)*work_hrLH + &
-						&	(1-e_hrwt)*a_hrwt*work_hrHL + (1-e_hrwt)*(1.-a_hrwt)*work_hrHH
-						if( work_dif_it(i,it) > 0 ) then
-						! choose to work
-							status_it(i,it) = 1
-							status_tmrw = 1
-						elseif(status_hr .le. 2) then
-							status_it(i,it) = 2
-						! unemployed, may stay unemployed or become long-term unemployed
-							if(junk <=pphi) status_tmrw = 3
-							if(junk > pphi) status_tmrw = 2
-						else
-						!NDR no change, though may choose to apply for DI below
-							status_tmrw =  status_hr
+							work_dif_hr = e_hrwt*a_hrwt*work_hrLL + e_hrwt*(1.-a_hrwt)*work_hrLH + &
+							&	(1-e_hrwt)*a_hrwt*work_hrHL + (1-e_hrwt)*(1.-a_hrwt)*work_hrHH
+							if( work_dif_hr > 0 ) then
+							! choose to work
+								status_it(i,it) = 1
+								status_tmrw = 1
+							elseif(status_hr .le. 2) then
+								status_it(i,it) = 2
+							! unemployed, may stay unemployed or become long-term unemployed
+								if(junk <=pphi) status_tmrw = 3
+								if(junk > pphi) status_tmrw = 2
+							else
+							!NDR no change, though may choose to apply for DI below
+								status_tmrw =  status_hr
+							endif
+							work_dif_it(i,it) = work_dif_hr
 						endif
-					endif
-
-					if(status_hr == 3) then ! choose wait or apply
-						!low grid e, low grid a
-						app_hrLL = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
-						!low grid e, high grid a
-						app_hrLH = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
-						!high grid e, low grid a
-						app_hrHL = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
-						!high grid e, high grid a
-						app_hrLL = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
-						app_dif_it(i,it) = e_hrwt*a_hrwt*app_hrLL + e_hrwt*(1.-a_hrwt)*app_hrLH + &
-						&	(1-e_hrwt)*a_hrwt*app_hrHL + (1-e_hrwt)*(1.-a_hrwt)*app_hrHH
-						if( app_dif_it(i,it)>0 ) then
-						! choose to apply
-							app_it(i,it) = 1
-							if(junk<xi(d_hr)) status_tmrw = 4
-						else
-							app_it(i,it) = 0
+						if(status_hr .eq. 3) then ! choose wait or apply
+							!low grid e, low grid a
+							app_hrLL = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
+							!low grid e, high grid a
+							app_hrLH = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
+							!high grid e, low grid a
+							app_hrHL = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
+							!high grid e, high grid a
+							app_hrHH = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
+							app_dif_hr = e_hrwt*a_hrwt*app_hrLL + e_hrwt*(1.-a_hrwt)*app_hrLH + &
+							&	(1-e_hrwt)*a_hrwt*app_hrHL + (1-e_hrwt)*(1.-a_hrwt)*app_hrHH
+							if( app_dif_hr > 0 ) then
+							! choose to apply
+								app_it(i,it) = 1
+								if(junk<xi(d_hr)) status_tmrw = 4
+							else
+								app_it(i,it) = 0
+							endif
+							app_dif_it(i,it) = app_dif_hr
 						endif
-					endif
-					! the status that will go into next period
-					if(it<Tsim) &
-					&	status_it(i,it+1) = status_tmrw
-					
-					!evaluate the asset policy			
-					if(status_it(i,it) .eq. 1) then
-						a_hrLL = aW( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
-						a_hrLH = aW( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
-						a_hrHL = aW( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
-						a_hrHH = aW( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
-					elseif(status_it(i,it) .eq. 2) then
-						a_hrLL = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
-						a_hrLH = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
-						a_hrHL = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
-						a_hrHH = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
-					elseif(status_it(i,it) .eq. 3) then
-						a_hrLL = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
-						a_hrLH = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
-						a_hrHL = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
-						a_hrHH = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
-					elseif(status_it(i,it) .eq. 4) then
-						a_hrLL = aD( d_hr,e_hrL,a_hrL,age_hr )
-						a_hrLH = aD( d_hr,e_hrL,a_hrH,age_hr )
-						a_hrHL = aD( d_hr,e_hrH,a_hrL,age_hr )
-						a_hrHH = aD( d_hr,e_hrH,a_hrH,age_hr )
-					elseif(status_it(i,it) .eq. 5) then
+						! the status that will go into next period
+						if(it<Tsim) &
+						&	status_it(i,it+1) = status_tmrw
+						!evaluate the asset policy			
+						if(status_hr .eq. 1) then
+							a_hrLL = aW( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
+							a_hrLH = aW( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
+							a_hrHL = aW( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
+							a_hrHH = aW( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
+						elseif(status_hr .eq. 2) then
+							a_hrLL = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
+							a_hrLH = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
+							a_hrHL = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
+							a_hrHH = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
+						elseif(status_hr .eq. 3) then
+							a_hrLL = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
+							a_hrLH = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
+							a_hrHL = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
+							a_hrHH = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
+						elseif(status_hr .eq. 4) then
+							a_hrLL = aD( d_hr,e_hrL,a_hrL,age_hr )
+							a_hrLH = aD( d_hr,e_hrL,a_hrH,age_hr )
+							a_hrHL = aD( d_hr,e_hrH,a_hrL,age_hr )
+							a_hrHH = aD( d_hr,e_hrH,a_hrH,age_hr )
+						endif
+					! retired
+					else 
 						a_hrLL = aR( d_hr,e_hrL,a_hrL )
 						a_hrLH = aR( d_hr,e_hrL,a_hrH )
 						a_hrHH = aR( d_hr,e_hrH,a_hrL )
 						a_hrLL = aR( d_hr,e_hrH,a_hrH )
+						status_hr = 5
+						if(it<Tsim) &
+						&	status_it(i,it+1) = status_hr
 					endif
-					if(it<Tsim) &
-					&	a_it(i,it+1) = e_hrwt*a_hrwt*a_hrLL + e_hrwt*(1.-a_hrwt)*a_hrLH + &
-						&	(1-e_hrwt)*a_hrwt*a_hrHL + (1-e_hrwt)*(1.-a_hrwt)*a_hrHH
 
-					!push forward AIME
+
 					if(it<Tsim) then
-					if(status_hr .eq. 1) then
-						e_it(i,it+1) = (e_hr*(it-1) + wage_hr)/dble(it)
-					else
-						e_it(i,it+1) = e_it(i,it)
-					endif
+						! push forward asset					
+						a_it(i,it+1) = e_hrwt*a_hrwt*a_hrLL + e_hrwt*(1.-a_hrwt)*a_hrLH + &
+							&	(1-e_hrwt)*a_hrwt*a_hrHL + (1-e_hrwt)*(1.-a_hrwt)*a_hrHH
+						!push forward AIME
+						if(status_hr .eq. 1) then
+							e_it(i,it+1) = (e_hr*(it-1) + wage_hr)/dble(it)
+						else
+							e_it(i,it+1) = e_it(i,it)
+						endif
+						!push forward d 
+						if(age_hr<TT .and. d_hr<nd ) then
+							call random_number(junk)
+							if( junk < pid(d_hr,d_hr+1,del_hr,age_hr) ) d_it(i,it+1) = d_it(i,it)+1 
+						else 
+							d_it(i,it+1) = d_it(i,it)
+						endif
 					endif
 				enddo !1,Tsim
 			enddo! 1,Nsim
+			if(print_lev >3)then
+				call mat2csv (e_it,"e_it.csv")
+				call mat2csv (a_it,"a_it.csv")
+				call mati2csv(d_it,"d_it.csv")
+			endif
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! check age - specific distributions of a_it, d_it for convergence
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		enddo! iter
-
+		if(verbose >2 ) print *, "done simulating"
 		!fill the histories
 		hists%work_dif_hist = work_dif_it
 		hists%app_dif_hist  = app_dif_it
@@ -1786,7 +1842,7 @@ module sol_sim
 		enddo
 		
 		deallocate(d_it,a_it,e_it)
-		deallocate(z_jt,z_jt_int,del_i,al_it,j_i)
+		deallocate(z_jt,del_i,al_it,j_i)
 		deallocate(app_dif_it,app_it,work_it,work_dif_it)
 		deallocate(del_i_int,al_it_int,z_jt_int)
 
@@ -1814,31 +1870,8 @@ program V0main
 	!************************************************************************************************!
 
 		integer  :: id, it, ibi, iai, iz, narg_in
-	
-	!************************************************************************************************!
-	! Value Functions- Stack z-risk j and indiv. exposure beta_i
-	!************************************************************************************************!
 
-	real(8), allocatable	:: VR(:,:,:), &		!Retirement
-				VD(:,:,:,:), &		!Disabled
-				VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
-				VW(:,:,:,:,:,:,:), &	!Working
-				VU(:,:,:,:,:,:,:), &	!Unemployed
-				V(:,:,:,:,:,:,:)	!Participant
-	
-	real(8), allocatable	:: gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
-	
 
-	!************************************************************************************************!
-	! Policies objects- Stack z-risk j and indiv. exposure beta_i
-	!	+Asset grids correspond to V-funs
-	!	+g-grids correspond to discrete choices
-	!************************************************************************************************!
-	real(8), allocatable	:: aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
-				aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
-	integer, allocatable  	:: aiD(:,:,:,:), gapp(:,:,:,:,:,:,:), &
-				gwork(:,:,:,:,:,:,:)
-	
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
@@ -1858,10 +1891,11 @@ program V0main
 	! (disability extent, earn hist, assets)
 	allocate(val_sol%VR(nd,ne,na), stat=val_sol%alloced)
 	allocate(pol_sol%aR(nd,ne,na), stat=pol_sol%alloced)
+
 	! (disability extent, earn hist, assets, age)
 	allocate(val_sol%VD(nd,ne,na,TT), stat=val_sol%alloced)
 	allocate(pol_sol%aD(nd,ne,na,TT-1), stat=pol_sol%alloced)
-	allocate(aiD(nd,ne,na,TT-1))	
+
 	! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
 	allocate(val_sol%VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
 	allocate(val_sol%VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
@@ -1922,11 +1956,10 @@ program V0main
 	!****************************************************************************!
 	! IF you love something.... 
 	!****************************************************************************!
-	deallocate(aR,aD,aN, aU, aW,gwork, gapp)
-	deallocate(aiD)
-	deallocate(VR,VD,VN,VU,VW,V)
-	deallocate(gwork_dif,gapp_dif)
-
+	deallocate(pol_sol%aR,pol_sol%aD,pol_sol%aN, pol_sol%aU, pol_sol%aW,pol_sol%gwork, pol_sol%gapp)
+	deallocate(pol_sol%gwork_dif,pol_sol%gapp_dif)
+	deallocate(val_sol%VR,val_sol%VD,val_sol%VN,val_sol%VU,val_sol%VW,val_sol%V)
+	deallocate(hists_sim%wage_hist,hists_sim%work_dif_hist,hists_sim%app_dif_hist,hists_sim%obsX_hist)
 
 
 End PROGRAM
