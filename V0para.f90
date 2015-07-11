@@ -65,18 +65,18 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter :: 	nai = 2, &!11	!Number of individual alpha types 
+integer, parameter :: 	nai = 11, &!11	!Number of individual alpha types 
 		nbi = 1,  &		!Number of indiVidual beta types
 		ndi = 3,  &		!Number of individual disability types
 		nj  = 1,  &		!Number of occupations (downward TFP risk variation)
 		nd  = 3,  &		!Number of disability extents
-		ne  = 5, &!10		!Points on earnings grid
-		na  = 20, &!200		!Points on assets grid
+		ne  = 10, &!10		!Points on earnings grid
+		na  = 200, &!200	!Points on assets grid
 		nz  = 3,  &		!Number of Occ TFP Shocks
-		maxiter = 1, &!2000	!Tolerance parameter	
-		iaa_lowindow = 10,& 	!how far below to begin search
-		iaa_hiwindow = 25, &	!how far above to keep searching
-		Nsim = 100, &!10000	!how many agents to draw
+		maxiter = 2000, &!	!Tolerance parameter	
+		iaa_lowindow = 5,& 	!how far below to begin search
+		iaa_hiwindow = 10, &	!how far above to keep searching
+		Nsim = 10000, &!	!how many agents to draw
 		Ndat = 5000, & 		!size of data, for estimation
 		Tsim = tLength*(int(Longev)+1), &	!how many periods to solve
 		Nk   = 6		!number of regressors
@@ -304,7 +304,8 @@ subroutine setparams()
 end subroutine setparams
 
 !****************************************************************************************************************************************!
-!8888888888888888888888888888888888888888		FUNCTIONS		888888888888888888888888888888888888888888888888888888888!
+!		FUNCTIONS		
+!
 !****************************************************************************************************************************************!
 
 		

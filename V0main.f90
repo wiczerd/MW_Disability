@@ -387,7 +387,7 @@ module sol_sim
 		! Value Functions- Stack z-risk j and indiv. exposure beta_i
 		!************************************************************************************************!
 		real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, Vc1, Vnapp, anapp,aapp, maxer_v, smthV,smthV0param, &
-					&	iee1wt
+					&	iee1wt, maxVNV0
 		real(8), allocatable	:: maxer(:,:,:,:,:)
 		real(8), allocatable :: VR0(:,:,:), &			!Retirement
 					VD0(:,:,:,:), &			!Disabled
@@ -768,7 +768,7 @@ module sol_sim
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!  
 			!$OMP  parallel do default(shared) &
-			!$OMP& private(iai,id,ie,iz,iw,apol,iaa1,ia,iaa,chere,Vtest2,Vtest1,Vc1,iaai,izz)
+			!$OMP& private(iai,id,ie,iz,iw,apol,iaa1,ia,iaa,chere,Vtest2,Vtest1,Vc1,iaai,izz,maxVNV0)
 			  	do iai=1,nai	!Loop over alpha (ai)
 				do id=1,nd	!Loop over disability index
 			  	do ie=1,ne	!Loop over earnings index
@@ -784,13 +784,14 @@ module sol_sim
 						do iaa=iaa1,na
 							chere = UI(egrid(ie))+R*agrid(ia)-agrid(iaa)
 							if(chere>0.) then 
-								!Continuation value if don't go on disability
-								Vtest2 = 0.
+								Vtest2 = 0. !Continuation value if don't go on disability
 								do izz = 1,nz	 !Loop over z'
 								do iaai = 1,nai !Loop over alpha_i'
-									Vc1 = (1.-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) & !Age and might go LTU
-										& +ptau(TT-it)*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it)+(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, maybe LTU
-									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1)  !Probability of alpha_i X z_i draw 
+									Vc1 = (1.-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1) &
+										& 	+(1-pphi)*   VU0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1) )  !Age and might go LTU
+									Vc1 = ptau(TT-it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it) & 
+										&	+(1-pphi)*   VU0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it) ) + Vc1    !Don't age, maybe LTU
+									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*Vc1  !Probability of alpha_i X z_i draw 
 								enddo
 								enddo
 								Vtest2 = Vtest2 + util(chere,id,iw)
@@ -915,11 +916,15 @@ module sol_sim
 								
 								!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 								!  Make this a max s.t. can go to V0 or can go to VN0
-									Vc1 = (1-ptau(TT-it))*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it+1) &
-										& +rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1)) !Age and might go on DI
-									Vc1 = Vc1+ptau(TT-it)*((1-rhho)*VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it) &
-										& +rhho*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))     !Don't age, might go on DI
-									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*(Vc1) 
+									maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1), &
+											& 	VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1))
+									Vc1 = (1-ptau(TT-it))*((1-rhho)* &
+											&	VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it+1) +rhho*maxVNV0) !Age and might go on DI
+									maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it), & 
+											&	VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))
+									Vc1 = Vc1+ptau(TT-it)*((1-rhho)* & 
+											&	VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it) +rhho*maxVNV0)     !Don't age, might go on DI
+									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(iai,iaai)*Vc1 
 								enddo
 								enddo
 								Vtest2 = Vtest2 + util(chere,id,iw)
