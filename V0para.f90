@@ -65,17 +65,17 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter :: 	nai = 11, &!11	!Number of individual alpha types 
+integer, parameter :: 	nai = 2, &!11	!Number of individual alpha types 
 		nbi = 1,  &		!Number of indiVidual beta types
 		ndi = 3,  &		!Number of individual disability types
 		nj  = 1,  &		!Number of occupations (downward TFP risk variation)
 		nd  = 3,  &		!Number of disability extents
-		ne  = 10, &!10		!Points on earnings grid
+		ne  = 2, &!10		!Points on earnings grid
 		na  = 200, &!200	!Points on assets grid
 		nz  = 3,  &		!Number of Occ TFP Shocks
 		maxiter = 2000, &!	!Tolerance parameter	
-		iaa_lowindow = 5,& 	!how far below to begin search
-		iaa_hiwindow = 10, &	!how far above to keep searching
+		iaa_lowindow = 20,& 	!how far below to begin search
+		iaa_hiwindow = 20, &	!how far above to keep searching
 		Nsim = 10000, &!	!how many agents to draw
 		Ndat = 5000, & 		!size of data, for estimation
 		Tsim = tLength*(int(Longev)+1), &	!how many periods to solve
@@ -276,7 +276,7 @@ subroutine setparams()
 	EndDO
 	EndDO
 	! convert annual d risks to risk in tlength-periodicity
-	pid = 1-((1-pid)**tlength)
+!	pid = 1-((1-pid)**tlength)
 		
 	!Technology: piz(iz,iz';j) <--- occupations differ in downside risk       
 	DO j=1,nj
@@ -291,7 +291,7 @@ subroutine setparams()
 		piz(3,3,j) = 1-piz4*occz(j)	  !Stay in high shock
 	EndDO
 	! convert annual z risks to risk in tlength-periodicity
-	piz = 1-((1-piz)**tlength)
+!	piz = 1-((1-piz)**tlength)
 	
 	! distribution across occupations
 	Njdist(1) = 0.5

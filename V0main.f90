@@ -380,7 +380,7 @@ module sol_sim
 	!************************************************************************************************!
 
 		integer  :: i, j, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp,apol, ibi, iai, ij , idi, izz, iaai,  &
-			    iee1, iee2, iz, iw,wo
+			    iee1, iee2, iz, iw,wo, iter
 		integer, dimension(5) :: maxer_i
 	
 		!************************************************************************************************!
@@ -493,8 +493,8 @@ module sol_sim
 			i = 1
 			call vec2csv(VR0(i,i,:),"VR0.csv",0)
 		endif		
-		j = 1
-		do WHILE (j<=maxiter)
+		iter = 1
+		do WHILE (iter<=maxiter)
 			summer = 0
 			id =1
 		  	do ie=1,ne
@@ -529,14 +529,14 @@ module sol_sim
 			IF (summer < Vtol) THEN
 				exit	!Converged				
 			else
-				j=j+1
+				iter=iter+1
 				if(print_lev >3) then
 					i = 1
 					call vec2csv(aR(i,i,:),"aR.csv",0)
 					call vec2csv(VR(i,i,:),"VR.csv",0)
 				endif
 			endif
-		enddo ! iteration j
+		enddo ! iteration iter
 
 		if(summer >= Vtol) then
 			print *, "VR did not converge"
@@ -603,8 +603,8 @@ module sol_sim
 			endif
 
 			!Loop to find V(..,it) as fixed point
-			j=1
-			do WHILE (j<=maxiter)
+			iter=1
+			do WHILE (iter<=maxiter)
 				summer = 0
 				id =1
 				!Loop over earnings index
@@ -650,8 +650,8 @@ module sol_sim
 					exit	!Converged
 				EndIF
 				VD0(id,:,:,TT-it) = VD(id,:,:,TT-it)	!New guess
-				j=j+1
-			enddo	!j: V-iter loop
+				iter=iter+1
+			enddo	!iter: V-iter loop
 			! set the other value for other disability levels
 			i =1 
 			do id = 2,nd
@@ -680,30 +680,7 @@ module sol_sim
 	!3) Calculate V= max(VW,VN); requires calculating VW and VN
 
 	! initialize
-!	do ij=1,nj
-!	do ibi=1,nbi
-!	do idi=1,ndi
-!	do iai=1,nai
-!	do iz=1,nz   
-!		do id=1,nd
-!		do ie=1,ne
-!		do ia=1,na
-!			VW ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
-!			VW0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
-!			VN ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
-!			VN0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
-!			VU ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
-!			VU0((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
-!			V  ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)
-!			V0 ((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT) = VR(id,ie,ia)	   
-!		enddo
-!		enddo
-!		enddo
-!	enddo
-!	enddo
-!	enddo
-!	enddo
-!	enddo
+
 	do id=1,nd
 	do ie=1,ne
 	do ia=1,na
@@ -753,13 +730,13 @@ module sol_sim
 
 			!***********************************************************************************************************
 			!Loop over V=max(VU,VW)	
-			j=1
+			iter=1
 			smthV0param  =1. ! will tighten this down
-			do WHILE (j<=maxiter)
+			do WHILE (iter<=maxiter)
 				maxer = 0.
 				summer = 0.	!Use to calc |V-V0|<eps
 				! lots f printing every 100 iterations (mod 1 because Fortran is designed by idiots using base-1 indexing)
-				if(mod(j,100) .eq. 1) then
+				if(mod(iter,100) .eq. 1) then
 					print_lev = 4
 				else 
 					print_lev =1
@@ -836,6 +813,19 @@ module sol_sim
 			!------------------------------------------------!
 			!Solve VN given guesses on VW, VN, and implied V
 			!------------------------------------------------! 
+!			  	do iai=1,nai	!Loop over alpha (ai)
+!				do id=1,nd	!Loop over disability index
+!			  	do ie=1,ne	!Loop over earnings index
+!			  	do iz=1,nz	!Loop over TFP			
+!					do ia=1,na
+!						VN((ij-1)*nbi+ibi,(idi-1)*nai+iai,id,ie,ia,iz,TT-it) = 	VD(id,ie,ia,TT-it)				
+!					enddo
+!				enddo
+!				enddo
+!				enddo
+!				enddo
+
+
 
 			!$OMP  parallel do default(shared) &
 			!$OMP& private(iai,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz) 
@@ -883,8 +873,12 @@ module sol_sim
 									Vtest1 = Vtest2
 								elseif(iaa > apol +iaa_hiwindow) then
 									exit
+								elseif( (Vtest2 < Vtest1) .and. (iaa <= iaa1app+1) .and. (iaa1app > 1)) then 
+								!if the second and it's going down, then back up
+									iaa = 1
+									iaa1app =1
 								endif
-							elseif(iaa<= iaa1app .and. Vtest1 <= -1e4 .and. apol <= iaa1app) then
+							elseif(iaa<= iaa1app .and. Vtest1 <= -1e5 .and. apol <= iaa1app) then
 								iaa = 1 !started too much saving, go back towards zero
 								iaa1app = 1
 							else
@@ -895,7 +889,7 @@ module sol_sim
 						Vapp = Vtest1
 						iaa1app = max(apol -iaa_lowindow,1) !concave, start next loop here
 						aapp = agrid(apol)					
-						if(Vapp <-1e4) then
+						if(Vapp <-1e5) then
 							write(*,*) "ruh roh!"
 							write(*,*) "VD: ",id,ie,iaa,TT-it
 							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,TT-it
@@ -934,8 +928,12 @@ module sol_sim
 									Vtest1 = Vtest2 
 								elseif(iaa > apol+iaa_hiwindow) then
 									exit
+								elseif( (Vtest2 < Vtest1) .and. (iaa <= iaa1napp+1) .and. (iaa1napp > 1)) then 
+								!if the second and it's going down, then back up
+									iaa = 1
+									iaa1napp =1
 								endif
-							elseif(iaa .eq. iaa1napp .and. Vtest1 <= -1e4 .and. apol .eq. iaa1napp) then
+							elseif(iaa .eq. iaa1napp .and. Vtest1 <= -1e5 .and. apol .eq. iaa1napp) then
 								iaa = 1 !started too much saving, go back towards zero
 								iaa1napp = 1
 							else
@@ -946,7 +944,11 @@ module sol_sim
 						iaa1napp = max(apol-iaa_lowindow,1)
 						Vnapp = Vtest1 					
 						aNapp = agrid(apol)
-
+						if(Vnapp <-1e5) then
+							write(*,*) "ruh roh!"
+							write(*,*) "VD: ",id,ie,iaa,TT-it
+							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,TT-it
+						endif
 
 						!******************************************************
 						!***************** Discrete choice for application
@@ -1085,9 +1087,13 @@ module sol_sim
 									apol = iaa
 								elseif(iaa>apol+iaa_hiwindow) then
 									exit
+								elseif( (Vtest2 < Vtest1) .and. (iaa <= iaa1+1) .and. (iaa1 > 1)) then 
+								!if the second and it's going down, then back up
+									iaa = 1
+									iaa1 =1
 								endif
 							elseif(iaa == iaa1 .and. Vtest1<=-5e4 .and. apol == iaa1 ) then
-								!back it up
+								!back it up because started with unfeasible savings / negative consumption
 								iaa = 1
 								iaa1 =1
 							else 
@@ -1183,20 +1189,20 @@ module sol_sim
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-				! End of j iteration
+				! End of iter iteration
 				!------------------------------------------------!
 				!Check |V-V0|<eps
 				!------------------------------------------------!
-				write(*,*) summer, j, ij, ibi, idi, it
+				write(*,*) summer, iter, ij, ibi, idi, it
 				write(*,*) maxer_v, maxer_i(1), maxer_i(2), maxer_i(3), maxer_i(4), maxer_i(5)
 				
-				if (summer < Vtol) then
+				if (summer < Vtol ) then
 					exit !Converged
 				endif
 
-				j=j+1
+				iter=iter+1
 				smthV0param = smthV0param*1.5 !tighten up the discrete choice
-			enddo	!j: V-iter loop
+			enddo	!iter: V-iter loop
 	!WRITE(*,*) ij, ibi, idi, it
 		enddo	!t loop, going backwards
 
