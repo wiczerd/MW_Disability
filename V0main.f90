@@ -828,7 +828,7 @@ module sol_sim
 
 
 			!$OMP  parallel do default(shared) &
-			!$OMP& private(iai,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz) 
+			!$OMP& private(iai,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz,maxVNV0) 
 			  	do iai=1,nai	!Loop over alpha (ai)
 				do id=1,nd	!Loop over disability index
 			  	do ie=1,ne	!Loop over earnings index
@@ -978,7 +978,7 @@ module sol_sim
 				enddo !id 
 				enddo !iai
 				
-			!$OMP  END PARALLEL do
+			!$OMP END PARALLEL do
 			
 				!------------------------------------------------!			
 				! Done making VN
@@ -1430,7 +1430,7 @@ module sol_sim
 		integer, allocatable :: z_jt_macro(:,:) !this will be the panel across occupations -> z_jt by i's j
 
 		allocate(z_jt_macro(nj,Tsim))
-		allocate(cumpi_j(nz,nz))
+		allocate(cumpi_j(nz,nz+1))
 		
 		call random_seed(size = ss)
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
@@ -1442,12 +1442,12 @@ module sol_sim
 		do ij=1,nj
 			do iz=1,nz
 				izp = 1
-				cumpi_j(iz,izp) = piz(iz,izp,ij)
+				cumpi_j(iz,izp+1) = piz(iz,izp,ij)
 				do izp=2,nz
-					cumpi_j(iz,izp) = piz(iz,izp,ij) + cumpi_j(iz,izp-1)
+					cumpi_j(iz,izp+1) = piz(iz,izp,ij) + cumpi_j(iz,izp)
 				enddo
 			enddo
-			! start everyone from normal, alternatively could start from random draw on ergodic dist
+			! start everyone from good state, alternatively could start from random draw on ergodic dist
 			z_jt_t = 3
 			do it = 1,Tsim
 				call random_number(z_innov)
@@ -1538,7 +1538,7 @@ module sol_sim
 		real(8), allocatable :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
 		integer, allocatable :: status_it(:,:)  !track W,U,N,D,R : 1,2,3,4,5
 		real(8), allocatable :: e_it(:,:), a_it(:,:)
-		integer, allocatable :: d_it(:,:)
+		integer, allocatable :: d_it(:,:), a_it_int(:,:)
 		
 		real(8), pointer ::	VR(:,:,:), &			!Retirement
 					VD(:,:,:,:), &			!Disabled
@@ -1600,6 +1600,7 @@ module sol_sim
 
 
 		allocate(a_it(Nsim,Tsim))
+		allocate(a_it_int(Nsim,Tsim))		
 		allocate(e_it(Nsim,Tsim))
 		allocate(d_it(Nsim,Tsim))
 		allocate(work_it(Nsim,Tsim))
@@ -1652,7 +1653,8 @@ module sol_sim
 
 		! will draw these from endogenous distributions the second time around
 		d_it = 1
-		a_it = 0.
+		a_it = minval(agrid)
+		a_it_int = 1
 		e_it = minval(egrid)
 
 		!use only 1 value of beta
@@ -1661,6 +1663,8 @@ module sol_sim
 		
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,4
+			! OMP  parallel do default(shared) &
+			! OMP& private(iai,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz,maxVNV0) 
 			do i=1,Nsim
 				!fixed traits
 				del_hr = del_i_int(i)
@@ -1725,8 +1729,30 @@ module sol_sim
 					
 					!make decisions if not yet retired
 					if(age_hr < TT) then 
+
+						if(status_hr .eq. 3) then ! choose wait or apply
+							!low grid e, low grid a
+							app_hrLL = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
+							!low grid e, high grid a
+							app_hrLH = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
+							!high grid e, low grid a
+							app_hrHL = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
+							!high grid e, high grid a
+							app_hrHH = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
+							app_dif_hr = e_hrwt*a_hrwt*app_hrLL + e_hrwt*(1.-a_hrwt)*app_hrLH + &
+							&	(1-e_hrwt)*a_hrwt*app_hrHL + (1-e_hrwt)*(1.-a_hrwt)*app_hrHH
+							if( app_dif_hr >= 0 ) then
+							! choose to apply
+								app_it(i,it) = 1
+								if(junk<xi(d_hr)) status_tmrw = 4
+							else
+								app_it(i,it) = 0
+							endif
+							app_dif_it(i,it) = app_dif_hr
+						endif
+
 						! evalutate gwork and gapp by bilinear interpolation on e and a
-						if(status_hr < 4) then !choose work or rest
+						if((status_hr < 3) .or. (status_hr .eq. 4 .and. app_dif_hr < 0 ))then !choose work or rest
 							!low grid e, low grid a
 							work_hrLL = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
 							!low grid e, high grid a
@@ -1740,8 +1766,13 @@ module sol_sim
 							&	(1-e_hrwt)*a_hrwt*work_hrHL + (1-e_hrwt)*(1.-a_hrwt)*work_hrHH
 							if( work_dif_hr > 0 ) then
 							! choose to work
-								status_it(i,it) = 1
-								status_tmrw = 1
+								if(status_hr < 3) then !not LTU
+									status_it(i,it) = 1
+									status_tmrw = 1
+								else !LTU, have to get a good shock 
+									if(junk <=rhho) status_tmrw = 1
+									if(junk > rhho)  status_tmrw = status_hr
+								endif
 							elseif(status_hr .le. 2) then
 								status_it(i,it) = 2
 							! unemployed, may stay unemployed or become long-term unemployed
@@ -1753,26 +1784,7 @@ module sol_sim
 							endif
 							work_dif_it(i,it) = work_dif_hr
 						endif
-						if(status_hr .eq. 3) then ! choose wait or apply
-							!low grid e, low grid a
-							app_hrLL = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrL,zi_hr,age_hr )
-							!low grid e, high grid a
-							app_hrLH = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrL,a_hrH,zi_hr,age_hr )
-							!high grid e, low grid a
-							app_hrHL = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrL,zi_hr,age_hr )
-							!high grid e, high grid a
-							app_hrHH = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,e_hrH,a_hrH,zi_hr,age_hr )
-							app_dif_hr = e_hrwt*a_hrwt*app_hrLL + e_hrwt*(1.-a_hrwt)*app_hrLH + &
-							&	(1-e_hrwt)*a_hrwt*app_hrHL + (1-e_hrwt)*(1.-a_hrwt)*app_hrHH
-							if( app_dif_hr > 0 ) then
-							! choose to apply
-								app_it(i,it) = 1
-								if(junk<xi(d_hr)) status_tmrw = 4
-							else
-								app_it(i,it) = 0
-							endif
-							app_dif_it(i,it) = app_dif_hr
-						endif
+
 						! the status that will go into next period
 						if(it<Tsim) &
 						&	status_it(i,it+1) = status_tmrw
@@ -1830,6 +1842,9 @@ module sol_sim
 					endif
 				enddo !1,Tsim
 			enddo! 1,Nsim
+			! OMP  end parallel do 
+
+			
 			if(print_lev >3)then
 				call mat2csv (e_it,"e_it.csv")
 				call mat2csv (a_it,"a_it.csv")
@@ -1880,7 +1895,7 @@ program V0main
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: id, it, ibi, iai, iz, narg_in
+		integer  :: id, it, ij, ibi, iai, iz, narg_in, wo
 
 
 	!************************************************************************************************!
@@ -1934,25 +1949,39 @@ program V0main
 
 	call setparams()
 	agrid(1) = .05*(agrid(1)+agrid(2))
-	call vec2csv(agrid,"agrid.csv")
-
-	!**** for diagnostic calculate wages at each wage-determining levels
-	open(1, file="wage_dist.csv")
-	ibi =1
-	iz  =2
-	do it = 1,TT-1
-		do iai =1,nai
-			do id = 1,nd-1
-				wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
-				write(1, "(G20.12)", advance='no') wagehere
-			enddo
-			id = nd
-			wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
-			write(1,*) wagehere
+	if(print_lev >= 3) then
+		call vec2csv(agrid,"agrid.csv")
+		wo = 0
+		do ij = 1,nj
+			call mat2csv(piz(:,:,ij),"piz.csv",wo)
+			if(wo==0) wo =1
 		enddo
-		write(1,*) " "! trailing space
-	enddo	
-	close(1)
+		
+		wo=0
+		do it = 1,TT-1
+			do ij = 1,ndi
+				call mat2csv(pid(:,:,ij,it),"pid.csv",wo)
+				if(wo==0) wo =1
+			enddo
+		enddo
+
+		open(1, file="wage_dist.csv")
+		ibi =1
+		iz  =2
+		do it = 1,TT-1
+			do iai =1,nai
+				do id = 1,nd-1
+					wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
+					write(1, "(G20.12)", advance='no') wagehere
+				enddo
+				id = nd
+				wagehere = wage(beti(ibi),alfi(iai),id,zgrid(iz),it)
+				write(1,*) wagehere
+			enddo
+			write(1,*) " "! trailing space
+		enddo	
+		close(1)
+	endif
 
 	if(verbose >2) print *, "Solving the model"
 	call sol(val_sol,pol_sol)

@@ -70,13 +70,13 @@ integer, parameter :: 	nai = 2, &!11	!Number of individual alpha types
 		ndi = 3,  &		!Number of individual disability types
 		nj  = 1,  &		!Number of occupations (downward TFP risk variation)
 		nd  = 3,  &		!Number of disability extents
-		ne  = 2, &!10		!Points on earnings grid
-		na  = 200, &!200	!Points on assets grid
+		ne  = 3, &!10		!Points on earnings grid
+		na  = 50, &!200	!Points on assets grid
 		nz  = 3,  &		!Number of Occ TFP Shocks
 		maxiter = 2000, &!	!Tolerance parameter	
 		iaa_lowindow = 20,& 	!how far below to begin search
 		iaa_hiwindow = 20, &	!how far above to keep searching
-		Nsim = 10000, &!	!how many agents to draw
+		Nsim = 100, &!	!how many agents to draw
 		Ndat = 5000, & 		!size of data, for estimation
 		Tsim = tLength*(int(Longev)+1), &	!how many periods to solve
 		Nk   = 6		!number of regressors
@@ -264,34 +264,35 @@ subroutine setparams()
 	!Disability: pid(id,id';i,t) <---indv. type and age specific
 	DO i=1,ndi
 	DO t=1,TT-1
-		pid(1,1,i,TT-t) = 1-pid1*dtau(TT-t)*dtype(i)		!Stay healthy
-		pid(1,2,i,TT-t) = pid1*dtau(TT-t)*dtype(i)		!Partial Disability
+
+		pid(1,2,i,TT-t) = 1-(1-pid1*dtau(TT-t)*dtype(i)) &	!Partial Disability 
+					& **(1./tlength)	
+		pid(1,1,i,TT-t) = 1-pid(1,2,i,TT-t)			!Stay healthy
 		pid(1,3,i,TT-t) = 0					!Full Disability
 		pid(2,1,i,TT-t) = 0					!Monotone
-		pid(2,2,i,TT-t) = 1-pid2*dtau(TT-t)*dtype(i)	!Stay Partial
-		pid(2,3,i,TT-t) = pid2*dtau(TT-t)*dtype(i)		!Full Disability
-		pid(3,1,i,TT-t) = 0		!Full is absorbing State
+		pid(2,3,i,TT-t) = 1-(1-pid2*dtau(TT-t)*dtype(i)) &	!Full Disability
+					& **(1./tlength)	
+		pid(2,2,i,TT-t) = 1-pid(2,3,i,TT-t)			!Stay Partial
+		pid(3,1,i,TT-t) = 0					!Full is absorbing State
 		pid(3,2,i,TT-t) = 0
 		pid(3,3,i,TT-t) = 1
 	EndDO
 	EndDO
-	! convert annual d risks to risk in tlength-periodicity
-!	pid = 1-((1-pid)**tlength)
 		
 	!Technology: piz(iz,iz';j) <--- occupations differ in downside risk       
 	DO j=1,nj
-		piz(1,1,j) = 1-piz1   	!Stay in really bad shock
-		piz(1,2,j) = piz1		!Move to low shock
+		piz(1,1,j) = (1-piz1)**(1./tlength)	!Stay in really bad shock
+		piz(1,2,j) = 1-piz(1,1,j)		!Move to low shock
 		piz(1,3,j) = 0
-		piz(2,1,j) = piz2*occz(j)	  !Move to really bad shock (occupations affect it)
-		piz(2,2,j) = 1-piz2*occz(j)-piz3 !Stay in low shock
-		piz(2,3,j) = piz3		  !Move to high shock
-		piz(3,1,j) = 0		  !Must go through low to get to really bad
-		piz(3,2,j) = piz4*occz(j)	  !Move to low shock
-		piz(3,3,j) = 1-piz4*occz(j)	  !Stay in high shock
+		piz(2,2,j) = (1-piz2*occz(j)-piz3) &	!Stay in low shock
+				&**(1./tlength)	
+		piz(2,3,j) = 1-(1-piz3)**(1./tlength)	!Move to high shock
+		piz(2,1,j) = 1-piz(2,2,j)-piz(2,3,j)	!Move to really bad shock (occupations affect it)
+		piz(3,1,j) = 0				!Must go through low to get to really bad
+		piz(3,3,j) = (1-piz4*occz(j))**(1./tlength)	  !Stay in high shock
+		piz(3,2,j) = 1-piz(3,3,j)		!Move to low shock
+		
 	EndDO
-	! convert annual z risks to risk in tlength-periodicity
-!	piz = 1-((1-piz)**tlength)
 	
 	! distribution across occupations
 	Njdist(1) = 0.5
