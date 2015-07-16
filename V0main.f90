@@ -891,6 +891,7 @@ module sol_sim
 						aapp = apol !agrid(apol)					
 						if(Vapp <-1e5) then
 							write(*,*) "ruh roh!"
+							write(*,*) "Vapp, aapp: ", Vapp, aapp
 							write(*,*) "VD: ",id,ie,iaa,TT-it
 							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,TT-it
 						endif
@@ -944,8 +945,9 @@ module sol_sim
 						iaa1napp = max(apol-iaa_lowindow,1)
 						Vnapp = Vtest1 					
 						aNapp = apol !agrid(apol)
-						if(Vnapp <-1e5) then
+						if(Vnapp <-1e5 .and. verbose >0) then
 							write(*,*) "ruh roh!"
+							write(*,*) "Vnapp, aNapp: ", Vnapp, aNapp
 							write(*,*) "VD: ",id,ie,iaa,TT-it
 							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,TT-it
 						endif
@@ -1103,7 +1105,7 @@ module sol_sim
 						enddo	!iaa
 						iaa1 = max(iaa -iaa_lowindow,1)	!concave? start next loop here
 						VW((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = Vtest1
-						aW((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = agrid(apol)
+						aW((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = apol !agrid(apol)
 
 
 						!------------------------------------------------!
@@ -1157,7 +1159,7 @@ module sol_sim
 			  	enddo !ie
 			  	enddo !iz
 
-				if (print_lev >3) then
+				if (print_lev >2) then
 					wo = 0
 					do ial=1,nai	!Loop over alpha (ai)
 					do ie=1,ne	!Loop over earnings index
@@ -1193,9 +1195,10 @@ module sol_sim
 				!------------------------------------------------!
 				!Check |V-V0|<eps
 				!------------------------------------------------!
-				write(*,*) summer, iter, ij, ibi, idi, it
-				write(*,*) maxer_v, maxer_i(1), maxer_i(2), maxer_i(3), maxer_i(4), maxer_i(5)
-				
+				if(verbose > 3 .or. (verbose >1 .and. mod(iter,100).eq. 0)) then
+					write(*,*) summer, iter, ij, ibi, idi, it
+					write(*,*) maxer_v, maxer_i(1), maxer_i(2), maxer_i(3), maxer_i(4), maxer_i(5)
+				endif
 				if (summer < Vtol ) then
 					exit !Converged
 				endif
@@ -1221,33 +1224,59 @@ module sol_sim
 		!	enddo !ie
 		!	enddo !iz
 		! 	enddo !ia
+
 		
 		! this plots work-rest and di application on the cross product of alphai and deltai and di
-		ibi = 1
-		idi = 1
-		wo  = 0
-		do iz=1,nz
-		do ie=1,ne
-		do ia=1,na
-			do it=1,TT-1
-		!				nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
-				call mati2csv(gapp(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dipol_dalpha.csv',wo)
-				call mati2csv(gwork(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'workpol_dalpha.csv',wo)
+		if(print_lev >1) then
+			ibi = 1
+			idi = 1
+			ij  = 1
+			wo  = 0
 
-				call mat2csv(gapp_dif(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dilat_dalpha.csv',wo)
-				call mat2csv(gwork_dif(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'worklat_dalpha.csv',wo)
-				if(wo ==0 ) wo =1
+			id  = 1
+			ie  = 1
+			call mati2csv(aD(id,ie,:,:),"aD.csv",wo)
+			call mat2csv (VD(id,ie,:,:),"VD.csv",wo)
+
+			i = 1
+			call veci2csv(aR(id,ie,:),"aR.csv",0)
+			call vec2csv (VR(id,ie,:),"VR.csv",0)
+
+
+			do ial=1,nai	!Loop over alpha (ai)
+			do ie=1,ne	!Loop over earnings index
+			do iz=1,nz	!Loop over TFP
+				! matrix in disability and assets
+				call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"VW_it.csv",wo)
+				call mati2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"aW_it.csv",wo)
+				call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gwork_it.csv",wo)
+				call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gwork_idf_it.csv",wo)
+				if(wo==0) wo =1
+			enddo !iz 
+			enddo !ie 
+			enddo !ial 	
+
+			do iz=1,nz
+			do ie=1,ne
+			do ia=1,na
+				do it=1,TT-1
+			!				nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
+					call mati2csv(gapp(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dipol_dalpha.csv',wo)
+					call mati2csv(gwork(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'workpol_dalpha.csv',wo)
+
+					call mat2csv(gapp_dif(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dilat_dalpha.csv',wo)
+					call mat2csv(gwork_dif(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'worklat_dalpha.csv',wo)
+					if(wo ==0 ) wo =1
+				enddo
 			enddo
-		enddo
-		enddo
-		enddo
+			enddo
+			enddo
 
-
-		call vec2csv(dtype,'DriskGrid.csv',0)
-		call vec2csv(alfi(:),'AlfGrid.csv',0)
-		call vec2csv(occz(:),'ZriskGrid.csv',0)
-		call vec2csv(agrid(:),'Agrid.csv',0)
-
+			call vec2csv(dtype,'DriskGrid.csv',0)
+			call vec2csv(alfi(:),'AlfGrid.csv',0)
+			call vec2csv(occz(:),'ZriskGrid.csv',0)
+			call vec2csv(agrid(:),'Agrid.csv',0)
+		endif
 !		val_funs%VR = VR
 !		pol_funs%aR = aR
 !		val_funs%VD = VD
@@ -1375,7 +1404,7 @@ module sol_sim
 
 			enddo
 		enddo
-		if(success > 0.2*Nsim*Tsim) success = 0
+		if(success > 0.2*Nsim*Tsim)  success = 0
 		if(success <= 0.2*Nsim*Tsim) success = 1
 		
 	end subroutine draw_alit
@@ -1387,14 +1416,14 @@ module sol_sim
 		integer,intent(in)  :: seed0
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
-		real(8)	:: Njcumdist(nj)
+		real(8)	:: Njcumdist(nj+1)
 		real(8) :: draw_i
 
 		i =1
 		Njcumdist = Njdist(i)
 		if(nj>1) then
-			do i=2,nj
-				Njcumdist(i) = Njdist(i) + Njcumdist(i-1)
+			do i=1,nj
+				Njcumdist(i+1) = Njdist(i) + Njcumdist(i)
 			enddo
 		
 			call random_seed(size = ss)
@@ -1478,8 +1507,7 @@ module sol_sim
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
-		real(8), dimension(TT-1) :: cumpi_t0
-		real(8), dimension(TT,TT) :: cumpi_t
+		real(8), dimension(TT) :: cumpi_t0
 		real(8), dimension(TT-1) :: prob_t_nTT
 		real(8) :: rand_age
 		
@@ -1488,19 +1516,18 @@ module sol_sim
 		call random_seed(put = bdayseed(1:ss) )
 
 		!set up cumulative probabilities for t0 and conditional draws
-		forall(it=1:TT,itp=1:TT) cumpi_t(it,itp) = 0.
+		!not begining with anyone from TT
 		forall(it=1:TT-1) prob_t_nTT(it) = prob_t(it)/(1-prob_t(TT))
+		cumpi_t0 = 0.
 		it = 1
-		cumpi_t0(it) = prob_t_nTT(it)
-		cumpi_t(it,it) = 1.-ptau(it)
+		cumpi_t0(it+1) = prob_t_nTT(it)
 		do it=2,TT-1
-			cumpi_t0(it) = prob_t_nTT(it) + cumpi_t0(it-1)
+			cumpi_t0(it+1) = prob_t_nTT(it) + cumpi_t0(it)
 		enddo
 		
 		do i=1,Nsim
 			it = 1
 			call random_number(rand_age)
-
 			age_it(i,it) = finder(cumpi_t0,rand_age)
 			do it=2,Tsim
 				call random_number(rand_age)
@@ -1622,7 +1649,7 @@ module sol_sim
 		call draw_zjt(z_jt,z_jt_int, j_i, seed0, status)
 
 		! check the distributions
-		if(print_lev >=3 ) then
+		if(print_lev > 1 ) then
 			call vec2csv(del_i,"del_i.csv")
 			call veci2csv(j_i,"j_i.csv")
 			call mat2csv(al_it,"al_it.csv")
@@ -1722,22 +1749,19 @@ module sol_sim
 					
 					!make decisions if not yet retired
 					if(age_hr < TT) then 
-
 						if(status_hr .eq. 3) then ! choose wait or apply
 							app_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-							
+							app_dif_it(i,it) = app_dif_hr
 							if( app_dif_hr >= 0 ) then
 							! choose to apply
 								app_it(i,it) = 1
-								if(junk<xi(d_hr)) status_tmrw = 4
 							else
 								app_it(i,it) = 0
 							endif
-							app_dif_it(i,it) = app_dif_hr
 						endif
 
 						! evalutate gwork and gapp to figure out lom of status 
-						if((status_hr < 3) .or. (status_hr .eq. 4 .and. app_dif_hr < 0 ))then !choose work or rest
+						if((status_hr < 3) .or. (status_hr .eq. 3 .and. app_dif_hr < 0 ))then !choose work or rest
 							work_dif_hr = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							
 							if( work_dif_hr > 0 ) then
@@ -1759,6 +1783,15 @@ module sol_sim
 								status_tmrw =  status_hr
 							endif
 							work_dif_it(i,it) = work_dif_hr
+						elseif(status_hr .eq. 3 .and. app_dif_hr >=0 ) then
+							!applying, do you get it?
+							if(junk<xi(d_hr)) then 
+								status_tmrw = 4
+							else	
+								status_tmrw = 3
+							endif
+						elseif(status_hr > 3 ) then !absorbing states of D,R
+							status_tmrw = status_hr
 						endif
 
 						! the status that will go into next period
@@ -1774,6 +1807,8 @@ module sol_sim
 							api_hr = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 						elseif(status_hr .eq. 4) then
 							api_hr = aD( d_hr,ei_hr,ai_hr,age_hr )
+						elseif(status_hr .eq. 5) then ! should never be in this condition
+							api_hr = aR(d_hr,ei_hr,ai_hr)
 						endif
 					! retired
 					else 
@@ -1808,7 +1843,7 @@ module sol_sim
 						endif
 
 						!push forward d 
-						if(age_hr<TT .and. d_hr<nd ) then
+						if(status_hr .eq. 1 .and. d_hr<nd ) then
 							call random_number(junk)
 							if( junk < pid(d_hr,d_hr+1,del_hr,age_hr) ) d_it(i,it+1) = d_it(i,it)+1 
 						else 
@@ -1820,28 +1855,39 @@ module sol_sim
 			! OMP  end parallel do 
 
 			
-			if(print_lev >3)then
+			if(print_lev > 2)then
 				call mat2csv (e_it,"e_it.csv")
 				call mat2csv (a_it,"a_it.csv")
+				call mati2csv(a_it_int,"a_it_int.csv")
+				call mati2csv(status_it,"status_it.csv")
 				call mati2csv(d_it,"d_it.csv")
 			endif
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! check age - specific distributions of a_it, d_it for convergence
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		enddo! iter
-		if(verbose >2 ) print *, "done simulating"
+		if(verbose >=2 ) print *, "done simulating"
 		!fill the histories
 		hists%work_dif_hist = work_dif_it
 		hists%app_dif_hist  = app_dif_it
 		hists%obsX_hist = 0.
 		do i=1,Nsim
 			do it=1,Tsim
-				do j=1,TT-1
-					if(age_it(i,it) .eq. j ) hists%obsX_hist(i + (Nsim-1)*j,it) = 1
+				do age_hr=1,TT-1
+					if(age_it(i,it) .eq. age_hr ) hists%obsX_hist(i + (Nsim-1)*j,it) = 1
 				enddo
 			enddo
 		enddo
 		
+		
+		if(print_lev > 1)then
+				call mat2csv (e_it,"e_it.csv")
+				call mat2csv (a_it,"a_it.csv")
+				call mati2csv(a_it_int,"a_it_int.csv")
+				call mati2csv(status_it,"status_it.csv")
+				call mati2csv(d_it,"d_it.csv")
+		endif
+	
 		deallocate(d_it,a_it,e_it)
 		deallocate(a_it_int,e_it_int)
 		deallocate(z_jt,del_i,al_it,j_i)
@@ -1919,13 +1965,13 @@ program V0main
 
 	narg_in = iargc()
 
-	verbose = 4
-	print_lev = 4
+	verbose = 3
+	print_lev = 2
 
 
 	call setparams()
 	agrid(1) = .05*(agrid(1)+agrid(2))
-	if(print_lev >= 3) then
+	if(print_lev >= 2) then
 		call vec2csv(agrid,"agrid.csv")
 		wo = 0
 		do ij = 1,nj

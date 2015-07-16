@@ -19,7 +19,7 @@ character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 real(8), parameter ::	beta= 0.996, & 	 	!People are impatient
 		R = 1/beta, &		!People can save
 		youngD = 20.0, &	!Length of initial young period
-		oldD = 2.0, &		!Length of each old period
+		oldD = 10.0, &		!Length of each old period
 		tlength =12., &		!Number of periods per year (monthly)	
 		Longev = 78., &		!Median longevity	
 		xi0 = 0.16, &		!Probability of DI accept for d=0
@@ -37,8 +37,8 @@ real(8), parameter ::	beta= 0.996, & 	 	!People are impatient
 		zRiskL = 0.5,&		!Lower bound on occupation-related extra economic risk (mult factor)
 		zRiskH = 1.5		!Upper bound on occupation-related extra economic risk (mult factor)
 
-integer, parameter ::  	   oldN = 1,	 &	!Number of old periods
-		TT = oldN+2		!Total number of periods
+integer, parameter ::  	   oldN = 1, &!2!Number of old periods
+		TT = oldN+2		!Total number of periods, oldN periods plus young and retired
 
 !----------------------------------------------------------------------------!
 	
@@ -67,15 +67,15 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 !**Programming Parameters***********************!
 integer, parameter :: 	nai = 2, &!11	!Number of individual alpha types 
 		nbi = 1,  &		!Number of indiVidual beta types
-		ndi = 3,  &		!Number of individual disability types
+		ndi = 2,  &!3		!Number of individual disability types
 		nj  = 1,  &		!Number of occupations (downward TFP risk variation)
 		nd  = 3,  &		!Number of disability extents
-		ne  = 3, &!10		!Points on earnings grid
+		ne  = 2, &!10		!Points on earnings grid
 		na  = 50, &!200	!Points on assets grid
 		nz  = 3,  &		!Number of Occ TFP Shocks
 		maxiter = 2000, &!	!Tolerance parameter	
-		iaa_lowindow = 20,& 	!how far below to begin search
-		iaa_hiwindow = 20, &	!how far above to keep searching
+		iaa_lowindow = 10,& 	!how far below to begin search
+		iaa_hiwindow = 10, &	!how far above to keep searching
 		Nsim = 100, &!	!how many agents to draw
 		Ndat = 5000, & 		!size of data, for estimation
 		Tsim = tLength*(int(Longev)+1), &	!how many periods to solve
