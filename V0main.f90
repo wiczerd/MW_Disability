@@ -736,11 +736,7 @@ module sol_sim
 				maxer = 0.
 				summer = 0.	!Use to calc |V-V0|<eps
 				! lots f printing every 100 iterations (mod 1 because Fortran is designed by idiots using base-1 indexing)
-				if(mod(iter,100) .eq. 1) then
-					print_lev = 4
-				else 
-					print_lev =1
-				endif
+
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!  
