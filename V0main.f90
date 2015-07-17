@@ -1325,7 +1325,8 @@ module sol_sim
 			dtype_i = dtype_i*(dtypeH-dtypeL) + dtypeL !change domain of uniform
 			di_int = finder(dtype,dtype_i)
 			! round up or down:
-			if( (dtype_i - dtype(di_int))/(dtype(di_int+1)- dtype(di_int+1)) >0.5 ) di_int = di_int + 1
+			if( (dtype_i - dtype(di_int))/(dtype(di_int+1) - dtype(di_int)) > 0.5 ) di_int = di_int + 1
+			di_int = max(min(di_int,nd),1)
 			if(del_contin .eqv. .true.) then
 				del_i(i) = dtype_i
 			else
@@ -1336,6 +1337,32 @@ module sol_sim
 		success = 1
 		
 	end subroutine draw_deli
+	
+	subroutine draw_status_innov(status_it_innov, seed0, success)
+	! draws innovations to d, will be used if working and relevant
+		implicit none
+
+		integer, intent(in) :: seed0
+		integer, intent(out) :: success
+		real(8), dimension(:,:) :: status_it_innov
+		integer :: ss, m,i,it
+		real(8) :: s_innov
+		integer, dimension(100) :: bdayseed
+
+		call random_seed(size = ss)
+		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
+		call random_seed(put = bdayseed(1:ss) )
+
+		do i=1,Nsim
+			do it=1,Tsim
+				call random_number(s_innov)
+				status_it_innov(i,it) = s_innov
+			enddo
+		enddo
+		
+
+
+	end subroutine draw_status_innov
 	
 	subroutine draw_alit(al_it,al_it_int, seed0, success)
 	! draws alpha shocks and idices on the alpha grid (i.e at the discrete values)
@@ -1372,7 +1399,7 @@ module sol_sim
 			alfi_i = min(alfi_i,alfiH)
 			alfi_int = finder(alfi,alfi_i)
 			! round up or down:
-			if( (alfi_i - alfi(alfi_int))/(alfi(alfi_int+1)- alfi(alfi_int+1)) >0.5 ) alfi_int = alfi_int + 1
+			if( (alfi_i - alfi(alfi_int))/(alfi(alfi_int+1)- alfi(alfi_int)) >0.5 ) alfi_int = alfi_int + 1
 			if(al_contin .eqv. .true.) then
 				al_it(i,t) = alfi_i ! log of wage shock
 			else
@@ -1390,7 +1417,7 @@ module sol_sim
 				alfi_i = max(alfi_i,alfiL)
 				alfi_i = min(alfi_i,alfiH)
 				alfi_int = finder(alfi,alfi_i)
-				if( (alfi_i - alfi(alfi_int))/(alfi(alfi_int+1)- alfi(alfi_int+1)) >0.5 ) alfi_int = alfi_int + 1
+				if( (alfi_i - alfi(alfi_int))/(alfi(alfi_int+1)- alfi(alfi_int)) >0.5 ) alfi_int = alfi_int + 1
 				if(al_contin .eqv. .true.) then
 					al_it(i,t) = alfi_i ! log of wage shock
 				else
@@ -1537,6 +1564,39 @@ module sol_sim
 		success = 1
 	end subroutine draw_age_it
 
+	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it, niter, seed0, success)
+
+		integer,intent(in) :: seed0,niter
+		integer,intent(out) :: success
+		integer,intent(in) :: age_it(:,:)
+		integer, dimension(100) :: bdayseed
+		integer,intent(out) :: drawi_ititer(:,:,:),drawt_ititer(:,:,:)
+		integer :: i,it,ii,iteri,drawt,drawi
+		real(8) :: junk
+		
+		!need to draw these from age-specific distributions for iterations > 1
+		do iteri = 1,niter
+			do i=1,Nsim
+			do it=1,Tsim
+				do ii=1,Nsim*Tsim
+					call random_number(junk)
+					drawi = max(1,nint(junk*Nsim))
+					call random_number(junk)
+					drawt = max(1,nint(junk*Tsim))
+					if((age_it(drawi,drawt) .eq. age_it(i,it)) ) then
+						exit
+					endif
+				enddo
+				drawi_ititer(i,it,iteri) = drawi
+				drawt_ititer(i,it,iteri) = drawt
+			enddo
+			enddo
+		enddo
+
+	
+	end subroutine
+
+
 	subroutine sim(val_funs, pol_funs,hists)
 		
 		implicit none
@@ -1547,7 +1607,7 @@ module sol_sim
 
 
 		integer :: i, ii, iter, it, j, idi, id, &
-			&  seed0, seed1, status, m,ss
+			&  seed0, seed1, status, m,ss, iter_draws=5
 		integer :: bdayseed(100)
 						
 		real(8), allocatable ::	del_i(:) ! shocks to be drawn
@@ -1556,12 +1616,14 @@ module sol_sim
 		integer, allocatable :: del_i_int(:), j_i(:) ! integer valued shocks
 		integer, allocatable :: al_it_int(:,:)! integer valued shocks
 		integer, allocatable :: age_it(:,:) ! ages, drawn randomly
+		real(8), allocatable :: status_it_innov(:,:) !innovations to d, drawn randomly
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
 		real(8), allocatable :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
 		integer, allocatable :: status_it(:,:)  !track W,U,N,D,R : 1,2,3,4,5
 		real(8), allocatable :: e_it(:,:), a_it(:,:)
 		integer, allocatable :: d_it(:,:), a_it_int(:,:),e_it_int(:,:)
+		integer, allocatable :: drawi_ititer(:,:,:),drawt_ititer(:,:,:)
 		
 		real(8), pointer ::	VR(:,:,:), &			!Retirement
 					VD(:,:,:,:), &			!Disabled
@@ -1609,13 +1671,15 @@ module sol_sim
 		gapp_dif => pol_funs%gapp_dif
 		gwork_dif => pol_funs%gwork_dif
 
+		iter_draws = 5
+
 		allocate(z_jt(Nsim, Tsim))
 		allocate(z_jt_int(Nsim, Tsim))		
 		allocate(del_i(Nsim))
 		allocate(al_it(Nsim,Tsim))
 		allocate(j_i(Nsim))
 		allocate(age_it(Nsim,Tsim))
-
+		allocate(status_it_innov(Nsim,Tsim))
 		allocate(del_i_int(Nsim))
 		allocate(al_it_int(Nsim,Tsim))
 
@@ -1630,6 +1694,8 @@ module sol_sim
 		allocate(app_it(Nsim,Tsim))
 		allocate(app_dif_it(Nsim,Tsim))
 		allocate(status_it(Nsim,Tsim))
+		allocate(drawi_ititer(Nsim,Tsim,iter_draws-1))
+		allocate(drawt_ititer(Nsim,Tsim,iter_draws-1))
 
 		seed0 = 941987
 		seed1 = 12281951
@@ -1643,6 +1709,8 @@ module sol_sim
 		call draw_alit(al_it,al_it_int, seed0, status)
 		call draw_ji(j_i,seed1, status)
 		call draw_zjt(z_jt,z_jt_int, j_i, seed0, status)
+		call draw_status_innov(status_it_innov,seed1,status)
+		call draw_draw(drawi_ititer, drawt_ititer, age_it, iter_draws-1, seed0, status)
 
 		! check the distributions
 		if(print_lev > 1 ) then
@@ -1687,7 +1755,7 @@ module sol_sim
 		bet_hr = 1.
 		
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
-		do iter=1,4
+		do iter=1,iter_draws
 			! OMP  parallel do default(shared) &
 			! OMP& private(iter, i, del_hr, j_hr, status_hr, it, drawi,drawt ai_hr,a_hr,api_hr,ei_hr,e_hr,wage_hr,junk,z_hr,zi_hr,age_hr,al_hr,ali_hr,d_hr) 
 			do i=1,Nsim
@@ -1702,22 +1770,14 @@ module sol_sim
 
 				!need to draw these from age-specific distributions for iterations > 1
 				if(iter>1) then
-					do ii=1,Nsim*Tsim
-						call random_number(junk)
-						drawi = max(1,nint(junk*Nsim))
-						call random_number(junk)
-						drawt = max(1,nint(junk*Tsim))
-						if((age_it(drawi,drawt) .eq. age_it(i,it)) & 
-							& .and. (status_it(drawi,drawt)  < 4)) then
-							exit
-						endif
-					enddo
+					drawi = drawi_ititer(i,it,iter-1)
+					drawt = drawt_ititer(i,it,iter-1)
 					d_it(i,it) = d_it(drawi,drawt)
 					a_it(i,it) = a_it(drawi,drawt)
 					e_it(i,it) = e_it(drawi,drawt)
 					e_it_int(i,it) = e_it_int(drawi,drawt)
 					a_it_int(i,it) = a_it_int(drawi,drawt)
-					status_it(i,it) = status_it(drawi,drawt)
+!					status_it(i,it) = status_it(drawi,drawt)
 				endif
 
 				
@@ -1741,7 +1801,6 @@ module sol_sim
 					
 					
 					!random number will be used in several potential shocks
-					call random_number(junk)
 					
 					!make decisions if not yet retired
 					if(age_hr < TT) then 
@@ -1766,14 +1825,14 @@ module sol_sim
 									status_it(i,it) = 1
 									status_tmrw = 1
 								else !LTU, have to get a good shock 
-									if(junk <=rhho) status_tmrw = 1
-									if(junk > rhho)  status_tmrw = status_hr
+									if(status_it_innov(i,it) <=rhho) status_tmrw = 1
+									if(status_it_innov(i,it) > rhho)  status_tmrw = status_hr
 								endif
 							elseif(status_hr .le. 2) then
 								status_it(i,it) = 2
 							! unemployed, may stay unemployed or become long-term unemployed
-								if(junk <=pphi) status_tmrw = 3
-								if(junk > pphi) status_tmrw = 2
+								if(status_it_innov(i,it) <=pphi) status_tmrw = 3
+								if(status_it_innov(i,it) > pphi) status_tmrw = 2
 							else
 							!NDR no change, though may choose to apply for DI below
 								status_tmrw =  status_hr
@@ -1781,7 +1840,7 @@ module sol_sim
 							work_dif_it(i,it) = work_dif_hr
 						elseif(status_hr .eq. 3 .and. app_dif_hr >=0 ) then
 							!applying, do you get it?
-							if(junk<xi(d_hr)) then 
+							if(status_it_innov(i,it) < xi(d_hr)) then 
 								status_tmrw = 4
 							else	
 								status_tmrw = 3
@@ -1840,8 +1899,8 @@ module sol_sim
 
 						!push forward d 
 						if(status_hr .eq. 1 .and. d_hr<nd ) then
-							call random_number(junk)
-							if( junk < pid(d_hr,d_hr+1,del_hr,age_hr) ) d_it(i,it+1) = d_it(i,it)+1 
+							
+							if( status_it_innov(i,it) < pid(d_hr,d_hr+1,del_hr,age_hr) ) d_it(i,it+1) = d_it(i,it)+1 
 						else 
 							d_it(i,it+1) = d_it(i,it)
 						endif
@@ -1888,7 +1947,8 @@ module sol_sim
 		deallocate(a_it_int,e_it_int)
 		deallocate(z_jt,del_i,al_it,j_i)
 		deallocate(app_dif_it,app_it,work_it,work_dif_it)
-		deallocate(del_i_int,al_it_int,z_jt_int)
+		deallocate(del_i_int,al_it_int,z_jt_int,status_it_innov)
+		deallocate(drawi_ititer,drawt_ititer)
 
 	end subroutine sim
 

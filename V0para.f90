@@ -60,7 +60,7 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 		piz1 = 0.05, &  !Probability zl->z0
 		piz2 = 0.01, &  !Probability z0->zl
 		piz3 = 0.30, &  !Probability z0->zh
-		piz4 = 0.10	!Probability zh->z0
+		piz4 = 0.20	!Probability zh->z0 (average duration of expansion)
 
 !-------------------------------------------------------------------!			
 
