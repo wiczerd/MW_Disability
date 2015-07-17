@@ -1242,12 +1242,14 @@ module sol_sim
 			do ial=1,nai	!Loop over alpha (ai)
 			do ie=1,ne	!Loop over earnings index
 			do iz=1,nz	!Loop over TFP
+			do it = 1,TT-1
 				! matrix in disability and assets
 				call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"VW_it.csv",wo)
 				call mati2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"aW_it.csv",wo)
 				call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gwork_it.csv",wo)
-				call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gwork_idf_it.csv",wo)
+				call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gwork_dif_it.csv",wo)
 				if(wo==0) wo =1
+			enddo !it
 			enddo !iz 
 			enddo !ie 
 			enddo !ial 	
@@ -1797,20 +1799,20 @@ module sol_sim
 					wage_hr	= wage(bet_hr,al_hr,d_hr,z_hr,age_hr)
 					hists%wage_hist(i,it) = wage_hr
 					
+					
 					status_hr = status_it(i,it)
-					
-					
-					!random number will be used in several potential shocks
 					
 					!make decisions if not yet retired
 					if(age_hr < TT) then 
 						if(status_hr .eq. 3) then ! choose wait or apply
-							app_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							app_dif_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							app_dif_it(i,it) = app_dif_hr
 							if( app_dif_hr >= 0 ) then
 							! choose to apply
+								app_hr = 1
 								app_it(i,it) = 1
 							else
+								app_hr = 0
 								app_it(i,it) = 0
 							endif
 						endif
@@ -1898,11 +1900,14 @@ module sol_sim
 						endif
 
 						!push forward d 
-						if(status_hr .eq. 1 .and. d_hr<nd ) then
-							
-							if( status_it_innov(i,it) < pid(d_hr,d_hr+1,del_hr,age_hr) ) d_it(i,it+1) = d_it(i,it)+1 
+						if(status_hr .eq. 1 .and. d_hr<nd ) then !if working and not already in worst state
+							if( status_it_innov(i,it) < pid(d_hr,d_hr+1,del_hr,age_hr) ) then 
+								d_it(i,it+1) = d_hr+1 
+							else
+								d_it(i,it+1) = d_hr
+							endif
 						else 
-							d_it(i,it+1) = d_it(i,it)
+							d_it(i,it+1) = d_hr
 						endif
 					endif
 				enddo !1,Tsim
@@ -1929,7 +1934,7 @@ module sol_sim
 		do i=1,Nsim
 			do it=1,Tsim
 				do age_hr=1,TT-1
-					if(age_it(i,it) .eq. age_hr ) hists%obsX_hist(i + (Nsim-1)*j,it) = 1
+					if(age_it(i,it) .eq. age_hr ) hists%obsX_hist(i + (Nsim-1)*age_hr,it) = 1
 				enddo
 			enddo
 		enddo

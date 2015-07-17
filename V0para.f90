@@ -22,7 +22,7 @@ real(8), parameter ::	beta= 0.996, & 	 	!People are impatient
 		oldD = 10.0, &		!Length of each old period
 		tlength =12., &		!Number of periods per year (monthly)	
 		Longev = 78., &		!Median longevity	
-		xi0 = 0.16, &		!Probability of DI accept for d=0
+		xi0 = (0.16), &		!Probability of DI accept for d=0
 		xi1 = 0.22, &		!Probability of DI accept for d=1
 		xi2 = 0.50, &		!Probability of DI accept for d=2
 		ageW = 0.02, &		!Coefficient on Age in Mincer
@@ -194,7 +194,6 @@ subroutine setparams()
 		dtype(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
 	EndDO
 
-
 	!TFP 
 	zgrid(1) = 0.5		!Structural Decline
 	zgrid(2) = 0.9		!Recession
@@ -238,10 +237,10 @@ subroutine setparams()
 	wd(2) = -0.1	!Partially Disabled, small penalty	
 	wd(3) = -0.2	!Full Disabled, large penalty
 
-	!DI Acceptance probability
-	xi(1) = xi0
-	xi(2) = xi1
-	xi(3) = xi2
+	!DI Acceptance probability, convert to monthly
+	xi(1) = 1.-(1.-xi0)**(1./tlength)
+	xi(2) = 1.-(1.-xi1)**(1./tlength)
+	xi(3) = 1.-(1.-xi2)**(1./tlength)
 
 	!Earnings Grid
 	!Make linear from lowest possible wage (disabled entrant, lowest types)
