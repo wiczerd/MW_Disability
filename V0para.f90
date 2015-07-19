@@ -16,7 +16,7 @@ save
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 
 !**Environmental Parameters**********************************************************************!
-real(8), parameter ::	beta= 0.996, & 	 	!People are impatient
+real(8), parameter ::	beta= 0.9967, & !People are impatient (4% annual discount rate)
 		R = 1/beta, &		!People can save
 		youngD = 20.0, &	!Length of initial young period
 		oldD = 10.0, &		!Length of each old period
@@ -76,7 +76,7 @@ integer, parameter :: 	nai = 2, &!11	!Number of individual alpha types
 		maxiter = 2000, &!	!Tolerance parameter	
 		iaa_lowindow = 10,& 	!how far below to begin search
 		iaa_hiwindow = 10, &	!how far above to keep searching
-		Nsim = 100, &!	!how many agents to draw
+		Nsim = 200, &!	!how many agents to draw
 		Ndat = 5000, & 		!size of data, for estimation
 		Tsim = tLength*(int(Longev)+1), &	!how many periods to solve
 		Nk   = 6		!number of regressors

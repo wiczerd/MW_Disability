@@ -1208,18 +1208,6 @@ module sol_sim
 		enddo	!idi
 		enddo	!ibi
 		enddo	!ij
-			! reset V0
-		!	do ial=1,nai	!Loop over alpha (ai)
-		!	do id=1,nd	!Loop over disability index
-		! 	do ie=1,ne	!Loop over earnings index
-		!	do iz=1,nz	!Loop over TFP
-		!  	do ia=1,na
-		!		V0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)
-		!	enddo !ial
-		!	enddo !id
-		!	enddo !ie
-		!	enddo !iz
-		! 	enddo !ia
 
 		
 		! this plots work-rest and di application on the cross product of alphai and deltai and di
@@ -1275,23 +1263,6 @@ module sol_sim
 			call vec2csv(occz(:),'ZriskGrid.csv',0)
 			call vec2csv(agrid(:),'Agrid.csv',0)
 		endif
-!		val_funs%VR = VR
-!		pol_funs%aR = aR
-!		val_funs%VD = VD
-!		pol_funs%aD = aD
-!		val_funs%VN = VN
-!		val_funs%VU = VU
-!		val_funs%VW = VW
-!		val_funs%V = V 
-!		pol_funs%aN = aN
-!		pol_funs%aW = aW
-!		pol_funs%aU = aU
-!		pol_funs%gwork = gwork
-!		pol_funs%gapp = gapp
-
-!		pol_funs%gapp_dif = gapp_dif
-!		pol_funs%gwork_dif = gwork_dif
-
 
 
 		deallocate(maxer)
@@ -1361,9 +1332,7 @@ module sol_sim
 				status_it_innov(i,it) = s_innov
 			enddo
 		enddo
-		
-
-
+		success = 1
 	end subroutine draw_status_innov
 	
 	subroutine draw_alit(al_it,al_it_int, seed0, success)
@@ -1595,7 +1564,7 @@ module sol_sim
 			enddo
 		enddo
 
-	
+		success = 1
 	end subroutine
 
 
@@ -1608,7 +1577,7 @@ module sol_sim
 		type(hist_struct), intent(inout), target :: hists
 
 
-		integer :: i, ii, iter, it, j, idi, id, &
+		integer :: i, ii, iter, it, it_old, j, idi, id, &
 			&  seed0, seed1, status, m,ss, iter_draws=5
 		integer :: bdayseed(100)
 						
@@ -1759,14 +1728,16 @@ module sol_sim
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,iter_draws
 			! OMP  parallel do default(shared) &
-			! OMP& private(iter, i, del_hr, j_hr, status_hr, it, drawi,drawt ai_hr,a_hr,api_hr,ei_hr,e_hr,wage_hr,junk,z_hr,zi_hr,age_hr,al_hr,ali_hr,d_hr) 
+			! OMP& private(iter, i, del_hr, j_hr, status_hr, it, it_old, drawi,drawt,z_hr,zi_hr,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,api_hr,wage_hr, &
+			! OMP& junk,app_dif_hr,work_dif_hr,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 				del_hr = del_i_int(i)
 				j_hr = j_i(i)
-
+				
 				!initialize stuff
 				it = 1
+				it_old = 1
 				status_hr = 1
 				status_it(i,it) = 1
 
@@ -1799,8 +1770,23 @@ module sol_sim
 					wage_hr	= wage(bet_hr,al_hr,d_hr,z_hr,age_hr)
 					hists%wage_hist(i,it) = wage_hr
 					
-					
 					status_hr = status_it(i,it)
+					
+					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN - 25)
+					if(age_hr .eq. TT) then
+						it_old = it_old + 1
+						
+						if(it_old .gt.  Longev - youngD - oldD*oldN - 25) then
+							a_it(i,it:Tsim) = 0.
+							a_it_int(i,it:Tsim) = 0
+							d_it(i,it:Tsim) = 0
+							app_dif_it(i,it:Tsim) = 0.						
+							work_dif_it(i,it:Tsim) = 0.
+							status_it(i,it:Tsim) = -1
+							
+							exit
+						endif
+					endif 
 					
 					!make decisions if not yet retired
 					if(age_hr < TT) then 
@@ -1895,8 +1881,8 @@ module sol_sim
 							endif
 							endif
 						else
-							e_it(i,it+1) = e_it(i,it)
-							e_it_int(i,it+1) = e_it_int(i,it)
+							e_it(i,it+1) = e_hr
+							e_it_int(i,it+1) = ei_hr
 						endif
 
 						!push forward d 
