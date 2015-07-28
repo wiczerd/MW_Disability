@@ -16,9 +16,7 @@ save
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 
 !**Environmental Parameters**********************************************************************!
-real(8), parameter ::	beta= 0.9967, & !People are impatient (4% annual discount rate)
-		R = 1/beta, &		!People can save
-		youngD = 20.0, &	!Length of initial young period
+real(8), parameter ::	youngD = 20.0, &	!Length of initial young period
 		oldD = 10.0, &		!Length of each old period
 		tlength =12., &		!Number of periods per year (monthly)	
 		Longev = 78., &		!Median longevity	
@@ -35,7 +33,8 @@ real(8), parameter ::	beta= 0.9967, & !People are impatient (4% annual discount 
 		dRiskL = 0.5,&		!Lower bound on occupation-related extra disability risk (mult factor)
 		dRiskH = 1.5, &		!Upper bound on occupation-related extra disability risk (mult factor)
 		zRiskL = 0.5,&		!Lower bound on occupation-related extra economic risk (mult factor)
-		zRiskH = 1.5		!Upper bound on occupation-related extra economic risk (mult factor)
+		zRiskH = 1.5,&		!Upper bound on occupation-related extra economic risk (mult factor)
+		R = 1.04**(1./tlength)		!People can save
 
 integer, parameter ::  	   oldN = 1, &!2!Number of old periods
 		TT = oldN+2		!Total number of periods, oldN periods plus young and retired
@@ -67,23 +66,25 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 !**Programming Parameters***********************!
 integer, parameter :: 	nai = 2, &!11	!Number of individual alpha types 
 		nbi = 1,  &		!Number of indiVidual beta types
-		ndi = 2,  &!3		!Number of individual disability types
+		ndi = 2,  &!3		!Number of individual disability risk types
 		nj  = 1,  &		!Number of occupations (downward TFP risk variation)
 		nd  = 3,  &		!Number of disability extents
 		ne  = 2, &!10		!Points on earnings grid
 		na  = 50, &!200	!Points on assets grid
 		nz  = 3,  &		!Number of Occ TFP Shocks
 		maxiter = 2000, &!	!Tolerance parameter	
-		iaa_lowindow = 10,& 	!how far below to begin search
-		iaa_hiwindow = 10, &	!how far above to keep searching
+		iaa_lowindow = 5,& 	!how far below to begin search
+		iaa_hiwindow = 5, &	!how far above to keep searching
 		Nsim = 200, &!	!how many agents to draw
 		Ndat = 5000, & 		!size of data, for estimation
-		Tsim = tLength*(int(Longev)+1), &	!how many periods to solve
-		Nk   = 6		!number of regressors
+		Tsim = tLength*(int(Longev-25)+1), &	!how many periods to solve
+		Nk   = TT-1+(nd-1)*2+2	!number of regressors - each period, each health and leading, occupation dynamics
 
+
+! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
 logical, parameter ::	del_contin = .false., &	!make delta draws take continuous values or stay on the grid
-		al_contin = .false. 	!make alpha draws continuous
-
+		al_contin = .false.,&	!make alpha draws continuous
+		j_rand = .false. 	!randomly assign j, or let choose.
 
 
 real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
@@ -101,7 +102,7 @@ real(8) :: 	alfi(nai), &		!Alpha_i grid- individual wage type parameter
 		wtau(TT-1), &		!Age-specific wage parameter
 		wd(nd),   &		!Disability-specific wage parameter
 		ptau(TT), &		!Probability of aging
-		dtau(TT-1), &		!Age-related disability risk
+		dtau(TT-1), &		!Proportional age-related disability risk
 		dtype(ndi), &		!Individual specific disability risk
 		zgrid(nz), &		!TFP shock grid
 		xi(nd),&		!DI acceptance probability
@@ -113,14 +114,17 @@ real(8) :: 	alfi(nai), &		!Alpha_i grid- individual wage type parameter
 		Njdist(nj)		!Fraction in each occupation
 
 !***preferences and technologies that may change
-real(8) :: 	nu = 2.50, &		!Psychic cost of applying for DI	
+real(8) :: 	beta= 0.99674, & 	!People are impatient (4% annual discount rate to start)
+		nu = 2.50, &		!Psychic cost of applying for DI	
 		alfrho = 0.95, &	!Peristance of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
 		alfsig = 0.1,&		!Unconditional StdDev of Alpha_i type (Normal)
 		b = 0.05,&		!Home production
 		rhho = 0.2,&		!Probability of finding a job when long-term unemployed (David)
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
-		prob_t(TT)		!Probability of being in each age group to start
+		prob_t(TT), &		!Probability of being in each age group to start
+		prborn_t(Tsim),&	!probability of being born at each point t
+		occscale = 1.		!scale parameter of gumbel distribution for occ choice
 
  !Preferences----------------------------------------------------------------!
  ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
@@ -224,6 +228,11 @@ subroutine setparams()
 		prob_t(t) = oldD/(Longev - 25.)
 	enddo
 	prob_t(TT) = 1.-sum(prob_t)
+	!prob of getting born
+	do t=2,Tsim
+		prborn_t(t) = Nsim*0.01/tlength !1% population growth per year
+	enddo
+	prborn_t(1) = 1. - sum(prborn_t(2:Tsim))
 	
 	!Age-related disability risk
 	dtau(1) = 0.5	!Young's Risk
@@ -430,7 +439,7 @@ end function alnorm
 
 
 
-FUNCTION random_normal() RESULT(fn_val)
+subroutine random_normal(fn_val)
 
 ! Adapted from the following Fortran 77 code
 !      ALGORITHM 712, COLLECTED ALGORITHMS FROM ACM.
@@ -443,10 +452,10 @@ FUNCTION random_normal() RESULT(fn_val)
 !  The algorithm uses the ratio of uniforms method of A.J. Kinderman
 !  and J.F. Monahan augmented with quadratic bounding curves.
 
-	REAL :: fn_val
+	REAL(8),intent(out) :: fn_val
 
 	!     Local variables
-	REAL     :: s = 0.449871, t = -0.386595, a = 0.19600, b = 0.25472,           &
+	REAL(8)     :: s = 0.449871, t = -0.386595, a = 0.19600, b = 0.25472,           &
 		    r1 = 0.27597, r2 = 0.27846, u, v, x, y, q, half = 0.5
 
 	!     Generate P = (u,v) uniform in rectangle enclosing acceptance region
@@ -471,8 +480,34 @@ FUNCTION random_normal() RESULT(fn_val)
 
 	!     Return ratio of P's coordinates as the normal deviate
 	fn_val = v/u
-	RETURN
 
-END FUNCTION random_normal
+end subroutine random_normal
+
+subroutine random_gumbel(fn_val)
+! written by D Wiczer, based on random_exponential credited to:
+
+! Adapted from Fortran 77 code from the book:
+!     Dagpunar, J. 'Principles of random variate generation'
+!     Clarendon Press, Oxford, 1988.   ISBN 0-19-852202-9
+
+! FUNCTION GENERATES A RANDOM VARIATE IN [0,INFINITY) FROM
+! A NEGATIVE EXPONENTIAL DlSTRIBUTION WlTH DENSITY PROPORTIONAL
+! TO EXP(-random_exponential), USING INVERSION.
+
+REAL(8),intent(out)  :: fn_val
+
+!     Local variable
+REAL(8)  :: r
+
+do
+  call random_number(r)
+  if (r > 0.) exit
+end do
+
+fn_val = -log(-log(r) )
+
+
+END subroutine random_gumbel
+
 
 end module V0para

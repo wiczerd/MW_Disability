@@ -332,27 +332,110 @@ module helper_funs
 	subroutine veci2csv(A,fname,append)
 	!--------------------
 
-	integer, dimension(:), intent(in) :: A
-	character(len=*), intent(in) :: fname
-	integer, intent(in), optional :: append
-	integer :: r,ri
-	r = size(A,1)
-	if(present(append)) then
-		if(append .eq. 1) then 
-			open(1, file=fname,ACCESS='APPEND', POSITION='APPEND')
+		integer, dimension(:), intent(in) :: A
+		character(len=*), intent(in) :: fname
+		integer, intent(in), optional :: append
+		integer :: r,ri
+		r = size(A,1)
+		if(present(append)) then
+			if(append .eq. 1) then 
+				open(1, file=fname,ACCESS='APPEND', POSITION='APPEND')
+			else
+				open(1, file=fname)
+			endif
 		else
-			open(1, file=fname)
+			open(1, file=fname) 
 		endif
-	else
-		open(1, file=fname) 
-	endif
-	do ri=1,r
-		write(1,*) A(ri)
-	end do
-	write(1,*) " "! trailing space
-	close(1)
+		do ri=1,r
+			write(1,*) A(ri)
+		end do
+		write(1,*) " "! trailing space
+		close(1)
 
 	end subroutine veci2csv
+	
+	
+	
+	subroutine invmat(A, invA)
+		real(8), dimension(:,:), intent(in) :: A
+		real(8), dimension(size(A,1),size(A,2)), intent(out) :: invA
+		real(8), dimension(size(A,1)*size(A,1)) :: wk
+		integer, dimension(size(A,1) + 1) :: ipiv
+		integer :: n, info
+		external DGETRF
+		external DGETRI
+	
+		invA = A
+		n = size(A,1)
+	
+		call DGETRF(n,n,invA,n,ipiv,info) ! first computes the LU factorization
+	
+		if (info /= 0) then
+			print *, 'Matrix is singular.  Make it less singular before proceeding'
+		endif
+		call DGETRI(n,invA,n,ipiv,wk,n,info)
+		if(info /=0) then
+			print *, 'Matrix inversion failed, though it is not singular'
+		endif
+	end subroutine invmat
+	
+	!------------------------------------------------------------------------
+	! 12) Run an OLS regression
+	!------------------------------------------------------------------------
+	subroutine OLS(XX,Y,coefs,cov_coef, status)
+		real(8), dimension(:,:), intent(in) :: XX
+		real(8), dimension(:), intent(in) :: Y
+		real(8), dimension(:), intent(out) :: coefs
+		real(8), dimension(:,:), intent(out) :: cov_coef
+		integer, intent(out) :: status
+		integer :: nX, nY, nK, r,c
+		real(8), dimension(:,:), allocatable :: XpX,XpX_fac,XpX_inv
+		real(8), dimension(:), allocatable :: fitted,resids
+		real(8) :: s2
+		integer :: i
+	
+		nK = size(XX, dim = 2)
+		nX = size(XX, dim = 1)
+		nY = size(Y)
+		
+		allocate(XpX(nK,nK))
+		allocate(XpX_fac(nK,nK))
+		allocate(XpX_inv(nK,nK))
+		coefs = 0.
+		cov_coef = 0.
+		
+		
+		if(nY /= nX ) then
+			if(verbose>0 ) print *, 'size of X and Y in regression not compatible'
+			status = 1
+		else 
+			call dgemm('T', 'N', nK, nK, nX, 1., XX, nX, XX, nX, 0., XpX, nK)
+			XpX_fac = XpX
+			call dpotrf('U',Nk,XpX_fac,Nk,status)
+			if(status == 0) then
+				! 3/ Multiply LHS of regression and solve it
+				call dgemv('T', nX, nK, 1., XX, nX, Y, 1, 0., coefs, 1)
+				call dpotrs('U',nK,1,XpX_fac,nK,coefs,Nk,status)
+			else 
+				if(verbose >0 ) print *, "cannot factor XX"
+			endif
+		endif
+		
+		if(status == 0) then 
+			XpX_inv = XpX_fac
+			call dpotri('U',nK,XpX_inv,nK,status)
+			call dgemv('N', nX, nK, 1., XX, nK, coefs, 1, 0., fitted, 1)
+			resids = Y - fitted
+			s2 = 0.
+			do i=1,nY
+				s2 = resids(i)**2/(nX-nK) + s2
+			enddo
+			if(status == 0) cov_coef = s2*XpX_inv
+		endif
+		
+		deallocate(XpX,XpX_fac,XpX_inv)
+	
+	end subroutine OLS
 
 
 end module helper_funs
@@ -503,7 +586,7 @@ module sol_sim
 					Vtest1 = -1e6
 					apol = iaa1
 					do iaa=iaa1,na
-						chere = SSI(egrid(ie))+R*agrid(ia)-agrid(iaa)
+						chere = SSI(egrid(ie))+ R*agrid(ia) - agrid(iaa)
 						if( chere .gt. 0.) then !ensure positive consumption
 							Vc1 = beta*ptau(TT)*VR0(id,ie,iaa)
 							Vtest2 = util(chere ,id,iw) + Vc1
@@ -1307,7 +1390,7 @@ module sol_sim
 			endif
 			del_i_int(i) = di_int
 		enddo
-		success = 1
+		success = 0
 		
 	end subroutine draw_deli
 	
@@ -1332,7 +1415,7 @@ module sol_sim
 				status_it_innov(i,it) = s_innov
 			enddo
 		enddo
-		success = 1
+		success = 0
 	end subroutine draw_status_innov
 	
 	subroutine draw_alit(al_it,al_it_int, seed0, success)
@@ -1360,7 +1443,7 @@ module sol_sim
 			! draw starting values
 			t =1
 			
-			alfi_innov = random_normal() ! draw normal disturbances on 0,1
+			call random_normal(alfi_innov) ! draw normal disturbances on 0,1
 			! transform it by the ergodic distribution for the first period:
 			alfi_i = alfi_innov*alfsig + alfmu
 
@@ -1381,7 +1464,7 @@ module sol_sim
 			! draw sequence:
 
 			do t=2,Tsim
-				alfi_innov = random_normal()
+				call random_normal(alfi_innov)
 				alfi_innov = alfi_innov*alfsig*(1.-alfrho**2) ! mean 0 with conditional standard deviation implied by (alfsig, alfrho)
 				alfi_i = alfrho*alfi_i + (1-alfrho)*alfmu + alfi_innov
 				if(alfi_i >alfiH .or. alfi_i < alfiL) success = 1+success !count how often we truncate
@@ -1398,14 +1481,15 @@ module sol_sim
 
 			enddo
 		enddo
-		if(success > 0.2*Nsim*Tsim)  success = 0
-		if(success <= 0.2*Nsim*Tsim) success = 1
+		if(success > 0.2*Nsim*Tsim)  success = success
+		if(success <= 0.2*Nsim*Tsim) success = 0
 		
 	end subroutine draw_alit
 
 	subroutine draw_ji(j_i,seed0, success)
 		implicit none
 		integer	:: j_i(:)
+		real(8) :: jwt
 		integer	:: i,m,ss
 		integer,intent(in)  :: seed0
 		integer,intent(out) :: success
@@ -1428,31 +1512,29 @@ module sol_sim
 				call random_number(draw_i)
 				j_i(i) = finder(Njcumdist,draw_i)
 			enddo
-
 		else
 			j_i = 1
 		endif
+		do i=1,nj
+		
+		enddo
 
-
-		success = 1
+		success = 0
 		
 	end subroutine draw_ji
 
-	subroutine draw_zjt(z_jt,z_jt_int, j_i, seed0, success)
+	subroutine draw_zjt(z_jt_macro, seed0, success)
 		implicit none
 
-		real(8),intent(out) :: z_jt(:,:)
-		integer,intent(out) :: z_jt_int(:,:)
-		integer,intent(in)  :: j_i(:)
+		integer, intent(out) :: z_jt_macro(:,:) !this will be the panel across occupations -> z_jt by i's j
 		integer	:: it,i,ij,iz,izp,m,ss, z_jt_t
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
 		real(8) :: z_innov
 		real(8), allocatable :: cumpi_j(:,:)
-		integer, allocatable :: z_jt_macro(:,:) !this will be the panel across occupations -> z_jt by i's j
 
-		allocate(z_jt_macro(nj,Tsim))
+
 		allocate(cumpi_j(nz,nz+1))
 		
 		call random_seed(size = ss)
@@ -1480,30 +1562,21 @@ module sol_sim
 			enddo
 		enddo
 
-		do i=1,Nsim
-			do it=1,Tsim
-			!fill in shock values from z_jt_macro for each indiv
-				z_jt_int(i,it) = z_jt_macro(j_i(i) , it)
-				z_jt(i,it) = zgrid(z_jt_int(i,it))
-			enddo
-		enddo
-
-		success = 1
+		success = 0
 		
-		deallocate(z_jt_macro)
 		deallocate(cumpi_j)
 	end subroutine draw_zjt
 	
-	subroutine draw_age_it(age_it, seed0, success)
+	subroutine draw_age_it(age_it, born_it, seed0, success)
 
-		integer,intent(out) :: age_it(:,:)
-		integer	:: it,itp,i,m,ss
+		integer,intent(out) :: age_it(:,:),born_it(:,:)
+		integer	:: it,itp,i,m,ss,bn_i
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
 		real(8), dimension(TT) :: cumpi_t0
 		real(8), dimension(TT-1) :: prob_t_nTT
-		real(8) :: rand_age
+		real(8) :: rand_age,rand_born
 		
 		call random_seed(size = ss)
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
@@ -1519,20 +1592,51 @@ module sol_sim
 			cumpi_t0(it+1) = prob_t_nTT(it) + cumpi_t0(it)
 		enddo
 		
-		do i=1,Nsim
+		born_it = 0
+		
+		do i =1,Nsim
+		do m = 1,5
+			bn_i = 0 ! initialize, not yet born
 			it = 1
-			call random_number(rand_age)
-			age_it(i,it) = finder(cumpi_t0,rand_age)
-			do it=2,Tsim
+			call random_number(rand_born)
+			if(rand_born < prborn_t(1)) then 
+				born_it(i,it) = 1
+				bn_i = 1
+				!draw an age
 				call random_number(rand_age)
-				if(rand_age < 1- ptau(age_it(i,it-1)) .and. age_it(i,it-1) < TT ) then
-					age_it(i,it) = age_it(i,it-1)+1
+				age_it(i,it) = finder(cumpi_t0,rand_age)
+			else 
+				age_it(i,it) = 0
+				born_it(i,it) = 0
+			endif
+			do it=2,Tsim
+				call random_number(rand_born)
+				if(rand_born< prborn_t(it) .and. bn_i == 0 ) then
+					age_it(i,it) =1
+					born_it(i,it) = 1
+					bn_i = 1
+				elseif(bn_i == 1) then
+					born_it(i,it) = 0
+					call random_number(rand_age)
+					if(rand_age < 1- ptau(age_it(i,it-1)) .and. age_it(i,it-1) < TT ) then
+						age_it(i,it) = age_it(i,it-1)+1
+					else 
+						age_it(i,it) = age_it(i,it-1)
+					endif
 				else 
-					age_it(i,it) = age_it(i,it-1)
+					bn_i = 0
+					born_it(i,it) = 0
+					age_it(i,it) = 0
 				endif
 			enddo
-		enddo
-		success = 1
+			if(bn_i == 1) then !if the born draw never comes, do the whole thing again.
+				exit
+			endif
+		enddo! m=1,5.... if never gets born
+
+		enddo! i=1,Nsim
+
+		success = 0
 	end subroutine draw_age_it
 
 	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it, niter, seed0, success)
@@ -1541,14 +1645,15 @@ module sol_sim
 		integer,intent(out) :: success
 		integer,intent(in) :: age_it(:,:)
 		integer, dimension(100) :: bdayseed
-		integer,intent(out) :: drawi_ititer(:,:,:),drawt_ititer(:,:,:)
+		integer,intent(out) :: drawi_ititer(:,:),drawt_ititer(:,:)
 		integer :: i,it,ii,iteri,drawt,drawi
 		real(8) :: junk
 		
 		!need to draw these from age-specific distributions for iterations > 1
 		do iteri = 1,niter
 			do i=1,Nsim
-			do it=1,Tsim
+			it=1
+			if(age_it(i,it) > 0 )then
 				do ii=1,Nsim*Tsim
 					call random_number(junk)
 					drawi = max(1,nint(junk*Nsim))
@@ -1558,13 +1663,13 @@ module sol_sim
 						exit
 					endif
 				enddo
-				drawi_ititer(i,it,iteri) = drawi
-				drawt_ititer(i,it,iteri) = drawt
-			enddo
+				drawi_ititer(i,iteri) = drawi
+				drawt_ititer(i,iteri) = drawt
+			endif
 			enddo
 		enddo
 
-		success = 1
+		success = 0
 	end subroutine
 
 
@@ -1577,16 +1682,17 @@ module sol_sim
 		type(hist_struct), intent(inout), target :: hists
 
 
-		integer :: i, ii, iter, it, it_old, j, idi, id, &
+		integer :: i, ii, iter, it, it_old, ij, idi, id, &
 			&  seed0, seed1, status, m,ss, iter_draws=5
 		integer :: bdayseed(100)
 						
 		real(8), allocatable ::	del_i(:) ! shocks to be drawn
-		real(8), allocatable ::	al_it(:,:),z_jt(:,:)
-		integer, allocatable :: z_jt_int(:,:) ! shocks to be drawn
+		real(8), allocatable ::	al_it(:,:)
+		integer, allocatable :: z_jt_int(:,:),z_jt_macro(:,:), jshock_ij(:,:) ! shocks to be drawn
 		integer, allocatable :: del_i_int(:), j_i(:) ! integer valued shocks
 		integer, allocatable :: al_it_int(:,:)! integer valued shocks
 		integer, allocatable :: age_it(:,:) ! ages, drawn randomly
+		integer, allocatable :: born_it(:,:) ! born status, drawn randomly		
 		real(8), allocatable :: status_it_innov(:,:) !innovations to d, drawn randomly
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
@@ -1594,7 +1700,7 @@ module sol_sim
 		integer, allocatable :: status_it(:,:)  !track W,U,N,D,R : 1,2,3,4,5
 		real(8), allocatable :: e_it(:,:), a_it(:,:)
 		integer, allocatable :: d_it(:,:), a_it_int(:,:),e_it_int(:,:)
-		integer, allocatable :: drawi_ititer(:,:,:),drawt_ititer(:,:,:)
+		integer, allocatable :: drawi_ititer(:,:),drawt_ititer(:,:)
 		
 		real(8), pointer ::	VR(:,:,:), &			!Retirement
 					VD(:,:,:,:), &			!Disabled
@@ -1613,7 +1719,7 @@ module sol_sim
 		real(8) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1)
 	
 		! Other
-		real(8)	:: wage_hr,al_hr, junk , a_hr, e_hr, bet_hr,z_hr, work_dif_hr, app_dif_hr
+		real(8)	:: wage_hr,al_hr, junk,a_hr, e_hr, bet_hr,z_hr,j_val,j_val_ij,jwt,cumval,work_dif_hr, app_dif_hr,js_ij
 
 		integer :: work_hr,app_hr
 		integer :: ali_hr,d_hr,age_hr,del_hr, zi_hr, j_hr, ai_hr,api_hr,ei_hr, &
@@ -1644,7 +1750,8 @@ module sol_sim
 
 		iter_draws = 5
 
-		allocate(z_jt(Nsim, Tsim))
+		allocate(z_jt_macro(nj,Tsim))
+		allocate(jshock_ij(Nsim,nj))
 		allocate(z_jt_int(Nsim, Tsim))		
 		allocate(del_i(Nsim))
 		allocate(al_it(Nsim,Tsim))
@@ -1653,7 +1760,7 @@ module sol_sim
 		allocate(status_it_innov(Nsim,Tsim))
 		allocate(del_i_int(Nsim))
 		allocate(al_it_int(Nsim,Tsim))
-
+		allocate(born_it(Nsim,Tsim))
 
 		allocate(a_it(Nsim,Tsim))
 		allocate(a_it_int(Nsim,Tsim))		
@@ -1665,8 +1772,8 @@ module sol_sim
 		allocate(app_it(Nsim,Tsim))
 		allocate(app_dif_it(Nsim,Tsim))
 		allocate(status_it(Nsim,Tsim))
-		allocate(drawi_ititer(Nsim,Tsim,iter_draws-1))
-		allocate(drawt_ititer(Nsim,Tsim,iter_draws-1))
+		allocate(drawi_ititer(Nsim,iter_draws-1))
+		allocate(drawt_ititer(Nsim,iter_draws-1))
 
 		seed0 = 941987
 		seed1 = 12281951
@@ -1675,11 +1782,20 @@ module sol_sim
 		call random_seed(put = bdayseed(1:ss) )
 
 		if(verbose >2) print *, "Drawing types and shocks"	
-		call draw_age_it(age_it,seed0,status)
+		if(j_rand .eqv. .false. ) then
+			!draw gumbel-distributed shock
+			do i = 1,Nsim
+				do ij = 1,nj
+					call random_gumbel(js_ij)
+					jshock_ij(i,ij)=js_ij
+				enddo
+			enddo
+		endif
+		call draw_age_it(age_it,born_it,seed0,status)
 		call draw_deli(del_i,del_i_int, seed1, status)
 		call draw_alit(al_it,al_it_int, seed0, status)
 		call draw_ji(j_i,seed1, status)
-		call draw_zjt(z_jt,z_jt_int, j_i, seed0, status)
+		call draw_zjt(z_jt_macro, seed0, status)
 		call draw_status_innov(status_it_innov,seed1,status)
 		call draw_draw(drawi_ititer, drawt_ititer, age_it, iter_draws-1, seed0, status)
 
@@ -1688,9 +1804,8 @@ module sol_sim
 			call vec2csv(del_i,"del_i.csv")
 			call veci2csv(j_i,"j_i.csv")
 			call mat2csv(al_it,"al_it.csv")
-			call mat2csv(z_jt,"z_jt.csv")
+			call mati2csv(z_jt_macro,"z_jt_macro.csv")
 			call mati2csv(al_it_int,"al_it_int.csv")
-			call mati2csv(z_jt_int,"z_jt_int.csv")
 			call mati2csv(age_it,"age_it.csv")
 		endif
 		
@@ -1725,16 +1840,20 @@ module sol_sim
 		beti = 1
 		bet_hr = 1.
 		
+		if(verbose >2) print *, "Simulating"
+		
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,iter_draws
+		if(verbose >3) print *, "iter: ", iter
 			! OMP  parallel do default(shared) &
-			! OMP& private(iter, i, del_hr, j_hr, status_hr, it, it_old, drawi,drawt,z_hr,zi_hr,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,api_hr,wage_hr, &
-			! OMP& junk,app_dif_hr,work_dif_hr,status_tmrw) 
+			! OMP& private(iter,i,del_hr,j_hr,status_hr,it,it_old,drawi,drawt,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,ij,j_val,j_val_ij,jwt,z_hr,zi_hr,api_hr, &
+			! OMP& wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 				del_hr = del_i_int(i)
-				j_hr = j_i(i)
-				
+				if(j_rand .eqv. .true.) then
+					j_hr = j_i(i)
+				endif
 				!initialize stuff
 				it = 1
 				it_old = 1
@@ -1742,9 +1861,9 @@ module sol_sim
 				status_it(i,it) = 1
 
 				!need to draw these from age-specific distributions for iterations > 1
-				if(iter>1) then
-					drawi = drawi_ititer(i,it,iter-1)
-					drawt = drawt_ititer(i,it,iter-1)
+				if(iter>1 .and. age_it(i,it)  > 0 ) then
+					drawi = drawi_ititer(i,iter-1)
+					drawt = drawt_ititer(i,iter-1)
 					d_it(i,it) = d_it(drawi,drawt)
 					a_it(i,it) = a_it(drawi,drawt)
 					e_it(i,it) = e_it(drawi,drawt)
@@ -1756,27 +1875,53 @@ module sol_sim
 				
 				do it=1,Tsim
 					!set the state
-					z_hr	= zgrid(z_jt_int(i,it))
-					zi_hr	= z_jt_int(i,it)
-					age_hr	= age_it(i,it)
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
-					d_hr	= d_it(i,it)
-					e_hr 	= e_it(i,it)
-					a_hr 	= a_it(i,it)
-					ei_hr	= e_it_int(i,it)
-					ai_hr 	= a_it_int(i,it)
+					if(born_it(i,it).eq. 1) then
+						age_hr	= 1
+						d_hr	= 1
+						a_hr 	= minval(agrid)
+						ei_hr	= 1
+						e_hr 	= minval(egrid)
+						ai_hr 	= 1
+						if(j_rand .eqv. .false. ) then !choose occupation
+							j_val = -1.e6
+							do ij = 1,nj
+								cumval = dexp(V((ij-1)*nbi+beti,(del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)/occscale ) + cumval
+							enddo
+							
+							do ij = 1,nj
+								j_val_ij = V((ij-1)*nbi+beti,(del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)
+									
+								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/occscale)
+								j_val_ij = j_val_ij + jshock_ij(i,ij)*occscale + log(jwt)
+								if(j_val< j_val_ij ) then
+									j_hr = ij
+									j_val = j_val_ij
+								endif
+							enddo
+						endif
+					else 
+						age_hr	= age_it(i,it)
+						al_hr	= al_it(i,it)
+						ali_hr	= al_it_int(i,it)
+						d_hr	= d_it(i,it)
+						a_hr 	= a_it(i,it)
+						ei_hr	= e_it_int(i,it)
+						e_hr 	= e_it(i,it)
+						ai_hr 	= a_it_int(i,it)
+					endif
+					zi_hr	= z_jt_macro(j_hr,it)
+					z_hr	= zgrid(zi_hr)
 					
 					wage_hr	= wage(bet_hr,al_hr,d_hr,z_hr,age_hr)
 					hists%wage_hist(i,it) = wage_hr
 					
 					status_hr = status_it(i,it)
-					
-					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN - 25)
+					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
 					if(age_hr .eq. TT) then
 						it_old = it_old + 1
-						
-						if(it_old .gt.  Longev - youngD - oldD*oldN - 25) then
+						if(it_old .gt.  (Longev - youngD - oldD*oldN)*tlength ) then
 							a_it(i,it:Tsim) = 0.
 							a_it_int(i,it:Tsim) = 0
 							d_it(i,it:Tsim) = 0
@@ -1922,6 +2067,9 @@ module sol_sim
 				do age_hr=1,TT-1
 					if(age_it(i,it) .eq. age_hr ) hists%obsX_hist(i + (Nsim-1)*age_hr,it) = 1
 				enddo
+				do id = 1,nd-1
+					if(d_it(i,it) .eq. id ) hists%obsX_hist(i + (Nsim-1)*(TT-1),it) = 1
+				enddo
 			enddo
 		enddo
 		
@@ -1936,7 +2084,7 @@ module sol_sim
 	
 		deallocate(d_it,a_it,e_it)
 		deallocate(a_it_int,e_it_int)
-		deallocate(z_jt,del_i,al_it,j_i)
+		deallocate(del_i,al_it,j_i,born_it,age_it)
 		deallocate(app_dif_it,app_it,work_it,work_dif_it)
 		deallocate(del_i_int,al_it_int,z_jt_int,status_it_innov)
 		deallocate(drawi_ititer,drawt_ititer)
