@@ -9,7 +9,7 @@
 !				  before individual types are drawn.
 !	
 !************************************************************************************************!
-! compiler line: gfortran -ffree-line-length-none -g V0para.f90 V0main.f90 -o V0main.out 
+! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -o V0main.out 
 module helper_funs
 	
 	use V0para
@@ -393,6 +393,11 @@ module helper_funs
 		real(8), dimension(:), allocatable :: fitted,resids
 		real(8) :: s2
 		integer :: i
+		
+		external dgemm,dgemv
+		external dpotrs,dpotrf,dpotri
+	
+
 	
 		nK = size(XX, dim = 2)
 		nX = size(XX, dim = 1)
@@ -1112,17 +1117,20 @@ module sol_sim
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
 			!$OMP   parallel do default(shared) reduction(+:summer) &
-			!$OMP & private(ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,egrid,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz) 
+			!$OMP & private(ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz) 
 			  	do ial=1,nai	!Loop over alpha (ai)
 				do id=1,nd	!Loop over disability index
 			  	do ie=1,ne	!Loop over earnings index
 			  	do iz=1,nz	!Loop over TFP
 					!Earnings evolution independent of choices.
-					wagehere = wage(beti(ibi),alfi(ial),id,zgrid(iz),TT-it)
+					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz),TT-it)
 					eprime = Hearn(TT-it,ie,wagehere)
 					!linear interpolate for the portion that blocks off bounds on assets
 					if(eprime > emin .and. eprime < emax) then  ! this should be the same as if(eprime > minval(egrid) .and. eprime < maxval(egrid))
-						iee1 = finder(egrid,eprime) !apparently this causes a race unless egrid is private
+						iee1 = ne
+						do while( eprime < egrid(iee1) .and. iee1>= 1)
+							iee1 = iee1 -1
+						enddo
 						iee2 = min(ne,iee1+1)
 						iee1wt = (egrid(iee2)-eprime)/(egrid(iee2)-egrid(iee1))
 					elseif( eprime <= emin  ) then 
@@ -1341,10 +1349,7 @@ module sol_sim
 			enddo
 			enddo
 
-			call vec2csv(dtype,'DriskGrid.csv',0)
-			call vec2csv(alfi(:),'AlfGrid.csv',0)
-			call vec2csv(occz(:),'ZriskGrid.csv',0)
-			call vec2csv(agrid(:),'Agrid.csv',0)
+
 		endif
 
 
@@ -1365,7 +1370,7 @@ module sol_sim
 		real(8), dimension(:) :: del_i
 		integer, dimension(:) :: del_i_int
 		integer :: ss, Nsim, di_int,m,i
-		real(8) :: dtypeL, dtypeH,dtype_i
+		real(8) :: delgridL, delgridH,delgrid_i
 		integer, dimension(100) :: bdayseed
 
 		call random_seed(size = ss)
@@ -1373,20 +1378,20 @@ module sol_sim
 		call random_seed(put = bdayseed(1:ss) )
 
 		Nsim = size(del_i)
-		dtypeL = minval(dtype)
-		dtypeH = maxval(dtype)
+		delgridL = minval(delgrid)
+		delgridH = maxval(delgrid)
 
 		do i=1,Nsim
-			call random_number(dtype_i) ! draw uniform on 0,1
-			dtype_i = dtype_i*(dtypeH-dtypeL) + dtypeL !change domain of uniform
-			di_int = finder(dtype,dtype_i)
+			call random_number(delgrid_i) ! draw uniform on 0,1
+			delgrid_i = delgrid_i*(delgridH-delgridL) + delgridL !change domain of uniform
+			di_int = finder(delgrid,delgrid_i)
 			! round up or down:
-			if( (dtype_i - dtype(di_int))/(dtype(di_int+1) - dtype(di_int)) > 0.5 ) di_int = di_int + 1
+			if( (delgrid_i - delgrid(di_int))/(delgrid(di_int+1) - delgrid(di_int)) > 0.5 ) di_int = di_int + 1
 			di_int = max(min(di_int,nd),1)
 			if(del_contin .eqv. .true.) then
-				del_i(i) = dtype_i
+				del_i(i) = delgrid_i
 			else
-				del_i(i) = dtype(di_int)
+				del_i(i) = delgrid(di_int)
 			endif
 			del_i_int(i) = di_int
 		enddo
@@ -1426,8 +1431,8 @@ module sol_sim
 		integer, intent(out),optional :: success
 		real(8), dimension(:,:) :: al_it
 		integer, dimension(:,:) :: al_it_int
-		integer :: ss, Nsim, alfi_int, t,m,i
-		real(8) :: alfiL, alfiH,alfi_innov,alfi_i
+		integer :: ss, Nsim, alfgrid_int, t,m,i
+		real(8) :: alfgridL, alfgridH,alf_innov,alfgrid_i
 		integer, dimension(100) :: bdayseed
 
 		call random_seed(size = ss)
@@ -1435,49 +1440,49 @@ module sol_sim
 		call random_seed(put = bdayseed(1:ss) )
 
 		Nsim = size(al_it,1)
-		alfiL = minval(alfi)
-		alfiH = maxval(alfi)
+		alfgridL = minval(alfgrid)
+		alfgridH = maxval(alfgrid)
 
 		do i=1,Nsim
 
 			! draw starting values
 			t =1
 			
-			call random_normal(alfi_innov) ! draw normal disturbances on 0,1
+			call random_normal(alf_innov) ! draw normal disturbances on 0,1
 			! transform it by the ergodic distribution for the first period:
-			alfi_i = alfi_innov*alfsig + alfmu
+			alfgrid_i = alf_innov*alfsig + alfmu
 
-			if(alfi_i >alfiH .or. alfi_i < alfiL) success = 1+success !count how often we truncate
+			if(alfgrid_i >alfgridH .or. alfgrid_i < alfgridL) success = 1+success !count how often we truncate
 			!impose bounds
-			alfi_i = max(alfi_i,alfiL)
-			alfi_i = min(alfi_i,alfiH)
-			alfi_int = finder(alfi,alfi_i)
+			alfgrid_i = max(alfgrid_i,alfgridL)
+			alfgrid_i = min(alfgrid_i,alfgridH)
+			alfgrid_int = finder(alfgrid,alfgrid_i)
 			! round up or down:
-			if( (alfi_i - alfi(alfi_int))/(alfi(alfi_int+1)- alfi(alfi_int)) >0.5 ) alfi_int = alfi_int + 1
+			if( (alfgrid_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
 			if(al_contin .eqv. .true.) then
-				al_it(i,t) = alfi_i ! log of wage shock
+				al_it(i,t) = alfgrid_i ! log of wage shock
 			else
-				al_it(i,t) = alfi(alfi_int) ! log of wage shock, on grid
+				al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
 			endif
-			al_it_int(i,t) = alfi_int
+			al_it_int(i,t) = alfgrid_int
 			
 			! draw sequence:
 
 			do t=2,Tsim
-				call random_normal(alfi_innov)
-				alfi_innov = alfi_innov*alfsig*(1.-alfrho**2) ! mean 0 with conditional standard deviation implied by (alfsig, alfrho)
-				alfi_i = alfrho*alfi_i + (1-alfrho)*alfmu + alfi_innov
-				if(alfi_i >alfiH .or. alfi_i < alfiL) success = 1+success !count how often we truncate
-				alfi_i = max(alfi_i,alfiL)
-				alfi_i = min(alfi_i,alfiH)
-				alfi_int = finder(alfi,alfi_i)
-				if( (alfi_i - alfi(alfi_int))/(alfi(alfi_int+1)- alfi(alfi_int)) >0.5 ) alfi_int = alfi_int + 1
+				call random_normal(alf_innov)
+				alf_innov = alf_innov*alfsig*(1.-alfrho**2) ! mean 0 with conditional standard deviation implied by (alfsig, alfrho)
+				alfgrid_i = alfrho*alfgrid_i + (1-alfrho)*alfmu + alf_innov
+				if(alfgrid_i >alfgridH .or. alfgrid_i < alfgridL) success = 1+success !count how often we truncate
+				alfgrid_i = max(alfgrid_i,alfgridL)
+				alfgrid_i = min(alfgrid_i,alfgridH)
+				alfgrid_int = finder(alfgrid,alfgrid_i)
+				if( (alfgrid_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
 				if(al_contin .eqv. .true.) then
-					al_it(i,t) = alfi_i ! log of wage shock
+					al_it(i,t) = alfgrid_i ! log of wage shock
 				else
-					al_it(i,t) = alfi(alfi_int) ! log of wage shock, on grid
+					al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
 				endif
-				al_it_int(i,t) = alfi_int					
+				al_it_int(i,t) = alfgrid_int					
 
 			enddo
 		enddo
@@ -1561,7 +1566,6 @@ module sol_sim
 				z_jt_macro(ij,it) = z_jt_t
 			enddo
 		enddo
-
 		success = 0
 		
 		deallocate(cumpi_j)
@@ -1846,8 +1850,8 @@ module sol_sim
 		do iter=1,iter_draws
 		if(verbose >3) print *, "iter: ", iter
 			! OMP  parallel do default(shared) &
-			! OMP& private(iter,i,del_hr,j_hr,status_hr,it,it_old,drawi,drawt,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,ij,j_val,j_val_ij,jwt,z_hr,zi_hr,api_hr, &
-			! OMP& wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
+			! OMP& private(iter,i,del_hr,j_hr,status_hr,it,it_old,drawi,drawt,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr, &
+			! OMP& ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 				del_hr = del_i_int(i)
@@ -1858,7 +1862,7 @@ module sol_sim
 				it = 1
 				it_old = 1
 				status_hr = 1
-				status_it(i,it) = 1
+				status_it(i,it) = 1 !always start 
 
 				!need to draw these from age-specific distributions for iterations > 1
 				if(iter>1 .and. age_it(i,it)  > 0 ) then
@@ -1869,30 +1873,32 @@ module sol_sim
 					e_it(i,it) = e_it(drawi,drawt)
 					e_it_int(i,it) = e_it_int(drawi,drawt)
 					a_it_int(i,it) = a_it_int(drawi,drawt)
-!					status_it(i,it) = status_it(drawi,drawt)
 				endif
 
 				
 				do it=1,Tsim
+				if(age_it(i,it)  > 0) then
 					!set the state
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
+					
 					if(born_it(i,it).eq. 1) then
 						age_hr	= 1
 						d_hr	= 1
 						a_hr 	= minval(agrid)
+						ai_hr	= 1
 						ei_hr	= 1
-						e_hr 	= minval(egrid)
+						e_hr 	= 0.
 						ai_hr 	= 1
 						if(j_rand .eqv. .false. ) then !choose occupation
-							j_val = -1.e6
+							j_val  = -1.e6
+							cumval = 0.
 							do ij = 1,nj
 								cumval = dexp(V((ij-1)*nbi+beti,(del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)/occscale ) + cumval
 							enddo
 							
 							do ij = 1,nj
 								j_val_ij = V((ij-1)*nbi+beti,(del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)
-									
 								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/occscale)
 								j_val_ij = j_val_ij + jshock_ij(i,ij)*occscale + log(jwt)
 								if(j_val< j_val_ij ) then
@@ -1921,18 +1927,17 @@ module sol_sim
 					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
 					if(age_hr .eq. TT) then
 						it_old = it_old + 1
-						if(it_old .gt.  (Longev - youngD - oldD*oldN)*tlength ) then
+						if(it_old .gt.  (Longev - youngD - oldD*oldN - 25)*tlength ) then
 							a_it(i,it:Tsim) = 0.
 							a_it_int(i,it:Tsim) = 0
 							d_it(i,it:Tsim) = 0
 							app_dif_it(i,it:Tsim) = 0.						
 							work_dif_it(i,it:Tsim) = 0.
 							status_it(i,it:Tsim) = -1
-							
 							exit
 						endif
 					endif 
-					
+
 					!make decisions if not yet retired
 					if(age_hr < TT) then 
 						if(status_hr .eq. 3) then ! choose wait or apply
@@ -1947,9 +1952,9 @@ module sol_sim
 								app_it(i,it) = 0
 							endif
 						endif
-
 						! evalutate gwork and gapp to figure out lom of status 
 						if((status_hr < 3) .or. (status_hr .eq. 3 .and. app_dif_hr < 0 ))then !choose work or rest
+							app_dif_it(i,it) = 0. !just to fill in value
 							work_dif_hr = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							
 							if( work_dif_hr > 0 ) then
@@ -1978,8 +1983,13 @@ module sol_sim
 							else	
 								status_tmrw = 3
 							endif
+							app_dif_it(i,it) = 0.
 						elseif(status_hr > 3 ) then !absorbing states of D,R
 							status_tmrw = status_hr
+							! just to fill in values
+							app_dif_it(i,it) = 0.
+							work_dif_it(i,it) = 0.
+
 						endif
 
 						! the status that will go into next period
@@ -1988,7 +1998,6 @@ module sol_sim
 						!evaluate the asset policy			
 						if(status_hr .eq. 1) then
 							api_hr = aw( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
-				
 						elseif(status_hr .eq. 2) then
 							api_hr = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 						elseif(status_hr .eq. 3) then
@@ -2041,6 +2050,15 @@ module sol_sim
 							d_it(i,it+1) = d_hr
 						endif
 					endif
+				else !age_it(i,it) = 0
+					a_it(i,it) = 0.
+					a_it_int(i,it) = 0
+					d_it(i,it) = 0
+					app_dif_it(i,it) = 0.						
+					work_dif_it(i,it) = 0.
+					status_it(i,it) = -1
+					if(it<Tsim) status_it(i,it+1) = 1
+				endif ! age_it(i,it)>0
 				enddo !1,Tsim
 			enddo! 1,Nsim
 			! OMP  end parallel do 
@@ -2114,7 +2132,6 @@ program V0main
 
 		integer  :: id, it, ij, ibi, ial, iz, narg_in, wo
 
-
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
@@ -2167,8 +2184,17 @@ program V0main
 	call setparams()
 	agrid(1) = .05*(agrid(1)+agrid(2))
 	if(print_lev >= 2) then
-		call vec2csv(agrid,"agrid.csv")
+		! plot out a bunch of arrays for analyzing VFs, etc
 		wo = 0
+		call vec2csv(agrid,"agrid.csv",wo)
+		call vec2csv(delgrid,'delgrid.csv',wo)
+		call vec2csv(alfgrid,'alfgrid.csv',wo)
+		call vec2csv(occz,'occzgrid.csv',wo)
+		call vec2csv(agrid,'agrid.csv',wo)
+		call vec2csv(egrid,'egrid.csv',wo)
+		call vec2csv(zgrid,'zgrid.csv',wo)
+		call veci2csv(dgrid,'dgrid.csv',wo)
+		call veci2csv(agegrid,'agegrid.csv',wo)		
 		do ij = 1,nj
 			call mat2csv(piz(:,:,ij),"piz.csv",wo)
 			if(wo==0) wo =1
@@ -2188,11 +2214,11 @@ program V0main
 		do it = 1,TT-1
 			do ial =1,nai
 				do id = 1,nd-1
-					wagehere = wage(beti(ibi),alfi(ial),id,zgrid(iz),it)
+					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz),it)
 					write(1, "(G20.12)", advance='no') wagehere
 				enddo
 				id = nd
-				wagehere = wage(beti(ibi),alfi(ial),id,zgrid(iz),it)
+				wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz),it)
 				write(1,*) wagehere
 			enddo
 			write(1,*) " "! trailing space

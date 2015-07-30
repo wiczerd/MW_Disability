@@ -19,7 +19,7 @@ character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 real(8), parameter ::	youngD = 20.0, &	!Length of initial young period
 		oldD = 10.0, &		!Length of each old period
 		tlength =12., &		!Number of periods per year (monthly)	
-		Longev = 78., &		!Median longevity	
+		Longev = 78.- 25., &		!Median longevity	
 		xi0 = (0.16), &		!Probability of DI accept for d=0
 		xi1 = 0.22, &		!Probability of DI accept for d=1
 		xi2 = 0.50, &		!Probability of DI accept for d=2
@@ -72,12 +72,12 @@ integer, parameter :: 	nai = 2, &!11	!Number of individual alpha types
 		ne  = 2, &!10		!Points on earnings grid
 		na  = 50, &!200	!Points on assets grid
 		nz  = 3,  &		!Number of Occ TFP Shocks
-		maxiter = 2000, &!	!Tolerance parameter	
+		maxiter = 2 , &!	!Tolerance parameter	
 		iaa_lowindow = 5,& 	!how far below to begin search
 		iaa_hiwindow = 5, &	!how far above to keep searching
-		Nsim = 200, &!	!how many agents to draw
+		Nsim = 200, &!		!how many agents to draw
 		Ndat = 5000, & 		!size of data, for estimation
-		Tsim = tLength*(int(Longev-25)+1), &	!how many periods to solve
+		Tsim = int(tLength*Longev)+1, &	!how many periods to solve
 		Nk   = TT-1+(nd-1)*2+2	!number of regressors - each period, each health and leading, occupation dynamics
 
 
@@ -96,14 +96,14 @@ real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
 								   	
 
 !**To build***************************!
-real(8) :: 	alfi(nai), &		!Alpha_i grid- individual wage type parameter
+real(8) :: 	alfgrid(nai), &		!Alpha_i grid- individual wage type parameter
 		beti(nbi), &		!Beta_i grid- individual wage type parameter
 		occz(nj), &		!Occupation-specific z risk
 		wtau(TT-1), &		!Age-specific wage parameter
 		wd(nd),   &		!Disability-specific wage parameter
 		ptau(TT), &		!Probability of aging
 		dtau(TT-1), &		!Proportional age-related disability risk
-		dtype(ndi), &		!Individual specific disability risk
+		delgrid(ndi), &		!Individual specific disability risk
 		zgrid(nz), &		!TFP shock grid
 		xi(nd),&		!DI acceptance probability
 		agrid(na),&		!Assets grid
@@ -112,6 +112,9 @@ real(8) :: 	alfi(nai), &		!Alpha_i grid- individual wage type parameter
 		piz(nz,nz,nj),&		!TFP transition matrix
 		pid(nd,nd,ndi,TT-1),&	!Disability transition matrix
 		Njdist(nj)		!Fraction in each occupation
+		
+integer :: 	dgrid(nd), &		! just enumerate the d states
+		agegrid(TT)			! the mid points of the ages
 
 !***preferences and technologies that may change
 real(8) :: 	beta= 0.99674, & 	!People are impatient (4% annual discount rate to start)
@@ -148,7 +151,7 @@ subroutine setparams()
 	!Occupation Specific Transistion Multipliers: 
 	!Extra probability of bad z transitions
 	DO i=1,nj
-		occz(i) = zRiskL +(i-1)*(zRiskH-zRiskL)/(nz-1)
+		occz(i) = zRiskL +dble(i-1)*(zRiskH-zRiskL)/dble(nz-1)
 	EndDO
 
 
@@ -164,10 +167,10 @@ subroutine setparams()
 	summy = 0
 	DO i=1,nai
 		k = nai-i+1
-		node = COS(pival*(2.*k-1.)/(2.*nai))
-		nodeL = COS(pival*(2.*max(k-1,1)-1.)/(2.*nai))
-		nodeH = COS(pival*(2.*min(k+1,nai)-1.)/(2*nai))
-		alfi(i) = ((node+1.)/2.)*(emax-emin)+emin
+		node = cos(pival*(2.*k-1.)/(2.*nai))
+		nodeL = cos(pival*(2.*max(k-1,1)-1.)/(2.*nai))
+		nodeH = cos(pival*(2.*min(k+1,nai)-1.)/(2*nai))
+		alfgrid(i) = ((node+1.)/2.)*(emax-emin)+emin
 		IF (i .EQ. 1) THEN
 			midH = ((nodeH-node)/2.)+node
 			!pialf(:,i) = DNORDF(((midH+1)/2)*(2-2)-2)
@@ -193,9 +196,11 @@ subroutine setparams()
 		pialf(i,i) = pialf(i,i) + alfrho	!Larger probability of staying
 	EndDO
 
+	forall(i=1:nd) dgrid(i) = i
+
 	!Extra disability risk (uniform distributed)
 	DO i=1,ndi
-		dtype(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
+		delgrid(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
 	EndDO
 
 	!TFP 
@@ -205,13 +210,19 @@ subroutine setparams()
 
 	!Age-Specific Things
 	!Wage Bonus
-	wtau(1) = ageW*(25.+youngD/2.)+ageW2*((25.+youngD/2.)**2)				     !Young
+	wtau(1) = ageW*youngD/2.+ageW2*(youngD/2.)**2			     !Young
 	DO t=2,TT-1							
-		wtau(t) = ageW*(25.+youngD+t*oldD-oldD/2.)+ageW2*((25.+youngD+t*oldD-oldD/2.)**2) !Old
+		wtau(t) = ageW*(youngD+t*oldD-oldD/2.)+ageW2*((youngD+t*oldD-oldD/2.)**2) !Old
 	ENDDO
 	do t=1,TT-1
 		wtau(t) = log(wtau(t))
 	enddo
+	! age grid building
+	agegrid(1) = youngD/2
+	do t = 2,TT-1
+		agegrid(t) = youngD + oldD*(t-2) + oldD/2
+	enddo
+	agegrid(TT) = Longev/2 - (youngD + oldD*oldN) /2 + (youngD + oldD*oldN)
 
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlength units
@@ -220,17 +231,17 @@ subroutine setparams()
 	DO t=2,TT-1
 		ptau(t) = 1-(tlength*oldD+1)**(-1)
 	ENDDO
-	ptau(TT) = 1-((Longev-25+youngD+oldN*oldD)*tlength-1)**(-1)
+	ptau(TT) = 1-((Longev-youngD+oldN*oldD)*tlength-1)**(-1)
 
 	!initial age structure
-	prob_t(1) = (youngD )/(Longev - 25.)
+	prob_t(1) = youngD/Longev
 	do t=2,TT-1
 		prob_t(t) = oldD/(Longev - 25.)
 	enddo
 	prob_t(TT) = 1.-sum(prob_t)
 	!prob of getting born
 	do t=2,Tsim
-		prborn_t(t) = Nsim*0.01/tlength !1% population growth per year
+		prborn_t(t) = 0.01/tlength !1% population growth per year
 	enddo
 	prborn_t(1) = 1. - sum(prborn_t(2:Tsim))
 	
@@ -253,10 +264,10 @@ subroutine setparams()
 
 	!Earnings Grid
 	!Make linear from lowest possible wage (disabled entrant, lowest types)
-	emin = dexp(beti(1)*zgrid(1)+minval(alfi)+wtau(1)+wd(nd))
+	emin = dexp(beti(1)*zgrid(1)+minval(alfgrid)+wtau(1)+wd(nd))
 	!... to highest, maximizing over t
 	!wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
-	emax = dexp(beti(nbi)*zgrid(nz)+maxval(alfi)+wtau(TT-1)+wd(1))
+	emax = dexp(beti(nbi)*zgrid(nz)+maxval(alfgrid)+wtau(TT-1)+wd(1))
 	step = (emax-emin)/dble(ne-1)
 	DO i=1,ne
 		egrid(i) = emin+step*dble(i-1)
@@ -273,12 +284,12 @@ subroutine setparams()
 	DO i=1,ndi
 	DO t=1,TT-1
 
-		pid(1,2,i,TT-t) = 1-(1-pid1*dtau(TT-t)*dtype(i)) &	!Partial Disability 
+		pid(1,2,i,TT-t) = 1-(1-pid1*dtau(TT-t)*delgrid(i)) &	!Partial Disability 
 					& **(1./tlength)	
 		pid(1,1,i,TT-t) = 1-pid(1,2,i,TT-t)			!Stay healthy
 		pid(1,3,i,TT-t) = 0					!Full Disability
 		pid(2,1,i,TT-t) = 0					!Monotone
-		pid(2,3,i,TT-t) = 1-(1-pid2*dtau(TT-t)*dtype(i)) &	!Full Disability
+		pid(2,3,i,TT-t) = 1-(1-pid2*dtau(TT-t)*delgrid(i)) &	!Full Disability
 					& **(1./tlength)	
 		pid(2,2,i,TT-t) = 1-pid(2,3,i,TT-t)			!Stay Partial
 		pid(3,1,i,TT-t) = 0					!Full is absorbing State
@@ -291,12 +302,12 @@ subroutine setparams()
 	DO j=1,nj
 		piz(1,1,j) = (1-piz1)**(1./tlength)	!Stay in really bad shock
 		piz(1,2,j) = 1-piz(1,1,j)		!Move to low shock
-		piz(1,3,j) = 0
+		piz(1,3,j) = 0.
 		piz(2,2,j) = (1-piz2*occz(j)-piz3) &	!Stay in low shock
 				&**(1./tlength)	
 		piz(2,3,j) = 1-(1-piz3)**(1./tlength)	!Move to high shock
 		piz(2,1,j) = 1-piz(2,2,j)-piz(2,3,j)	!Move to really bad shock (occupations affect it)
-		piz(3,1,j) = 0				!Must go through low to get to really bad
+		piz(3,1,j) = 0.				!Must go through low to get to really bad
 		piz(3,3,j) = (1-piz4*occz(j))**(1./tlength)	  !Stay in high shock
 		piz(3,2,j) = 1-piz(3,3,j)		!Move to low shock
 		
