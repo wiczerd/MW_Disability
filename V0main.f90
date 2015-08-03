@@ -77,7 +77,7 @@ module helper_funs
 	type hist_struct
 		real(8), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
 		real(8), allocatable :: wage_hist(:,:) !realized wages
-		real(8), allocatable :: obsX_hist(:,:) ! a bunch of explanitory variables stacked on each other
+		real(8), allocatable :: obsX_vars(:,:) ! a bunch of explanitory variables stacked on each other
 		integer :: alloced
 	end type
 	
@@ -442,14 +442,41 @@ module helper_funs
 	
 	end subroutine OLS
 
-
 end module helper_funs
+
+module model_data
+	use V0para
+	use helper_funs
+	
+	implicit none
+	
+	contains
+	
+	subroutine moments_compute(hists_sim,moments_sim)
+	
+		moments_struct,	intent(out) :: moments_sim
+		hist_struct, 	intent(in)  :: hists_sim
+	
+		integer :: i, ij,it,age_hr
+	
+	end subroutine moments_compute
+	
+	subroutine LPM_employment(hists_sim,moments_sim)
+	
+		moments_struct,	intent(out) :: moments_sim
+		hist_struct, 	intent(in)  :: hists_sim
+	
+	
+	end subroutine LPM_employment
+
+end module model_data
 
 
 module sol_sim
 
 	use V0para
 	use helper_funs
+	use model_data
 ! module with subroutines to solve the model and simulate data from it 
 
 	implicit none
@@ -1599,7 +1626,7 @@ module sol_sim
 		born_it = 0
 		
 		do i =1,Nsim
-		do m = 1,5
+		do m = 1,50
 			bn_i = 0 ! initialize, not yet born
 			it = 1
 			call random_number(rand_born)
@@ -1705,6 +1732,7 @@ module sol_sim
 		real(8), allocatable :: e_it(:,:), a_it(:,:)
 		integer, allocatable :: d_it(:,:), a_it_int(:,:),e_it_int(:,:)
 		integer, allocatable :: drawi_ititer(:,:),drawt_ititer(:,:)
+		real(8), allocatable :: occgrow_jt(:,:), occsize_jt(:,:),occshrink_jt(:,:)
 		
 		real(8), pointer ::	VR(:,:,:), &			!Retirement
 					VD(:,:,:,:), &			!Disabled
@@ -1720,10 +1748,11 @@ module sol_sim
 		integer, pointer ::	gapp(:,:,:,:,:,:,:), &
 					gwork(:,:,:,:,:,:,:)
 		
-		real(8) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1)
+		real(8) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1),d_var(TT-1),&
+				& a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1)
 	
 		! Other
-		real(8)	:: wage_hr,al_hr, junk,a_hr, e_hr, bet_hr,z_hr,j_val,j_val_ij,jwt,cumval,work_dif_hr, app_dif_hr,js_ij
+		real(8)	:: wage_hr,al_hr, junk,a_hr, e_hr, bet_hr,z_hr,j_val,j_val_ij,jwt,cumval,work_dif_hr, app_dif_hr,js_ij, Nworkt
 
 		integer :: work_hr,app_hr
 		integer :: ali_hr,d_hr,age_hr,del_hr, zi_hr, j_hr, ai_hr,api_hr,ei_hr, &
@@ -1839,6 +1868,11 @@ module sol_sim
 		a_it_int = 1
 		e_it = egrid(1)
 		e_it_int = 1
+		a_mean_liter = 0.
+		d_mean_liter = 0.
+		a_var_liter = 0.
+		d_var_liter = 0.
+
 
 		!use only 1 value of beta
 		beti = 1
@@ -1894,18 +1928,19 @@ module sol_sim
 							j_val  = -1.e6
 							cumval = 0.
 							do ij = 1,nj
-								cumval = dexp(V((ij-1)*nbi+beti,(del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)/occscale ) + cumval
+								cumval = dexp(V((ij-1)*nbi+beti,(del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)/amenityscale ) + cumval
 							enddo
-							
+							j_hr = 1 !initial value
 							do ij = 1,nj
 								j_val_ij = V((ij-1)*nbi+beti,(del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)
-								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/occscale)
-								j_val_ij = j_val_ij + jshock_ij(i,ij)*occscale + log(jwt)
+								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/amenityscale)
+								j_val_ij = j_val_ij + jshock_ij(i,ij)*amenityscale + log(jwt)
 								if(j_val< j_val_ij ) then
 									j_hr = ij
 									j_val = j_val_ij
 								endif
 							enddo
+							j_i(i) = j_hr
 						endif
 					else 
 						age_hr	= age_it(i,it)
@@ -2071,23 +2106,104 @@ module sol_sim
 				call mati2csv(status_it,"status_it.csv")
 				call mati2csv(d_it,"d_it.csv")
 			endif
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! check age - specific distributions of a_it, d_it for convergence
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+			a_mean = 0.
+			d_mean = 0.
+			a_var = 0.
+			d_var = 0.
+			do age_hr = 1,TT-1
+				junk = 0.
+				do i=1,Nsim
+					do it = 1,Tsim
+						if( age_hr .eq. age_it(i,it) ) then
+							a_mean(age_hr) = a_it(i,it) + a_mean(age_hr)
+							d_mean(age_hr) = d_it(i,it) + d_mean(age_hr)
+							junk = junk + 1.
+
+						endif
+					enddo
+				enddo
+				a_mean(age_hr) = a_mean(age_hr)/junk
+				d_mean(age_hr) = d_mean(age_hr)/junk
+				do i=1,Nsim
+					do it = 1,Tsim
+						if( age_hr .eq. age_it(i,it) ) then
+							a_var(age_hr) = (a_it(i,it) - a_mean(age_hr))**2 + a_var(age_hr)
+							d_var(age_hr) = (d_it(i,it) - d_mean(age_hr))**2+ d_var(age_hr)
+						endif
+					enddo
+				enddo
+				a_var(age_hr) = a_var(age_hr)/junk
+				d_var(age_hr) = d_var(age_hr)/junk
+			enddo
+			if(sum((a_mean - a_mean_liter)**2) + sum((d_mean - d_mean_liter)**2)<1.e-4 ) then
+				exit
+			endif
+			a_mean_liter = a_mean
+			d_mean_liter = d_mean
+			a_var_liter = a_var
+			d_var_liter = d_var			
 		enddo! iter
 		if(verbose >=2 ) print *, "done simulating"
+		if(verbose >=3 ) print *, "dif a_mean, a_var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
+		if(verbose >=3 ) print *, "dif d_mean, d_var",  sum((d_mean - d_mean_liter)**2), sum((d_var - d_var_liter)**2)
+		
+		! calc occupation growth rates
+		it = 1
+		occsize_jt(ij,it) = 0.
+		occgrow_jt(ij,it) = 0.
+		occshrink_jt(ij,it) = 0.
+		do i=1,Nsim
+			if(j_i(i) == ij .and. born_it(i,it) == 1) occsize_jt(ij,it) = 1.+occsize_jt(ij,it)
+		enddo
+		Nworkt = sum(born_it(:,it)) !labor force in first period are the ones "born" in the first period
+		occsize_jt(ij,it) = occsize_jt(ij,it) / Nworkt
+		do it = 2,Tsim
+			Nworkt = 0.
+			do ij =1,nj
+				occgrow_jt  (ij,it) = 0.
+				occshrink_jt(ij,it) = 0.
+				occsize_jt  (ij,it) = 0.
+				do i=1,Nsim
+					if(j_i(i) ==ij .and. born_it(i,it) == 1) occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
+					if(j_i(i) ==ij .and. status_it(i,it-1) == 1 .and. status_it(i,it-1) > 1) occshrink_jt(ij,it) = 1. + occshrink_jt(ij,it)
+					if(j_i(i) ==ij .and. status_it(i,it) == 1) occsize_jt(ij,it) = 1. + occsize_jt(ij,it)
+					if(status_it(i,it) == 1) Nworkt = 1. + Nworkt
+				enddo
+				occgrow_jt(ij,it) = occgrow_jt(ij,it)/occsize_jt(ij,it)
+				occshrink_jt(ij,it) = occshrink_jt(ij,it)/occsize_jt(ij,it)
+			enddo
+			forall(ij=1:nj) occsize_jt(ij,it) = occsize_jt(ij,it)/Nworkt
+			
+		enddo 
+		
 		!fill the histories
 		hists%work_dif_hist = work_dif_it
 		hists%app_dif_hist  = app_dif_it
-		hists%obsX_hist = 0.
+		hists%obsX_vars = 0.
 		do i=1,Nsim
 			do it=1,Tsim
 				do age_hr=1,TT-1
-					if(age_it(i,it) .eq. age_hr ) hists%obsX_hist(i + (Nsim-1)*age_hr,it) = 1
+					if(age_it(i,it) .eq. age_hr ) hists%obsX_vars(i + (Nsim-1)*it, age_hr) = 1
 				enddo
 				do id = 1,nd-1
-					if(d_it(i,it) .eq. id ) hists%obsX_hist(i + (Nsim-1)*(TT-1),it) = 1
+					if(d_it(i,it) .eq. id ) hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+id) = 1
+					! lead 1 period health status
+					if(it <= Tsim - tlength) then
+						if(d_it(i,it+tlength) .eq. id ) hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd+id) = 1
+					endif
 				enddo
+				do ij = 1,nj
+					if(j_i(i) == ij )  then 
+						hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+1) = occgrow_jt(ij,it)
+						hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+2) = occshrink_jt(ij,it)
+						if(it<=Tsim-tlength) then
+							hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+1) = occgrow_jt(ij,it+tlength)
+							hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+2) = occshrink_jt(ij,it+tlength)
+						endif
+					endif
+				enddo
+				
 			enddo
 		enddo
 		
@@ -2173,7 +2289,7 @@ program V0main
 	allocate(hists_sim%wage_hist(Nsim,Tsim), stat=hists_sim%alloced)
 	allocate(hists_sim%work_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
 	allocate(hists_sim%app_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%obsX_hist(Nsim*Nk,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%obsX_vars(Nsim*Tsim,Nk), stat=hists_sim%alloced)
 
 	narg_in = iargc()
 
@@ -2242,7 +2358,7 @@ program V0main
 	deallocate(pol_sol%aR,pol_sol%aD,pol_sol%aN, pol_sol%aU, pol_sol%aW,pol_sol%gwork, pol_sol%gapp)
 	deallocate(pol_sol%gwork_dif,pol_sol%gapp_dif)
 	deallocate(val_sol%VR,val_sol%VD,val_sol%VN,val_sol%VU,val_sol%VW,val_sol%V)
-	deallocate(hists_sim%wage_hist,hists_sim%work_dif_hist,hists_sim%app_dif_hist,hists_sim%obsX_hist)
+	deallocate(hists_sim%wage_hist,hists_sim%work_dif_hist,hists_sim%app_dif_hist,hists_sim%obsX_vars)
 
 
 End PROGRAM

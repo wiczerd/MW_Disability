@@ -72,13 +72,13 @@ integer, parameter :: 	nai = 2, &!11	!Number of individual alpha types
 		ne  = 2, &!10		!Points on earnings grid
 		na  = 50, &!200	!Points on assets grid
 		nz  = 3,  &		!Number of Occ TFP Shocks
-		maxiter = 2 , &!	!Tolerance parameter	
+		maxiter = 2000, &!	!Tolerance parameter	
 		iaa_lowindow = 5,& 	!how far below to begin search
 		iaa_hiwindow = 5, &	!how far above to keep searching
 		Nsim = 200, &!		!how many agents to draw
 		Ndat = 5000, & 		!size of data, for estimation
 		Tsim = int(tLength*Longev)+1, &	!how many periods to solve
-		Nk   = TT-1+(nd-1)*2+2	!number of regressors - each period, each health and leading, occupation dynamics
+		Nk   = TT-1+(nd-1)*2+2*2!number of regressors - each period, each health and leading, occupation dynamics
 
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
@@ -127,7 +127,7 @@ real(8) :: 	beta= 0.99674, & 	!People are impatient (4% annual discount rate to 
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
 		prob_t(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
-		occscale = 1.		!scale parameter of gumbel distribution for occ choice
+		amenityscale = 1.	!scale parameter of gumbel distribution for occ choice
 
  !Preferences----------------------------------------------------------------!
  ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
@@ -150,9 +150,13 @@ subroutine setparams()
 	!***For Now, Simple Grids for Comparative Statics***!
 	!Occupation Specific Transistion Multipliers: 
 	!Extra probability of bad z transitions
-	DO i=1,nj
-		occz(i) = zRiskL +dble(i-1)*(zRiskH-zRiskL)/dble(nz-1)
-	EndDO
+	if(nj>1) then
+		do i=1,nj
+			occz(i) = zRiskL +(zRiskH-zRiskL)*dble(i-1)/dble(nj-1)
+		enddo
+	else 
+		occz(1) = 1.
+	endif
 
 
 	!Individual- Specific Things
@@ -284,17 +288,17 @@ subroutine setparams()
 	DO i=1,ndi
 	DO t=1,TT-1
 
-		pid(1,2,i,TT-t) = 1-(1-pid1*dtau(TT-t)*delgrid(i)) &	!Partial Disability 
+		pid(1,2,i,TT-t) = 1.-(1.-pid1*dtau(TT-t)*delgrid(i)) &	!Partial Disability 
 					& **(1./tlength)	
-		pid(1,1,i,TT-t) = 1-pid(1,2,i,TT-t)			!Stay healthy
-		pid(1,3,i,TT-t) = 0					!Full Disability
-		pid(2,1,i,TT-t) = 0					!Monotone
-		pid(2,3,i,TT-t) = 1-(1-pid2*dtau(TT-t)*delgrid(i)) &	!Full Disability
+		pid(1,1,i,TT-t) = 1.-pid(1,2,i,TT-t)			!Stay healthy
+		pid(1,3,i,TT-t) = 0.					!Full Disability
+		pid(2,1,i,TT-t) = 0.					!Monotone
+		pid(2,3,i,TT-t) = 1.-(1.-pid2*dtau(TT-t)*delgrid(i)) &	!Full Disability
 					& **(1./tlength)	
-		pid(2,2,i,TT-t) = 1-pid(2,3,i,TT-t)			!Stay Partial
-		pid(3,1,i,TT-t) = 0					!Full is absorbing State
-		pid(3,2,i,TT-t) = 0
-		pid(3,3,i,TT-t) = 1
+		pid(2,2,i,TT-t) = 1.-pid(2,3,i,TT-t)			!Stay Partial
+		pid(3,1,i,TT-t) = 0.					!Full is absorbing State
+		pid(3,2,i,TT-t) = 0.
+		pid(3,3,i,TT-t) = 1.
 	EndDO
 	EndDO
 		
@@ -304,8 +308,8 @@ subroutine setparams()
 		piz(1,2,j) = 1-piz(1,1,j)		!Move to low shock
 		piz(1,3,j) = 0.
 		piz(2,2,j) = (1-piz2*occz(j)-piz3) &	!Stay in low shock
-				&**(1./tlength)	
-		piz(2,3,j) = 1-(1-piz3)**(1./tlength)	!Move to high shock
+				&**(1./tlength)		! 
+		piz(2,3,j) = 1-(1-piz3)**(1./tlength)	!Move to good state
 		piz(2,1,j) = 1-piz(2,2,j)-piz(2,3,j)	!Move to really bad shock (occupations affect it)
 		piz(3,1,j) = 0.				!Must go through low to get to really bad
 		piz(3,3,j) = (1-piz4*occz(j))**(1./tlength)	  !Stay in high shock
