@@ -68,8 +68,8 @@ module helper_funs
 	end type
 
 	type moments_struct
-		real(8), allocatable :: work_coefs(:), di_coefs(:)
-		real(8) :: di_rate, work_rate,accept_rate
+		real(8) :: work_coefs(Nk), di_coefs(Nk)
+		real(8) :: di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
 		integer :: alloced
 
 	end type 
@@ -77,7 +77,13 @@ module helper_funs
 	type hist_struct
 		real(8), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
 		real(8), allocatable :: wage_hist(:,:) !realized wages
-		real(8), allocatable :: obsX_vars(:,:) ! a bunch of explanitory variables stacked on each other
+		integer, allocatable :: status_hist(:,:) !status: W,U,N,D,R (1:5)
+		! a bunch of explanitory variables to be stacked on each other
+		integer, allocatable :: age_hist(:,:)
+		real(8), allocatable :: occgrow_jt(:,:)
+		real(8), allocatable :: occshrink_jt(:,:)
+		integer, allocatable :: j_i(:)
+		integer, allocatable :: d_hist(:,:)
 		integer :: alloced
 	end type
 	
@@ -86,12 +92,12 @@ module helper_funs
 	!------------------------------------------------------------------------
 	!1)UI(e): Unemployment Insurance
 	!----------------
-	function UI(ein)	
+	function UI(ein)
 	!----------------
 	
 		real(8), intent(in)	:: ein 
 		real(8) 		:: UI
-		!I'm using a replacement rate of 30% for now, can be fancier
+		!I'm using a replacement rate of UIrr % for now, can be fancier
 		UI = ein*UIrr
 
 	end function
@@ -150,12 +156,17 @@ module helper_funs
 		
 		
 		if ((win .gt. 1) .or. (din .gt. 1)) then
-			! win >=2 => disutility from work
-			util = ((cin*dexp(theta*dble(din-1)+eta*dble(win-1)))**(1.-gam))/(1.-gam)
-		!elseif( din .gt. 1) then
-		!	util = ((cin*dexp(theta*dble(din-1)))**(1.-gam))/(1.-gam)
+			if(gam> 1+1e-5 .or. gam < 1-1e-5) then
+				util = ((cin*dexp(theta*dble(din-1)+eta*dble(win-1)))**(1.-gam))/(1.-gam)
+			else 
+				util = dlog(cin*dexp(theta*dble(din-1)+eta*dble(win-1)))
+			endif
 		else 
-			util = (cin**(1.-gam))/(1.-gam)
+			if(gam> 1+1e-5 .or. gam < 1-1e-5) then
+				util = (cin**(1.-gam))/(1.-gam)
+			else
+				util = dlog(cin)
+			endif
 		end if
 
 	end function
@@ -171,9 +182,12 @@ module helper_funs
 		real(8)			:: Hearn
 		
 		if (tin .EQ. 1) THEN
-		  Hearn = (egrid(ein)*tlength*youngD/2+win)/(tlength*(youngD*oldD*oldN)) 
+		!		weight new obsv by 1/ fraction of time expected in this stage
+			Hearn = win/(tlen*youngD) + egrid(ein)*(1.-1./(tlen*youngD))
+		!	Hearn = (egrid(ein)*tlen*youngD/2+win)/(tlen*(youngD + oldD*oldN))
 		else
-		  Hearn = (egrid(ein)*tlength*(youngD+(tin-1)*oldD+oldD/2)+win)/(tlength*(youngD*oldD*oldN))
+			Hearn = win/(tlen*oldD) + egrid(ein)*(1.-1./(tlen*oldD))
+		!	Hearn = (egrid(ein)*tlen*(youngD+(tin-1)*oldD+oldD/2)+win)/(tlen*(youngD+oldD*oldN))
 		end if
 	end function
 
@@ -454,19 +468,89 @@ module model_data
 	
 	subroutine moments_compute(hists_sim,moments_sim)
 	
-		moments_struct,	intent(out) :: moments_sim
-		hist_struct, 	intent(in)  :: hists_sim
+		type(moments_struct),	intent(out) :: moments_sim
+		type(hist_struct), 	intent(in)  :: hists_sim
 	
-		integer :: i, ij,it,age_hr
+		integer :: i, ij,id,it,st,si,age_hr
+		integer :: Nage(TT),ND(TT),NW(TT)
+
+		real(8) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim)
+
+		Nage = 0
+		ND = 0
+		NW = 0
+
+		dD_age 	= 0
+		dD_t 	= 0
+		a_age 	= 0
+		a_t 	= 0
+
+		do si = 1,Nsim
+			do st = 1,Tsim
+				do it = 1,TT-1
+					age_hr = hists_sim%age_hist(si,st)
+					if(age_hr == it) then
+						Nage(it) = Nage(it) + 1
+						a_age(it) = hists_sim%a_hist(si,si) +a_age(it)
+						if(hists_sim%status_hist(si,st) == 1) NW(it) = NW(it) + 1
+						if(hists_sim%status_hist(si,st) == 4) then
+							ND(it) = ND(it) + 1
+							dD_age(it) = dD_age(it)+hists_sim%d_hist(si,st)
+							dD_t(st) = dD_t(st)+hists_sim%d_hist(si,st)
+						endif
+					endif
+				enddo !it = 1,TT-1
+
+				
+			enddo!st = 1,Tsim
+		enddo ! si=1,Nsim
+
+		forall(it=1:TT-1) moments_sim%di_rate(it) = dble(ND(it))/dble(Nage(it))
+		forall(it=1:TT-1) moments_sim%work_rate(it) = dble(NW(it))/dble(Nage(it))
 	
 	end subroutine moments_compute
 	
 	subroutine LPM_employment(hists_sim,moments_sim)
 	
-		moments_struct,	intent(out) :: moments_sim
-		hist_struct, 	intent(in)  :: hists_sim
-	
-	
+		type(moments_struct),	intent(out) :: moments_sim
+		type(hist_struct), 	intent(in)  :: hists_sim
+
+		real(8), allocatable :: obsX_vars(:,:)
+		integer :: i, ij,it,age_hr,id
+
+		allocate(obsX_vars(Tsim*Nsim,Nk))
+
+
+		! build X
+		obsX_vars = 0.
+		do i=1,Nsim
+			do it=1,Tsim
+				do age_hr=1,TT-1
+					if(hists_sim%age_hist(i,it) .eq. age_hr ) obsX_vars(i + (Nsim-1)*it, age_hr) = 1
+				enddo
+				do id = 1,nd-1
+					if(hists_sim%d_hist(i,it) .eq. id ) obsX_vars(i + (Nsim-1)*it, (TT-1)+id) = 1
+					! lead 1 period health status
+					if(it <= Tsim - tlen) then
+						if(hists_sim%d_hist(i,it+int(tlen)) .eq. id ) obsX_vars(i + (Nsim-1)*it, (TT-1)+nd+id) = 1
+					endif
+				enddo
+				do ij = 1,nj
+					if(hists_sim%j_i(i) == ij )  then 
+						obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+1) = hists_sim%occgrow_jt(ij,it)
+						obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+2) = hists_sim%occshrink_jt(ij,it)
+						if(it<=Tsim-tlen) then
+							obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+1) = hists_sim%occgrow_jt(ij,it+int(tlen))
+							obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+2) = hists_sim%occshrink_jt(ij,it+int(tlen))
+						endif
+					endif
+				enddo
+				
+			enddo
+		enddo	
+
+
+		deallocate(obsX_vars)
 	end subroutine LPM_employment
 
 end module model_data
@@ -495,7 +579,7 @@ module sol_sim
 	!************************************************************************************************!
 
 		integer  :: i, j, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp, anapp,aapp, apol, ibi, ial, ij , idi, izz, iaai,  &
-			    iee1, iee2, iz, iw,wo, iter
+			    iee1, iee2, iz, iw,wo, iter,npara,ipara
 		integer, dimension(5) :: maxer_i
 	
 		!************************************************************************************************!
@@ -537,10 +621,10 @@ module sol_sim
 		! (disability extent, earn hist, assets)
 		allocate(VR0(nd,ne,na))
 		allocate(VD0(nd,ne,na,TT))
-		allocate(VN0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-		allocate(VU0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-		allocate(VW0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-		allocate(V0(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
+		allocate(VN0(nj*nbi,ndi*nal,nd,ne,na,nz,TT))
+		allocate(VU0(nj*nbi,ndi*nal,nd,ne,na,nz,TT))
+		allocate(VW0(nj*nbi,ndi*nal,nd,ne,na,nz,TT))
+		allocate(V0(nj*nbi,ndi*nal,nd,ne,na,nz,TT))
 		! there must be a way to use pointers, but it doesn't seem to work
 		VR => val_funs%VR
 		aR => pol_funs%aR
@@ -559,28 +643,7 @@ module sol_sim
 		gapp_dif => pol_funs%gapp_dif
 		gwork_dif => pol_funs%gwork_dif
 
-!		! (disability extent, earn hist, assets)
-!		allocate(VR(nd,ne,na))
-!		allocate(aR(nd,ne,na))
-!		! (disability extent, earn hist, assets, age)
-!		allocate(VD(nd,ne,na,TT))
-!		allocate(aD(nd,ne,na,TT-1))
-
-!		! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
-!		allocate(VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-!		allocate(VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-!		allocate(VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-!		allocate(V(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-!		allocate(aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-!		allocate(aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-!		allocate(aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-!		allocate(gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-!		allocate(gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1))
-
-!		allocate(gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-!		allocate(gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT))
-
-		allocate(maxer(na,nz,ne,nd,nai))
+		allocate(maxer(na,nz,ne,nd,nal))
 		emin = minval(egrid)
 		emax = maxval(egrid)
 
@@ -695,99 +758,91 @@ module sol_sim
 
 
 
-	       !----------------------------------------------------------------!
+	!----------------------------------------------------------------!
 	!2) Calculate Value of Disabled: VD(d,e,a,t)	 
 		!d in{1,2,3}  	   :disability extent
 		!e inR+       	   :earnings index
 		!a inR+	      	   :asset holdings
 		!t in[1,2...TT-1]  :age
 
-	
+		npara = nd*ne
 		!Work backwards from TT
-		do it = 1,TT-1
+		do it = TT-1,1,-1
 
-			id = 1 ! other values are just multiples thereof
 			iw = 1 ! not working
-			
-			!Guess will be value at t+1
-			
-			VD0(id,:,:,TT-it) = VD(id,:,:,TT-it+1)
+			do id =1,nd 
+				!Guess will be value at t+1
+				VD0(id,:,:,it) = VD(id,:,:,it+1)
 
-			if(print_lev >3) then
-				call mat2csv(VD0(id,:,:,TT-it),"VD0.csv",0)
-			endif
-
-			!Loop to find V(..,it) as fixed point
-			iter=1
-			do WHILE (iter<=maxiter)
-				summer = 0
-				id =1
+				if(print_lev >3) then
+					call mat2csv(VD0(id,:,:,it),"VD0.csv",0)
+				endif
 				!Loop over earnings index
 				do ie=1,ne
-					iaa1 = 1
-					!Loop over current state: assets
-					do ia=1,na
-						Vc1 = beta*((1-ptau(TT-it))*VD0(id,ie,apol,TT-it+1)+ptau(TT-it)*VD0(id,ie,iaa1,TT-it))
-						chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
-						
-						Vtest1 = -1e6
-						apol = iaa1
-						!Find Policy
-						do iaa=iaa1,na
-							chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
-							if(chere >0.) then
-								Vc1 = beta*((1-ptau(TT-it))*VD0(id,ie,iaa,TT-it+1)+ptau(TT-it)*VD0(id,ie,iaa,TT-it))
+					!Loop to find V(..,it) as fixed point
+					iter=1
+					do WHILE (iter<=maxiter)
+						summer = 0
 
-								Vtest2 = util(chere,id,iw)+ Vc1
-								if(Vtest2>Vtest1) then
-									Vtest1 = Vtest2
-									apol = iaa
-								elseif(iaa>apol+iaa_hiwindow) then
-									exit
-								endif
-							else
-								exit
-							endif
-						enddo	!iaa
-						iaa1 = max(apol-iaa_lowindow,1)
-						VD(id,ie,ia,TT-it) = Vtest1
-						aD(id,ie,ia,TT-it) = apol !agrid(apol)
-						summer = summer+ (VD(id,ie,ia,TT-it)-VD0(id,ie,ia,TT-it))**2
-					enddo	!ia
+							iaa1 = 1
+							!Loop over current state: assets
+							do ia=1,na
+								Vc1 = beta*((1-ptau(it))*VD0(id,ie,apol,it+1)+ptau(it)*VD0(id,ie,iaa1,it))
+								chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
+						
+								Vtest1 = -1e6
+								apol = iaa1
+								!Find Policy
+								do iaa=iaa1,na
+									chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
+									if(chere >0.) then
+										Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa,it+1)+ptau(it)*VD0(id,ie,iaa,it))
+
+										Vtest2 = util(chere,id,iw)+ Vc1
+										if(Vtest2>Vtest1) then
+											Vtest1 = Vtest2
+											apol = iaa
+										elseif(iaa>apol+iaa_hiwindow) then
+											exit
+										endif
+									else
+										exit
+									endif
+								enddo	!iaa
+								iaa1 = max(apol-iaa_lowindow,1)
+								VD(id,ie,ia,it) = Vtest1
+								aD(id,ie,ia,it) = apol !agrid(apol)
+								summer = summer+ (VD(id,ie,ia,it)-VD0(id,ie,ia,it))**2
+							enddo	!ia
+
+						if(print_lev >3) then
+							wo =0
+							call veci2csv(aD(id,ie,:,it),"aD.csv",wo)
+							call vec2csv(VD(id,ie,:,it),"VD.csv",wo)
+						endif
+						IF (summer < Vtol) THEN
+							exit	!Converged
+						EndIF
+						VD0(id,:,:,it) = VD(id,:,:,it)	!New guess
+						iter=iter+1
+					enddo	!iter: V-iter loop
 				enddo	!ie		
-				if(print_lev >3) then
-					wo =0
-					ie =1
-					call veci2csv(aD(id,ie,:,TT-it),"aD.csv",wo)
-					call vec2csv(VD(id,ie,:,TT-it),"VD.csv",wo)
-				endif
-				IF (summer < Vtol) THEN
-					exit	!Converged
-				EndIF
-				VD0(id,:,:,TT-it) = VD(id,:,:,TT-it)	!New guess
-				iter=iter+1
-			enddo	!iter: V-iter loop
-			! set the other value for other disability levels
-			i =1 
-			do id = 2,nd
-				do ie =1,ne
-				do ia =1,na
-					VD(id,ie,ia,TT-it) = VD(i,ie,ia,TT-it)*( (dexp(theta*dble(id-1)))**(1-gam) )
-				enddo
-				enddo
-				if(TT-it .le. TT-1) aD(id,:,:,TT-it) = aD(i,:,:,TT-it) 
-			enddo
+
+			enddo !id = 1,nd
 		enddo	!t loop, going backwards
 
 
 
 		VD0 = VD
-		if (print_lev > 2) then
+		if (print_lev >= 2) then
 			wo =0 
-			id =1
-			ie =1
-			call mati2csv(aD(id,ie,:,:),"aD.csv",wo)
-			call mat2csv(VD(id,ie,:,:),"VD.csv",wo)
+			do id =1,nd
+			do ie =1,ne
+				call mati2csv(aD(id,ie,:,:),"aD.csv",wo)
+				call mat2csv(VD(id,ie,:,:),"VD.csv",wo)
+				if(wo == 0) wo =1
+			enddo
+			enddo
 		endif
 
 
@@ -822,9 +877,9 @@ module sol_sim
 
 	!************************************************************************************************!
 		!Work Backwards TT-1,TT-2...1!
-		do it=1,TT-1
+		do it=TT-1,1,-1
 			!----Initialize---!
-			do ial=1,nai
+			do ial=1,nal
 			do id =1,nd
 			do ie =1,ne
 			do iz =1,nz
@@ -832,10 +887,10 @@ module sol_sim
 				
 			!Guess once, then use next period same occupation/beta as guess
 			! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
-				VW0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it+1)
-				VU0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = VU((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it+1)
-				VN0((ij-1)*nbi+ibi,(idi-1)*nai +ial,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it+1)
-				V0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)= VW0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)
+				VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+				VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+				VN0((ij-1)*nbi+ibi,(idi-1)*nal +ial,id,ie,ia,iz,it) = VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+				V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)= VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
 
 			enddo	!ia
 			enddo	!iz
@@ -855,12 +910,18 @@ module sol_sim
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!  
+			npara = nal*nd*ne*nz
 			!$OMP  parallel do default(shared) &
-			!$OMP& private(ial,id,ie,iz,iw,apol,iaa1,ia,iaa,chere,Vtest2,Vtest1,Vc1,iaai,izz,maxVNV0)
-			  	do ial=1,nai	!Loop over alpha (ai)
-				do id=1,nd	!Loop over disability index
-			  	do ie=1,ne	!Loop over earnings index
-			  	do iz=1,nz	!Loop over TFP
+			!$OMP& private(ial,id,ie,iz,iw,apol,iaa1,ia,iaa,ipara,chere,Vtest2,Vtest1,Vc1,iaai,izz,maxVNV0)
+			  	do ipara = 1,npara
+					iz = mod(ipara-1,nz)+1
+					ie = mod(ipara-1,nz*ne)/nz + 1
+					id = mod(ipara-1,nz*ne*nd)/(nz*ne) +1
+					ial= mod(ipara-1,nz*ne*nd*nal)/(nz*ne*nd)+1
+!			  	do ial=1,nal	!Loop over alpha (ai)
+!				do id=1,nd	!Loop over disability index
+!			  	do ie=1,ne	!Loop over earnings index
+!			  	do iz=1,nz	!Loop over TFP
 			  		iw = 1 !not working
 					!Restart at bottom of asset grid for each of the above (ai,d,e,z)
 					apol = 1
@@ -874,11 +935,11 @@ module sol_sim
 							if(chere>0.) then 
 								Vtest2 = 0. !Continuation value if don't go on disability
 								do izz = 1,nz	 !Loop over z'
-								do iaai = 1,nai !Loop over alpha_i'
-									Vc1 = (1.-ptau(TT-it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1) &
-										& 	+(1-pphi)*   VU0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1) )  !Age and might go LTU
-									Vc1 = ptau(TT-it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it) & 
-										&	+(1-pphi)*   VU0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it) ) + Vc1    !Don't age, maybe LTU
+								do iaai = 1,nal !Loop over alpha_i'
+									Vc1 = (1.-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
+										& 	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) )  !Age and might go LTU
+									Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) & 
+										&	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
 									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(ial,iaai)*Vc1  !Probability of alpha_i X z_i draw 
 								enddo
 								enddo
@@ -894,25 +955,26 @@ module sol_sim
 							endif
 						enddo	!iaa
 						iaa1 = max(apol - iaa_lowindow,1) !concave, start next loop here
-						VU((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = Vtest1
-						aU((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = apol !agrid(apol)
+						VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+						aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
 
 					enddo !ia
 				
-				enddo !id
-			  	enddo !ie
-			  	enddo !iz
-				enddo !ial	
+!				enddo !id
+!			  	enddo !ie
+!			  	enddo !iz
+!				enddo !ial	
+				enddo !ipara
 			!$OMP END PARALLEL do
 
 				if (print_lev > 3) then
 					wo = 0
-					do ial=1,nai	!Loop over alpha (ai)
+					do ial=1,nal	!Loop over alpha (ai)
 					do id=1,nd	!Loop over disability index
 				  	do ie=1,ne	!Loop over earnings index
 				  	do iz=1,nz	!Loop over TFP
-						call veci2csv(aU((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,:,iz,TT-it),"aU.csv",wo)
-						call vec2csv(VU((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,:,iz,TT-it),"VU.csv",wo)
+						call veci2csv(aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it),"aU.csv",wo)
+						call vec2csv(VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it),"VU.csv",wo)
 						if(wo == 0) wo = 1 
 					enddo
 					enddo
@@ -924,26 +986,19 @@ module sol_sim
 			!------------------------------------------------!
 			!Solve VN given guesses on VW, VN, and implied V
 			!------------------------------------------------! 
-!			  	do ial=1,nai	!Loop over alpha (ai)
+			npara = nal*nd*ne*nz
+			!$OMP  parallel do default(shared) &
+			!$OMP& private(ipara,ial,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz,maxVNV0) 
+			  	do ipara = 1,npara
+					iz = mod(ipara-1,nz)+1
+					ie = mod(ipara-1,nz*ne)/nz + 1
+					id = mod(ipara-1,nz*ne*nd)/(nz*ne) +1
+					ial= mod(ipara-1,nz*ne*nd*nal)/(nz*ne*nd)+1
+
+!			  	do ial=1,nal	!Loop over alpha (ai)
 !				do id=1,nd	!Loop over disability index
 !			  	do ie=1,ne	!Loop over earnings index
-!			  	do iz=1,nz	!Loop over TFP			
-!					do ia=1,na
-!						VN((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = 	VD(id,ie,ia,TT-it)				
-!					enddo
-!				enddo
-!				enddo
-!				enddo
-!				enddo
-
-
-
-			!$OMP  parallel do default(shared) &
-			!$OMP& private(ial,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz,maxVNV0) 
-			  	do ial=1,nai	!Loop over alpha (ai)
-				do id=1,nd	!Loop over disability index
-			  	do ie=1,ne	!Loop over earnings index
-			  	do iz=1,nz	!Loop over TFP
+!			  	do iz=1,nz	!Loop over TFP
 					iw = 1 ! not working
 					!******************************************************************************
 					!---------------------------------------------------------------!
@@ -969,11 +1024,15 @@ module sol_sim
 								Vtest2 = 0.
 								!Continuation if apply for DI
 								do izz = 1,nz	 !Loop over z'
-								do iaai = 1,nai !Loop over alpha_i'
-									Vc1 = (1-ptau(TT-it))*((1-xi(id))*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1) &
-										& +xi(id)*VD0(id,ie,iaa,TT-it+1)) !Age and might go on DI
-									Vc1 = Vc1 + ptau(TT-it)*((1-xi(id))*VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it) &
-										& +xi(id)*VD0(id,ie,iaa,TT-it))     !Don't age, might go on DI		
+								do iaai = 1,nal !Loop over alpha_i'
+									Vc1 = (1-ptau(it))*((1-xi(id))* &
+									!	& max( V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) ,  &
+										& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1)  &
+										& +xi(id)*VD0(id,ie,iaa,it+1)) !Age and might go on DI
+									Vc1 = Vc1 + ptau(it)*((1-xi(id))* &
+									!	& V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ,  &
+										& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)  &
+										& +xi(id)*VD0(id,ie,iaa,it))     !Don't age, might go on DI		
 									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(ial,iaai)*Vc1 
 								enddo
 								enddo
@@ -1003,8 +1062,8 @@ module sol_sim
 						if(Vapp <-1e5) then
 							write(*,*) "ruh roh!"
 							write(*,*) "Vapp, aapp: ", Vapp, aapp
-							write(*,*) "VD: ",id,ie,iaa,TT-it
-							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,TT-it
+							write(*,*) "VD: ",id,ie,iaa,it
+							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,it
 						endif
 
 						!*******************************************
@@ -1018,18 +1077,18 @@ module sol_sim
 								Vtest2 = 0.
 								!Continuation if do not apply for DI
 								do izz = 1,nz	 !Loop over z'
-								do iaai = 1,nai !Loop over alpha_i'
+								do iaai = 1,nal !Loop over alpha_i'
 								
 								!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 								!  Make this a max s.t. can go to V0 or can go to VN0
-									maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1), &
-											& 	VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it+1))
-									Vc1 = (1-ptau(TT-it))*((1-rhho)* &
-											&	VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it+1) +rhho*maxVNV0) !Age and might go on DI
-									maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it), & 
-											&	VN0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,ie,iaa,izz,TT-it))
-									Vc1 = Vc1+ptau(TT-it)*((1-rhho)* & 
-											&	VN0((ij-1)*nbi+ibi,(idi-1)*nai +iaai,id,ie,iaa,izz,TT-it) +rhho*maxVNV0)     !Don't age, might go on DI
+									maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
+											& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1))
+									Vc1 = (1-ptau(it))*((1-rhho)* &
+											&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1) +rhho*maxVNV0) !Age and might go on DI
+									maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
+											&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
+									Vc1 = Vc1+ptau(it)*((1-rhho)* & 
+											&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it) +rhho*maxVNV0)     !Don't age, might go on DI
 									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(ial,iaai)*Vc1 
 								enddo
 								enddo
@@ -1059,38 +1118,35 @@ module sol_sim
 						if(Vnapp <-1e5 .and. verbose >0) then
 							write(*,*) "ruh roh!"
 							write(*,*) "Vnapp, aNapp: ", Vnapp, aNapp
-							write(*,*) "VD: ",id,ie,iaa,TT-it
-							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,TT-it
+							write(*,*) "VD: ",id,ie,iaa,it
+							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,it
 						endif
 
 						!******************************************************
 						!***************** Discrete choice for application
 						smthV = dexp(smthV0param*Vnapp)/( dexp(smthV0param*Vnapp) +dexp(smthV0param*Vapp) )
 						if( smthV .lt. 1e-5 .or. smthV .gt. 0.999999 .or. isnan(smthV)) then
-							if( Vapp  > Vnapp ) smthV =0.
+							if( Vapp > Vnapp ) smthV =0.
 							if(Vnapp > Vapp  ) smthV =1.
 						endif
 						IF (Vapp > Vnapp) THEN
-							!VN((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = Vapp
-							aN((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = aapp
-							gapp((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = 1
+							aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = aapp
+							gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = 1
 						ELSE !Don't apply
-							!VN((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = Vnapp
-							aN((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = aNapp
-							gapp((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = 0
+							aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = aNapp
+							gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = 0
 						EndIF
 
-						gapp_dif((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = Vapp - Vnapp
+						gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vapp - Vnapp
 						if(verbose .gt. 4) print *, Vapp - Vnapp
 						
-						
-						VN((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = smthV*Vnapp + (1. - smthV)*Vapp
+						VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = smthV*Vnapp + (1. - smthV)*Vapp
 					enddo !ia
-				enddo !iz 
-				enddo !ie 
-				enddo !id 
-				enddo !ial
-				
+!				enddo !iz 
+!				enddo !ie 
+!				enddo !id 
+!				enddo !ial
+				enddo !ipara
 			!$OMP END PARALLEL do
 			
 				!------------------------------------------------!			
@@ -1098,16 +1154,16 @@ module sol_sim
 				  	
 			  	if (print_lev >3) then
 			  		wo = 0
-				  	do ial=1,nai	!Loop over alpha (ai)
+				  	do ial=1,nal	!Loop over alpha (ai)
 					do ie=1,ne	!Loop over earnings index
 				  	do iz=1,nz	!Loop over TFP
 						! matrix in disability index and assets
-				  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"VN_it.csv",wo)
-				  		call mati2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"aN_it.csv",wo)
-				  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"VU_it.csv",wo)
-				  		call mati2csv(aN((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"aU_it.csv",wo)
-				  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gapp_it.csv",wo)
-				  		call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gapp_dif_it.csv",wo)
+				  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VN_it.csv",wo)
+				  		call mati2csv(aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aN_it.csv",wo)
+				  		call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VU_it.csv",wo)
+				  		call mati2csv(aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aU_it.csv",wo)
+				  		call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_it.csv",wo)
+				  		call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_dif_it.csv",wo)
 
 						if(wo == 0 ) wo =1		  		
 					enddo !iz 
@@ -1118,22 +1174,20 @@ module sol_sim
 					do iz=1,nz
 					do ie=1,ne
 					do ia=1,na
-						if(wo == 0 ) wo =1
-						call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dilat0_dalpha_it.csv',wo)
+						if( wo == 0 ) wo =1
+						call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'dilat0_dalpha_it.csv',wo)
 					enddo
 					enddo
 					enddo
-					
-						
 			  	endif
 		  	
 			  	!update VN0
-			  	do ial=1,nai	!Loop over alpha (ai)
+			  	do ial=1,nal	!Loop over alpha (ai)
 				do id=1,nd	!Loop over disability index
 			  	do ie=1,ne	!Loop over earnings index
 			  	do iz=1,nz	!Loop over TFP
 					do ia =1,na
-						VN0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = VN((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)
+						VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
 					enddo	!ia
 				enddo !ial
 			  	enddo !id
@@ -1143,15 +1197,19 @@ module sol_sim
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
+			npara = nal*nd*ne*nz
 			!$OMP   parallel do default(shared) reduction(+:summer) &
-			!$OMP & private(ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz) 
-			  	do ial=1,nai	!Loop over alpha (ai)
-				do id=1,nd	!Loop over disability index
-			  	do ie=1,ne	!Loop over earnings index
-			  	do iz=1,nz	!Loop over TFP
+			!$OMP & private(ipara,ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz,iw) 
+			  	do ipara = 1,npara
+					iz = mod(ipara-1,nz)+1
+					ie = mod(ipara-1,nz*ne)/nz + 1
+					id = mod(ipara-1,nz*ne*nd)/(nz*ne) +1
+					ial= mod(ipara-1,nz*ne*nd*nal)/(nz*ne*nd)+1
+
+			  		iw = 2 !working
 					!Earnings evolution independent of choices.
-					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz),TT-it)
-					eprime = Hearn(TT-it,ie,wagehere)
+					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz),it)
+					eprime = Hearn(it,ie,wagehere)
 					!linear interpolate for the portion that blocks off bounds on assets
 					if(eprime > emin .and. eprime < emax) then  ! this should be the same as if(eprime > minval(egrid) .and. eprime < maxval(egrid))
 						iee1 = ne
@@ -1184,18 +1242,18 @@ module sol_sim
 							if (chere >0.) then
 								Vc1 = 0.
 								do izz = 1,nz	 !Loop over z'
-								do iaai = 1,nai !Loop over alpha_i'
+								do iaai = 1,nal !Loop over alpha_i'
 									!Linearly interpolating on e'
-									yL = (1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it+1) & 
-										& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee1,iaa,izz,TT-it)
-									yH = (1-ptau(TT-it))*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it+1) & 
-										& +ptau(TT-it)*V0((ij-1)*nbi+ibi,(idi-1)*nai+iaai,id,iee2,iaa,izz,TT-it)
+									yL = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee1,iaa,izz,it+1) & 
+										& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee1,iaa,izz,it)
+									yH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it+1) & 
+										& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it)
 									Vc1 = piz(iz,izz,ij)*pialf(ial,iaai) &
 										& * (yH*(1. - iee1wt) + yL*iee1wt )&
 										& + Vc1
 								enddo
 								enddo
-								utilhere = util(chere,id,2)
+								utilhere = util(chere,id,iw)
 								Vtest2 = utilhere + beta*Vc1 ! flow utility
 
 								if (Vtest2>Vtest1 .or. iaa .eq. iaa1 ) then  !always replace on the first, or best
@@ -1218,55 +1276,52 @@ module sol_sim
 							iaa = iaa+1
 						enddo	!iaa
 						iaa1 = max(iaa -iaa_lowindow,1)	!concave? start next loop here
-						VW((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = Vtest1
-						aW((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = apol !agrid(apol)
+						VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+						aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
 
 
 						!------------------------------------------------!
 						!Calculate V with solved vals of VW and VU -- i.e. can quit into unemployment
 						!------------------------------------------------!
-						VUhere = VU((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)
-						VWhere = VW((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)
+						VUhere = VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+						VWhere = VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
 
 						if (VWhere>VUhere) then
-							gwork((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = 1
+							gwork((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = 1
 						else
-							gwork((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = 0
+							gwork((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = 0
 						endif
 						smthV = dexp( smthV0param *VWhere  ) &
 							& /( dexp(smthV0param * VWhere) + dexp(smthV0param * VUhere ) )
 						if (smthV <1e-5 .or. smthV>.999999 .or. isnan(smthV) ) then
-							if(VWhere .gt. VUhere)	smthV = 1. 
-							if(VWhere .lt. VUhere)	smthV = 0. 							
+							if(VWhere > VUhere)	smthV = 1. 
+							if(VWhere < VUhere)	smthV = 0. 							
 						endif
-						V((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = smthV*VWhere &
+						V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = smthV*VWhere &
 								& + (1.-smthV)*VUhere
 
-						gwork_dif((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = VWhere - VUhere
+						gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere - VUhere
 						
 						summer = summer+ & 
-							& (V((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it))**2
+							& (V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)-V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it))**2
 						
-						maxer(ia,iz,ie,id,ial) = (V((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)-V0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it))**2
+						maxer(ia,iz,ie,id,ial) = (V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)-V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it))**2
 
 					enddo !ia
-				enddo !iz
-			  	enddo !ie
-			  	enddo !id
-			  	enddo !ial
-
+!				enddo !iz  enddo !ie   	enddo !id  	enddo !ial
+				enddo
 			!$OMP  END PARALLEL do
 			
 				maxer_v = maxval(maxer)
 				maxer_i = maxloc(maxer)
 
 			  	!update VW0
-			  	do ial=1,nai	!Loop over alpha (ai)
+			  	do ial=1,nal	!Loop over alpha (ai)
 				do id=1,nd	!Loop over disability index
 			  	do ie=1,ne	!Loop over earnings index
 			  	do iz=1,nz	!Loop over TFP
 				do ia =1,na
-					VW0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = VW((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)
+					VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
 				enddo !ia		  	
 				enddo !ial
 			  	enddo !id
@@ -1275,14 +1330,14 @@ module sol_sim
 
 				if (print_lev >2) then
 					wo = 0
-					do ial=1,nai	!Loop over alpha (ai)
+					do ial=1,nal	!Loop over alpha (ai)
 					do ie=1,ne	!Loop over earnings index
 					do iz=1,nz	!Loop over TFP
 						! matrix in disability and assets
-						call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"VW_it.csv",wo)
-						call mati2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"aW_it.csv",wo)
-						call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gwork_it.csv",wo)
-						call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gwork_idf_it.csv",wo)
+						call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VW_it.csv",wo)
+						call mati2csv(aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aW_it.csv",wo)
+						call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_it.csv",wo)
+						call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_idf_it.csv",wo)
 						if(wo==0) wo =1
 					enddo !iz 
 					enddo !ie 
@@ -1291,12 +1346,12 @@ module sol_sim
 
 
 			  	!update V0
-			  	do ial=1,nai	!Loop over alpha (ai)
+			  	do ial=1,nal	!Loop over alpha (ai)
 				do id=1,nd	!Loop over disability index
 			  	do ie=1,ne	!Loop over earnings index
 			  	do iz=1,nz	!Loop over TFP
 				do ia =1,na
-					V0((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it) = V((ij-1)*nbi+ibi,(idi-1)*nai+ial,id,ie,ia,iz,TT-it)
+					V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
 				enddo !ia		  	
 				enddo !ial
 			  	enddo !id
@@ -1340,45 +1395,59 @@ module sol_sim
 			call mati2csv(aD(id,ie,:,:),"aD.csv",wo)
 			call mat2csv (VD(id,ie,:,:),"VD.csv",wo)
 
-			i = 1
 			call veci2csv(aR(id,ie,:),"aR.csv",0)
 			call vec2csv (VR(id,ie,:),"VR.csv",0)
 
 
-			do ial=1,nai	!Loop over alpha (ai)
+			do idi=1,ndi	!loop over delta(idi)
+			do ial=1,nal	!Loop over alpha (al)
 			do ie=1,ne	!Loop over earnings index
 			do iz=1,nz	!Loop over TFP
-			do it = 1,TT-1
-				! matrix in disability and assets
-				call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"VW_it.csv",wo)
-				call mati2csv(aW((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"aW_it.csv",wo)
-				call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gwork_it.csv",wo)
-				call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nai+ial,:,ie,:,iz,TT-it) ,"gwork_dif_it.csv",wo)
-				if(wo==0) wo =1
-			enddo !it
+				do it = TT-1,1,-1
+					! matrix in disability and assets
+					call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VW.csv",wo)
+					call mati2csv(aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aW.csv",wo)
+
+					call mat2csv(VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VU.csv",wo)
+					call mati2csv(aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aU.csv",wo)
+
+					call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VN.csv",wo)
+					call mati2csv(aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aN.csv",wo)
+
+					call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork.csv",wo)
+					call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_dif.csv",wo)
+
+					call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp.csv",wo)
+					call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_dif.csv",wo)
+
+					if(wo==0) wo =1
+				enddo !it
 			enddo !iz 
 			enddo !ie 
 			enddo !ial 	
+			enddo !idi
 
+			wo = 0
+			do idi=1,ndi
 			do iz=1,nz
 			do ie=1,ne
 			do ia=1,na
-				do it=1,TT-1
-			!				nj*nbi,ndi*nai,nd,ne,na,nz,TT-1
-					call mati2csv(gapp(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dipol_dalpha.csv',wo)
-					call mati2csv(gwork(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'workpol_dalpha.csv',wo)
+				do it=TT-1,1,-1
+			!				nj*nbi,ndi*nal,nd,ne,na,nz,TT-1
+					call mati2csv(gapp(ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'dipol_dalpha.csv',wo)
+					call mati2csv(gwork(ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'workpol_dalpha.csv',wo)
 
-					call mat2csv(gapp_dif(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'dilat_dalpha.csv',wo)
-					call mat2csv(gwork_dif(ibi,(idi-1)*nai+1:idi*nai,:,ie,ia,iz,TT-it),'worklat_dalpha.csv',wo)
+					call mat2csv(gapp_dif(ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'dilat_dalpha.csv',wo)
+					call mat2csv(gwork_dif(ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'worklat_dalpha.csv',wo)
 					if(wo ==0 ) wo =1
 				enddo
+			enddo
 			enddo
 			enddo
 			enddo
 
 
 		endif
-
 
 		deallocate(maxer)
 		deallocate(VR0,VD0,VN0,VU0,VW0,V0)
@@ -1711,6 +1780,7 @@ module sol_sim
 		type(val_struct), intent(inout), target :: val_funs
 		type(pol_struct), intent(inout), target :: pol_funs	
 		type(hist_struct), intent(inout), target :: hists
+		
 
 
 		integer :: i, ii, iter, it, it_old, ij, idi, id, &
@@ -1720,27 +1790,33 @@ module sol_sim
 		real(8), allocatable ::	del_i(:) ! shocks to be drawn
 		real(8), allocatable ::	al_it(:,:)
 		integer, allocatable :: z_jt_int(:,:),z_jt_macro(:,:), jshock_ij(:,:) ! shocks to be drawn
-		integer, allocatable :: del_i_int(:), j_i(:) ! integer valued shocks
+		integer, allocatable :: del_i_int(:)  ! integer valued shocks
 		integer, allocatable :: al_it_int(:,:)! integer valued shocks
-		integer, allocatable :: age_it(:,:) ! ages, drawn randomly
 		integer, allocatable :: born_it(:,:) ! born status, drawn randomly		
 		real(8), allocatable :: status_it_innov(:,:) !innovations to d, drawn randomly
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
-		real(8), allocatable :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
-		integer, allocatable :: status_it(:,:)  !track W,U,N,D,R : 1,2,3,4,5
 		real(8), allocatable :: e_it(:,:), a_it(:,:)
-		integer, allocatable :: d_it(:,:), a_it_int(:,:),e_it_int(:,:)
+		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
 		integer, allocatable :: drawi_ititer(:,:),drawt_ititer(:,:)
 		real(8), allocatable :: occgrow_jt(:,:), occsize_jt(:,:),occshrink_jt(:,:)
-		
+
+		! write to hists
+		real(8), pointer     :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
+		integer, pointer     :: status_it(:,:)	!track W,U,N,D,R : 1,2,3,4,5
+		integer, pointer     :: age_it(:,:)	! ages, drawn randomly
+		integer, pointer     :: j_i(:)		! occupation, maybe random
+		integer, pointer     :: d_it(:,:) 	! disability status
+
+		! read from vals
 		real(8), pointer ::	VR(:,:,:), &			!Retirement
 					VD(:,:,:,:), &			!Disabled
 					VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
 					VW(:,:,:,:,:,:,:), &	!Working
 					VU(:,:,:,:,:,:,:), &	!Unemployed
 					V(:,:,:,:,:,:,:)	!Participant
-	
+
+		! read from pols
 		real(8), pointer ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
 	
 		integer, pointer ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
@@ -1759,7 +1835,6 @@ module sol_sim
 			& beti, status_hr,status_tmrw,drawi,drawt
 		!************************************************************************************************!
 
-		
 		!************************************************************************************************!
 		! Pointers
 		!************************************************************************************************!
@@ -1781,14 +1856,21 @@ module sol_sim
 		gapp_dif => pol_funs%gapp_dif
 		gwork_dif => pol_funs%gwork_dif
 
-		iter_draws = 5
+		status_it => hists%status_hist
+		age_it => hists%age_hist
+		work_dif_it => hists%work_dif_hist
+		app_dif_it => hists%app_dif_hist
+		d_it => hists%d_hist
+		j_i  => hists%j_i
+		
+		iter_draws = 50
 
 		allocate(z_jt_macro(nj,Tsim))
 		allocate(jshock_ij(Nsim,nj))
 		allocate(z_jt_int(Nsim, Tsim))		
 		allocate(del_i(Nsim))
 		allocate(al_it(Nsim,Tsim))
-		allocate(j_i(Nsim))
+		!allocate(j_i(Nsim))
 		allocate(age_it(Nsim,Tsim))
 		allocate(status_it_innov(Nsim,Tsim))
 		allocate(del_i_int(Nsim))
@@ -1799,14 +1881,18 @@ module sol_sim
 		allocate(a_it_int(Nsim,Tsim))		
 		allocate(e_it(Nsim,Tsim))
 		allocate(e_it_int(Nsim,Tsim))		
-		allocate(d_it(Nsim,Tsim))
+		!allocate(d_it(Nsim,Tsim))
 		allocate(work_it(Nsim,Tsim))
-		allocate(work_dif_it(Nsim,Tsim))
+		!allocate(work_dif_it(Nsim,Tsim))
 		allocate(app_it(Nsim,Tsim))
-		allocate(app_dif_it(Nsim,Tsim))
-		allocate(status_it(Nsim,Tsim))
+		!allocate(app_dif_it(Nsim,Tsim))
+		!allocate(status_it(Nsim,Tsim))
 		allocate(drawi_ititer(Nsim,iter_draws-1))
 		allocate(drawt_ititer(Nsim,iter_draws-1))
+		allocate(occgrow_jt(nj,Tsim))
+		allocate(occshrink_jt(nj,Tsim))
+		allocate(occsize_jt(nj,Tsim))
+
 
 		seed0 = 941987
 		seed1 = 12281951
@@ -1825,13 +1911,20 @@ module sol_sim
 			enddo
 		endif
 		call draw_age_it(age_it,born_it,seed0,status)
+		seed0 = seed0 + 1
 		call draw_deli(del_i,del_i_int, seed1, status)
+		seed1 = seed1 + 1
 		call draw_alit(al_it,al_it_int, seed0, status)
+		seed0 = seed0 + 1
 		call draw_ji(j_i,seed1, status)
+		seed1 = seed1 + 1
 		call draw_zjt(z_jt_macro, seed0, status)
+		seed0 = seed0 + 1
 		call draw_status_innov(status_it_innov,seed1,status)
+		seed1 = seed1 + 1
 		call draw_draw(drawi_ititer, drawt_ititer, age_it, iter_draws-1, seed0, status)
-
+		seed0 = seed0 + 1
+		
 		! check the distributions
 		if(print_lev > 1 ) then
 			call vec2csv(del_i,"del_i.csv")
@@ -1868,6 +1961,8 @@ module sol_sim
 		a_it_int = 1
 		e_it = egrid(1)
 		e_it_int = 1
+!		status_it = 1
+		
 		a_mean_liter = 0.
 		d_mean_liter = 0.
 		a_var_liter = 0.
@@ -1896,17 +1991,20 @@ module sol_sim
 				it = 1
 				it_old = 1
 				status_hr = 1
-				status_it(i,it) = 1 !always start 
+				status_it(i,it) = 1 !always start working or rest unemployed (will choose that later)
 
 				!need to draw these from age-specific distributions for iterations > 1
 				if(iter>1 .and. age_it(i,it)  > 0 ) then
 					drawi = drawi_ititer(i,iter-1)
 					drawt = drawt_ititer(i,iter-1)
+					
+!					status_it(i,it) = status_it(drawi,drawt)
 					d_it(i,it) = d_it(drawi,drawt)
 					a_it(i,it) = a_it(drawi,drawt)
 					e_it(i,it) = e_it(drawi,drawt)
 					e_it_int(i,it) = e_it_int(drawi,drawt)
 					a_it_int(i,it) = a_it_int(drawi,drawt)
+					
 				endif
 
 				
@@ -1928,11 +2026,11 @@ module sol_sim
 							j_val  = -1.e6
 							cumval = 0.
 							do ij = 1,nj
-								cumval = dexp(V((ij-1)*nbi+beti,(del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)/amenityscale ) + cumval
+								cumval = dexp(V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)/amenityscale ) + cumval
 							enddo
 							j_hr = 1 !initial value
 							do ij = 1,nj
-								j_val_ij = V((ij-1)*nbi+beti,(del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)
+								j_val_ij = V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(ij,it),age_hr)
 								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/amenityscale)
 								j_val_ij = j_val_ij + jshock_ij(i,ij)*amenityscale + log(jwt)
 								if(j_val< j_val_ij ) then
@@ -1962,7 +2060,7 @@ module sol_sim
 					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
 					if(age_hr .eq. TT) then
 						it_old = it_old + 1
-						if(it_old .gt.  (Longev - youngD - oldD*oldN - 25)*tlength ) then
+						if(it_old .gt.  (Longev - youngD - oldD*oldN - 25)*tlen ) then
 							a_it(i,it:Tsim) = 0.
 							a_it_int(i,it:Tsim) = 0
 							d_it(i,it:Tsim) = 0
@@ -1976,7 +2074,7 @@ module sol_sim
 					!make decisions if not yet retired
 					if(age_hr < TT) then 
 						if(status_hr .eq. 3) then ! choose wait or apply
-							app_dif_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							app_dif_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							app_dif_it(i,it) = app_dif_hr
 							if( app_dif_hr >= 0 ) then
 							! choose to apply
@@ -1990,7 +2088,7 @@ module sol_sim
 						! evalutate gwork and gapp to figure out lom of status 
 						if((status_hr < 3) .or. (status_hr .eq. 3 .and. app_dif_hr < 0 ))then !choose work or rest
 							app_dif_it(i,it) = 0. !just to fill in value
-							work_dif_hr = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							work_dif_hr = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							
 							if( work_dif_hr > 0 ) then
 							! choose to work
@@ -2032,11 +2130,11 @@ module sol_sim
 						&	status_it(i,it+1) = status_tmrw
 						!evaluate the asset policy			
 						if(status_hr .eq. 1) then
-							api_hr = aw( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
+							api_hr = aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
 						elseif(status_hr .eq. 2) then
-							api_hr = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							api_hr = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 						elseif(status_hr .eq. 3) then
-							api_hr = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nai+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							api_hr = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 						elseif(status_hr .eq. 4) then
 							api_hr = aD( d_hr,ei_hr,ai_hr,age_hr )
 						elseif(status_hr .eq. 5) then ! should never be in this condition
@@ -2136,28 +2234,32 @@ module sol_sim
 				a_var(age_hr) = a_var(age_hr)/junk
 				d_var(age_hr) = d_var(age_hr)/junk
 			enddo
-			if(sum((a_mean - a_mean_liter)**2) + sum((d_mean - d_mean_liter)**2)<1.e-4 ) then
+			if(sum((a_mean - a_mean_liter)**2) + sum((d_mean - d_mean_liter)**2)<1.e-8 ) then
 				exit
 			endif
 			a_mean_liter = a_mean
 			d_mean_liter = d_mean
 			a_var_liter = a_var
-			d_var_liter = d_var			
+			d_var_liter = d_var
 		enddo! iter
 		if(verbose >=2 ) print *, "done simulating"
 		if(verbose >=3 ) print *, "dif a_mean, a_var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
 		if(verbose >=3 ) print *, "dif d_mean, d_var",  sum((d_mean - d_mean_liter)**2), sum((d_var - d_var_liter)**2)
 		
 		! calc occupation growth rates
+		if(verbose >2) print *, "calculating occupation growth rates"		
 		it = 1
-		occsize_jt(ij,it) = 0.
-		occgrow_jt(ij,it) = 0.
-		occshrink_jt(ij,it) = 0.
-		do i=1,Nsim
-			if(j_i(i) == ij .and. born_it(i,it) == 1) occsize_jt(ij,it) = 1.+occsize_jt(ij,it)
-		enddo
 		Nworkt = sum(born_it(:,it)) !labor force in first period are the ones "born" in the first period
-		occsize_jt(ij,it) = occsize_jt(ij,it) / Nworkt
+		do ij=1,nj
+			occsize_jt(ij,it) = 0.
+			occgrow_jt(ij,it) = 0.
+			occshrink_jt(ij,it) = 0.
+			do i=1,Nsim
+				if(j_i(i) == ij .and. born_it(i,it) == 1) occsize_jt(ij,it) = 1.+occsize_jt(ij,it)
+			enddo
+			occsize_jt(ij,it) = occsize_jt(ij,it) / Nworkt
+		enddo
+
 		do it = 2,Tsim
 			Nworkt = 0.
 			do ij =1,nj
@@ -2174,38 +2276,7 @@ module sol_sim
 				occshrink_jt(ij,it) = occshrink_jt(ij,it)/occsize_jt(ij,it)
 			enddo
 			forall(ij=1:nj) occsize_jt(ij,it) = occsize_jt(ij,it)/Nworkt
-			
 		enddo 
-		
-		!fill the histories
-		hists%work_dif_hist = work_dif_it
-		hists%app_dif_hist  = app_dif_it
-		hists%obsX_vars = 0.
-		do i=1,Nsim
-			do it=1,Tsim
-				do age_hr=1,TT-1
-					if(age_it(i,it) .eq. age_hr ) hists%obsX_vars(i + (Nsim-1)*it, age_hr) = 1
-				enddo
-				do id = 1,nd-1
-					if(d_it(i,it) .eq. id ) hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+id) = 1
-					! lead 1 period health status
-					if(it <= Tsim - tlength) then
-						if(d_it(i,it+tlength) .eq. id ) hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd+id) = 1
-					endif
-				enddo
-				do ij = 1,nj
-					if(j_i(i) == ij )  then 
-						hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+1) = occgrow_jt(ij,it)
-						hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+2) = occshrink_jt(ij,it)
-						if(it<=Tsim-tlength) then
-							hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+1) = occgrow_jt(ij,it+tlength)
-							hists%obsX_vars(i + (Nsim-1)*it, (TT-1)+nd*2+2) = occshrink_jt(ij,it+tlength)
-						endif
-					endif
-				enddo
-				
-			enddo
-		enddo
 		
 		
 		if(print_lev > 1)then
@@ -2216,12 +2287,13 @@ module sol_sim
 				call mati2csv(d_it,"d_it.csv")
 		endif
 	
-		deallocate(d_it,a_it,e_it)
+		deallocate(a_it,e_it)
 		deallocate(a_it_int,e_it_int)
-		deallocate(del_i,al_it,j_i,born_it,age_it)
+		deallocate(del_i,al_it,born_it)
 		deallocate(app_dif_it,app_it,work_it,work_dif_it)
 		deallocate(del_i_int,al_it_int,z_jt_int,status_it_innov)
 		deallocate(drawi_ititer,drawt_ititer)
+		deallocate(occgrow_jt,occshrink_jt,occsize_jt)
 
 	end subroutine sim
 
@@ -2251,7 +2323,7 @@ program V0main
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(8)	:: wagehere
+		real(8)	:: wagehere,utilhere
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct) :: val_sol
@@ -2273,23 +2345,29 @@ program V0main
 	allocate(pol_sol%aD(nd,ne,na,TT-1), stat=pol_sol%alloced)
 
 	! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
-	allocate(val_sol%VN(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(val_sol%VU(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(val_sol%VW(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(val_sol%V(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(pol_sol%aN(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(pol_sol%aW(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(pol_sol%aU(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(pol_sol%gwork(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(pol_sol%gapp(nj*nbi,ndi*nai,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(val_sol%VN(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(val_sol%VU(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(val_sol%VW(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(val_sol%V(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
+	allocate(pol_sol%aN(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(pol_sol%aW(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(pol_sol%aU(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(pol_sol%gwork(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+	allocate(pol_sol%gapp(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
 
-	allocate(pol_sol%gapp_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=pol_sol%alloced)
-	allocate(pol_sol%gwork_dif(nj*nbi,ndi*nai,nd,ne,na,nz,TT), stat=pol_sol%alloced)
+	allocate(pol_sol%gapp_dif(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=pol_sol%alloced)
+	allocate(pol_sol%gwork_dif(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=pol_sol%alloced)
 
 	allocate(hists_sim%wage_hist(Nsim,Tsim), stat=hists_sim%alloced)
 	allocate(hists_sim%work_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
 	allocate(hists_sim%app_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%obsX_vars(Nsim*Tsim,Nk), stat=hists_sim%alloced)
+	allocate(hists_sim%age_hist(Nsim,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%status_hist(Nsim,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%d_hist(Nsim,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%j_i(Nsim), stat=hists_sim%alloced)
+	allocate(hists_sim%occgrow_jt(nj,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%occshrink_jt(nj,Tsim), stat=hists_sim%alloced)
+
 
 	narg_in = iargc()
 
@@ -2306,7 +2384,6 @@ program V0main
 		call vec2csv(delgrid,'delgrid.csv',wo)
 		call vec2csv(alfgrid,'alfgrid.csv',wo)
 		call vec2csv(occz,'occzgrid.csv',wo)
-		call vec2csv(agrid,'agrid.csv',wo)
 		call vec2csv(egrid,'egrid.csv',wo)
 		call vec2csv(zgrid,'zgrid.csv',wo)
 		call veci2csv(dgrid,'dgrid.csv',wo)
@@ -2325,10 +2402,10 @@ program V0main
 		enddo
 
 		open(1, file="wage_dist.csv")
-		ibi =1
-		iz  =2
+		ibi = 1
+		iz  = 3
 		do it = 1,TT-1
-			do ial =1,nai
+			do ial =1,nal
 				do id = 1,nd-1
 					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz),it)
 					write(1, "(G20.12)", advance='no') wagehere
@@ -2340,6 +2417,30 @@ program V0main
 			write(1,*) " "! trailing space
 		enddo	
 		close(1)
+		open(1, file="util_dist.csv")
+		ibi =1
+		iz  =2
+		do it = 1,TT-1
+			do ial =1,nal
+				do id = 1,nd-1
+					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz),it)
+					utilhere = util(wagehere,id,1)
+					write(1, "(G20.12)", advance='no') utilhere
+					utilhere = util(wagehere,id,2)
+					write(1, "(G20.12)", advance='no') utilhere
+					
+				enddo
+				id = nd
+				utilhere = util(wagehere,id,1)
+				write(1, "(G20.12)", advance='no') utilhere
+				utilhere = util(wagehere,id,2)
+				write(1, "(G20.12)", advance='yes') utilhere
+			enddo
+			write(1,*) " "! trailing space
+		enddo	
+		close(1)
+		
+		
 	endif
 
 	if(verbose >2) print *, "Solving the model"
@@ -2358,9 +2459,10 @@ program V0main
 	deallocate(pol_sol%aR,pol_sol%aD,pol_sol%aN, pol_sol%aU, pol_sol%aW,pol_sol%gwork, pol_sol%gapp)
 	deallocate(pol_sol%gwork_dif,pol_sol%gapp_dif)
 	deallocate(val_sol%VR,val_sol%VD,val_sol%VN,val_sol%VU,val_sol%VW,val_sol%V)
-	deallocate(hists_sim%wage_hist,hists_sim%work_dif_hist,hists_sim%app_dif_hist,hists_sim%obsX_vars)
-
-
+	deallocate(hists_sim%wage_hist,hists_sim%work_dif_hist, &
+			& hists_sim%app_dif_hist,hists_sim%status_hist, &
+			& hists_sim%age_hist, hists_sim%occgrow_jt, &
+			& hists_sim%occshrink_jt,hists_sim%d_hist,hists_sim%j_i )
 End PROGRAM
 
 
