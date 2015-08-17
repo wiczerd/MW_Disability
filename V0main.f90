@@ -77,6 +77,7 @@ module helper_funs
 	type hist_struct
 		real(8), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
 		real(8), allocatable :: wage_hist(:,:) !realized wages
+		real(8), allocatable :: a_hist(:,:), al_hist(:,:)
 		integer, allocatable :: status_hist(:,:) !status: W,U,N,D,R (1:5)
 		! a bunch of explanitory variables to be stacked on each other
 		integer, allocatable :: age_hist(:,:)
@@ -471,42 +472,76 @@ module model_data
 		type(moments_struct),	intent(out) :: moments_sim
 		type(hist_struct), 	intent(in)  :: hists_sim
 	
-		integer :: i, ij,id,it,st,si,age_hr
-		integer :: Nage(TT),ND(TT),NW(TT)
+		integer :: i, ij,id,it,ial,st,si,age_hr
+		integer :: Nage(TT),ND(TT),NW(TT),Nst(Tsim)
 
-		real(8) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim)
+		real(8) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim), alD(nal), alD_age(nal,TT-1)
 
 		Nage = 0
+		Nst = 0
 		ND = 0
 		NW = 0
 
-		dD_age 	= 0
-		dD_t 	= 0
-		a_age 	= 0
-		a_t 	= 0
+		dD_age 	= 0.
+		dD_t 	= 0.
+		a_age 	= 0.
+		a_t 	= 0.
+		alD	= 0.
+		alD_age	= 0.
 
 		do si = 1,Nsim
 			do st = 1,Tsim
+				! savings and disability by time
+				if( hists_sim%age_hist(si,st) >0 ) then
+					Nst(st) = Nst(st) + 1
+					a_t(st) = hists_sim%a_hist(si,st) + a_t(st)
+					if(hists_sim%status_hist(si,st) == 4) dD_t(st) = dD_t(st)+hists_sim%d_hist(si,st)
+				endif
+				! disability by age and age X shock
 				do it = 1,TT-1
 					age_hr = hists_sim%age_hist(si,st)
 					if(age_hr == it) then
-						Nage(it) = Nage(it) + 1
-						a_age(it) = hists_sim%a_hist(si,si) +a_age(it)
 						if(hists_sim%status_hist(si,st) == 1) NW(it) = NW(it) + 1
 						if(hists_sim%status_hist(si,st) == 4) then
 							ND(it) = ND(it) + 1
 							dD_age(it) = dD_age(it)+hists_sim%d_hist(si,st)
-							dD_t(st) = dD_t(st)+hists_sim%d_hist(si,st)
+
+							! associate this with its shock
+							do ial = 1,nal
+
+								if(  hists_sim%al_hist(si,st) < alfgrid(ial)+2*epsilon(1.) &
+								&	.and. hists_sim%al_hist(si,st) > alfgrid(ial)-2*epsilon(1.) &
+								&	.and. hists_sim%status_hist(si,st) == 4 ) &
+								&  alD_age(ial,it) = 1. + alD_age(ial,it)
+
+							enddo
+
 						endif
 					endif
 				enddo !it = 1,TT-1
-
-				
+				! assets by age
+				do it=1,TT
+					age_hr = hists_sim%age_hist(si,st)
+					if(age_hr == it) then
+						Nage(it) = Nage(it) + 1
+						a_age(it) = hists_sim%a_hist(si,st) +a_age(it)
+					endif
+				enddo
+				! disability by shock level
+				do ial = 1,nal
+					if(  hists_sim%al_hist(si,st) < alfgrid(ial)+2*epsilon(1.) &
+					&	.and. hists_sim%al_hist(si,st) > alfgrid(ial)-2*epsilon(1.) &
+					&	.and. hists_sim%status_hist(si,st) == 4 ) &
+					&  alD(ial) = 1. + alD(ial)
+				enddo
 			enddo!st = 1,Tsim
 		enddo ! si=1,Nsim
-
+		! status distribution by age
 		forall(it=1:TT-1) moments_sim%di_rate(it) = dble(ND(it))/dble(Nage(it))
 		forall(it=1:TT-1) moments_sim%work_rate(it) = dble(NW(it))/dble(Nage(it))
+		! asset distribution by age, time and disability status
+		forall(it=1:TT ) a_age(it) = a_age(it)/dble(Nage(it))
+		forall(st=1:Tsim) a_t(st) = a_t(st)/dble(Nst(st))
 	
 	end subroutine moments_compute
 	
@@ -547,10 +582,14 @@ module model_data
 				enddo
 				
 			enddo
-		enddo	
+		enddo
+
+		moments_sim%work_coefs = 0.
 
 
 		deallocate(obsX_vars)
+
+		
 	end subroutine LPM_employment
 
 end module model_data
@@ -1788,25 +1827,27 @@ module sol_sim
 		integer :: bdayseed(100)
 						
 		real(8), allocatable ::	del_i(:) ! shocks to be drawn
-		real(8), allocatable ::	al_it(:,:)
-		integer, allocatable :: z_jt_int(:,:),z_jt_macro(:,:), jshock_ij(:,:) ! shocks to be drawn
+		integer, allocatable :: z_jt_int(:,:), z_jt_macro(:,:), jshock_ij(:,:) ! shocks to be drawn
 		integer, allocatable :: del_i_int(:)  ! integer valued shocks
 		integer, allocatable :: al_it_int(:,:)! integer valued shocks
 		integer, allocatable :: born_it(:,:) ! born status, drawn randomly		
 		real(8), allocatable :: status_it_innov(:,:) !innovations to d, drawn randomly
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
-		real(8), allocatable :: e_it(:,:), a_it(:,:)
+		real(8), allocatable :: e_it(:,:)
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
 		integer, allocatable :: drawi_ititer(:,:),drawt_ititer(:,:)
-		real(8), allocatable :: occgrow_jt(:,:), occsize_jt(:,:),occshrink_jt(:,:)
-
+		real(8), allocatable :: occsize_jt(:,:)
+		
 		! write to hists
 		real(8), pointer     :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
 		integer, pointer     :: status_it(:,:)	!track W,U,N,D,R : 1,2,3,4,5
 		integer, pointer     :: age_it(:,:)	! ages, drawn randomly
 		integer, pointer     :: j_i(:)		! occupation, maybe random
 		integer, pointer     :: d_it(:,:) 	! disability status
+		real(8), pointer     :: occgrow_jt(:,:), occshrink_jt(:,:)
+		real(8), pointer     :: a_it(:,:) 	! assets
+		real(8), pointer     ::	al_it(:,:)	! individual shocsk
 
 		! read from vals
 		real(8), pointer ::	VR(:,:,:), &			!Retirement
@@ -1857,11 +1898,13 @@ module sol_sim
 		gwork_dif => pol_funs%gwork_dif
 
 		status_it => hists%status_hist
-		age_it => hists%age_hist
+		age_it 	=> hists%age_hist
 		work_dif_it => hists%work_dif_hist
 		app_dif_it => hists%app_dif_hist
-		d_it => hists%d_hist
-		j_i  => hists%j_i
+		d_it 	=> hists%d_hist
+		j_i  	=> hists%j_i
+		a_it 	=> hists%a_hist
+		al_it 	=> hists%al_hist
 		
 		iter_draws = 50
 
@@ -1869,7 +1912,7 @@ module sol_sim
 		allocate(jshock_ij(Nsim,nj))
 		allocate(z_jt_int(Nsim, Tsim))		
 		allocate(del_i(Nsim))
-		allocate(al_it(Nsim,Tsim))
+		!allocate(al_it(Nsim,Tsim))
 		!allocate(j_i(Nsim))
 		allocate(age_it(Nsim,Tsim))
 		allocate(status_it_innov(Nsim,Tsim))
@@ -1889,8 +1932,8 @@ module sol_sim
 		!allocate(status_it(Nsim,Tsim))
 		allocate(drawi_ititer(Nsim,iter_draws-1))
 		allocate(drawt_ititer(Nsim,iter_draws-1))
-		allocate(occgrow_jt(nj,Tsim))
-		allocate(occshrink_jt(nj,Tsim))
+		!allocate(occgrow_jt(nj,Tsim))
+		!allocate(occshrink_jt(nj,Tsim))
 		allocate(occsize_jt(nj,Tsim))
 
 
@@ -2212,7 +2255,7 @@ module sol_sim
 			do age_hr = 1,TT-1
 				junk = 0.
 				do i=1,Nsim
-					do it = 1,Tsim
+					do it = 1,5 ! average in the first 5 periods should be the same.  
 						if( age_hr .eq. age_it(i,it) ) then
 							a_mean(age_hr) = a_it(i,it) + a_mean(age_hr)
 							d_mean(age_hr) = d_it(i,it) + d_mean(age_hr)
@@ -2289,7 +2332,7 @@ module sol_sim
 	
 		deallocate(a_it,e_it)
 		deallocate(a_it_int,e_it_int)
-		deallocate(del_i,al_it,born_it)
+		deallocate(del_i,born_it)
 		deallocate(app_dif_it,app_it,work_it,work_dif_it)
 		deallocate(del_i_int,al_it_int,z_jt_int,status_it_innov)
 		deallocate(drawi_ititer,drawt_ititer)
@@ -2363,7 +2406,9 @@ program V0main
 	allocate(hists_sim%app_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
 	allocate(hists_sim%age_hist(Nsim,Tsim), stat=hists_sim%alloced)
 	allocate(hists_sim%status_hist(Nsim,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%al_hist(Nsim,Tsim), stat=hists_sim%alloced)
 	allocate(hists_sim%d_hist(Nsim,Tsim), stat=hists_sim%alloced)
+	allocate(hists_sim%a_hist(Nsim,Tsim), stat=hists_sim%alloced)
 	allocate(hists_sim%j_i(Nsim), stat=hists_sim%alloced)
 	allocate(hists_sim%occgrow_jt(nj,Tsim), stat=hists_sim%alloced)
 	allocate(hists_sim%occshrink_jt(nj,Tsim), stat=hists_sim%alloced)
@@ -2462,7 +2507,8 @@ program V0main
 	deallocate(hists_sim%wage_hist,hists_sim%work_dif_hist, &
 			& hists_sim%app_dif_hist,hists_sim%status_hist, &
 			& hists_sim%age_hist, hists_sim%occgrow_jt, &
-			& hists_sim%occshrink_jt,hists_sim%d_hist,hists_sim%j_i )
+			& hists_sim%occshrink_jt,hists_sim%d_hist,hists_sim%j_i, &
+			& hists_sim%a_hist )
 End PROGRAM
 
 
