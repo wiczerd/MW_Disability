@@ -129,8 +129,8 @@ real(8) :: 	beta= dexp(-.03/tlen),&	!People are impatient (3% annual discount ra
 		prborn_t(Tsim),&	!probability of being born at each point t
 		amenityscale = 1.	!scale parameter of gumbel distribution for occ choice
 
- !Preferences----------------------------------------------------------------!
- ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
+!Preferences----------------------------------------------------------------!
+! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
 
 real(8) :: 	gam	= 1.0, &	!IES
 		eta 	= -0.2, &	!Util cost of participation
@@ -168,43 +168,43 @@ subroutine setparams()
 	emin = alfmu-2*alfsig
 	emax = alfmu+2*alfsig
 	summy = 0
-	DO i=1,nal
+	do i=1,nal
 		k = nal-i+1
 		node = cos(pival*(2.*k-1.)/(2.*nal))
 		nodeL = cos(pival*dble(2*max(k-1,1)-1)/dble(2*nal))
 		nodeH = cos(pival*dble(2*min(k+1,nal)-1)/dble(2*nal))
 		alfgrid(i) = ((node+1.)/2.)*(emax-emin)+emin
-		IF (i .EQ. 1) THEN
+		if (i == 1) then
 			midH = ((nodeH-node)/2.)+node
 			!pialf(:,i) = DNORDF(((midH+1)/2)*(2-2)-2)
 			pialf(:,i) = alnorm((((midH+1)/2.)*(2-2)-2),lower)
 			summy = summy + pialf(1,1)
-		ELSEIF (i .EQ. nal) THEN
+		elseif (i == nal) then
 			pialf(:,i) = 1-summy	
-		ELSE
+		else
 			midL = node-((node-nodeL)/2.)
 			midH = ((nodeH-node)/2.)+node
 			pialf(:,i) = alnorm((((midH+1)/2)*(2-2)-2),lower)-alnorm((((midL+1)/2)*(2-2)-2),lower)	 
 			summy = summy + pialf(1,i)
-		EndIF
-	EndDO
+		endif
+	enddo
 
 
 	!Pdf of alpha- N(alfmu,alfsig)
 	 !Probability of landing in bin centered at node
-	DO i=1,nal	!Current ai
-		DO j=1,nal	!ai'
+	do i=1,nal	!Current ai
+		do j=1,nal	!ai'
 			pialf(i,j) = pialf(i,j)*(1-alfrho)
-		EndDO
+		enddo
 		pialf(i,i) = pialf(i,i) + alfrho	!Larger probability of staying
-	EndDO
+	enddo
 
 	forall(i=1:nd) dgrid(i) = i
 
 	!Extra disability risk (uniform distributed)
-	DO i=1,ndi
+	do i=1,ndi
 		delgrid(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
-	EndDO
+	enddo
 
 	!TFP 
 	zgrid(1) = 0.5		!Structural Decline
@@ -234,9 +234,9 @@ subroutine setparams()
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
 	ptau(1) = 1-(tlen*youngD+1)**(-1)
 
-	DO t=2,TT-1
+	do t=2,TT-1
 		ptau(t) = 1-(tlen*oldD+1)**(-1)
-	ENDDO
+	enddo
 	ptau(TT) = 1-((Longev-youngD+oldN*oldD)*tlen-1)**(-1)
 
 	!initial age structure
@@ -253,9 +253,9 @@ subroutine setparams()
 	
 	!Age-related disability risk
 	dtau(1) = 0.5	!Young's Risk
-	DO t=2,TT-1
+	do t=2,TT-1
 		dtau(t) = dexp(ageD*t*oldD)	!Old (exponential)
-	ENDDO
+	enddo
 
 	!Disability Extent-Specific Things
 	!Wage Penalty 
@@ -275,9 +275,9 @@ subroutine setparams()
 	!wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
 	emax = dexp(beti(nbi)*maxval(zgrid)+maxval(alfgrid)+wtau(TT-1)+wd(1))
 	step = (emax-emin)/dble(ne-1)
-	DO i=1,ne
+	do i=1,ne
 		egrid(i) = emin+step*dble(i-1)
-	ENDdo
+	enddo
 
 	!Assets Grid
 	do i=1,na
@@ -305,7 +305,7 @@ subroutine setparams()
 	enddo
 		
 	!Technology: piz(iz,iz';j) <--- occupations differ in downside risk       
-	DO j=1,nj
+	do j=1,nj
 		piz(1,1,j) = (1-piz1)**(1./tlen)	!Stay in really bad shock
 		piz(1,2,j) = 1-piz(1,1,j)		!Move to low shock
 		piz(1,3,j) = 0.
@@ -477,7 +477,7 @@ subroutine random_normal(fn_val)
 
 	!     Generate P = (u,v) uniform in rectangle enclosing acceptance region
 
-	DO
+	do
 	  CALL RANDOM_NUMBER(u)
 	  CALL RANDOM_NUMBER(v)
 	  v = 1.7156 * (v - half)
@@ -493,7 +493,7 @@ subroutine random_normal(fn_val)
 	  IF (q > r2) CYCLE
 	!     Reject P if outside acceptance region
 	  IF (v**2 < -4.0*LOG(u)*u**2) EXIT
-	END DO
+	END do
 
 	!     Return ratio of P's coordinates as the normal deviate
 	fn_val = v/u
