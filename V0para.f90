@@ -64,15 +64,15 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 3, &!11	!Number of individual alpha types 
+integer, parameter ::	nal = 2, &!11	!Number of individual alpha types 
 			nbi = 1,  &		!Number of indiVidual beta types
-			ndi = 2,  &!3		!Number of individual disability risk types
+			ndi = 3,  &!3		!Number of individual disability risk types
 			nj  = 1,  &		!Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		!Number of disability extents
 			ne  = 3, &!10		!Points on earnings grid
 			na  = 50, &!200	!Points on assets grid
 			nz  = 3,  &		!Number of Occ TFP Shocks
-			maxiter = 2000, &!	!Tolerance parameter	
+			maxiter = 2, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 200, &!		!how many agents to draw
@@ -170,7 +170,7 @@ subroutine setparams()
 	summy = 0
 	do i=1,nal
 		k = nal-i+1
-		node = cos(pival*(2.*k-1.)/(2.*nal))
+		node = cos(pival*(2.*k-1.)/dble(2.*nal))
 		nodeL = cos(pival*dble(2*max(k-1,1)-1)/dble(2*nal))
 		nodeH = cos(pival*dble(2*min(k+1,nal)-1)/dble(2*nal))
 		alfgrid(i) = ((node+1.)/2.)*(emax-emin)+emin
@@ -202,9 +202,13 @@ subroutine setparams()
 	forall(i=1:nd) dgrid(i) = i
 
 	!Extra disability risk (uniform distributed)
-	do i=1,ndi
-		delgrid(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
-	enddo
+	if(ndi>1) then
+		do i=1,ndi
+			delgrid(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
+		enddo
+	else
+		delgrid(1) = 0.5*(dRiskH + dRiskL)
+	endif
 
 	!TFP 
 	zgrid(1) = 0.5		!Structural Decline
@@ -290,17 +294,17 @@ subroutine setparams()
 	do i=1,ndi
 	do t=1,TT-1
 
-		pid(1,2,i,TT-t) = 1.-(1.-pid1*dtau(TT-t)*delgrid(i)) &	!Partial Disability 
+		pid(1,2,i,t) = 1.-(1.-pid1*dtau(t)*delgrid(i))&	!Partial Disability 
+				& **(1./tlen)	
+		pid(1,1,i,t) = 1.-pid(1,2,i,t)			!Stay healthy
+		pid(1,3,i,t) = 0.				!Full Disability
+		pid(2,1,i,t) = 0.				!Monotone
+		pid(2,3,i,t) = 1.-(1.-pid2*dtau(t)*delgrid(i))&	!Full Disability
 					& **(1./tlen)	
-		pid(1,1,i,TT-t) = 1.-pid(1,2,i,TT-t)			!Stay healthy
-		pid(1,3,i,TT-t) = 0.					!Full Disability
-		pid(2,1,i,TT-t) = 0.					!Monotone
-		pid(2,3,i,TT-t) = 1.-(1.-pid2*dtau(TT-t)*delgrid(i)) &	!Full Disability
-					& **(1./tlen)	
-		pid(2,2,i,TT-t) = 1.-pid(2,3,i,TT-t)			!Stay Partial
-		pid(3,1,i,TT-t) = 0.					!Full is absorbing State
-		pid(3,2,i,TT-t) = 0.
-		pid(3,3,i,TT-t) = 1.
+		pid(2,2,i,t) = 1.-pid(2,3,i,t)			!Stay Partial
+		pid(3,1,i,t) = 0.					!Full is absorbing State
+		pid(3,2,i,t) = 0.
+		pid(3,3,i,t) = 1.
 	enddo
 	enddo
 		

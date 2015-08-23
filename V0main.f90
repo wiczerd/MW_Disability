@@ -10,6 +10,7 @@
 !	
 !************************************************************************************************!
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -o V0main.out 
+! val grind line: valgrind --leak-check=yes --error-limit=no --log-file=V0valgrind.log ./V0main.out &
 module helper_funs
 	
 	use V0para
@@ -539,7 +540,7 @@ module model_data
 		enddo ! si=1,Nsim
 
 		!disability distribution by shock and shock,age
-		forall(ial=1:nal) alD(ial,it) = alD_age(ial)/dble(total(ial))
+		forall(ial=1:nal) alD(ial) = alD(ial)/dble(total(ial))
 		forall(it=1:TT-1,ial=1:nal) alD_age(ial,it) = alD_age(ial,it)/dble(total(ial))/dble(totage(it))
 		! status distribution by age
 		forall(it=1:TT-1) moments_sim%di_rate(it) = dble(totD(it))/dble(totage(it))
@@ -634,7 +635,8 @@ module sol_sim
 		integer  :: i, j, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp, anapp,aapp, apol, ibi, ial, ij , idi, izz, iaai,  &
 			    iee1, iee2, iz, iw,wo, iter,npara,ipara
 		integer, dimension(5) :: maxer_i
-	
+
+		logical :: ptrsucces
 		!************************************************************************************************!
 		! Value Functions- Stack z-risk j and indiv. exposure beta_i
 		!************************************************************************************************!
@@ -699,6 +701,9 @@ module sol_sim
 		allocate(maxer(na,nz,ne,nd,nal))
 		emin = minval(egrid)
 		emax = maxval(egrid)
+
+		ptrsucces = associated(VR,val_funs%VR)
+		
 
 		!************************************************************************************************!
 		! Caculate things that are independent of occupation/person type
@@ -1805,20 +1810,20 @@ module sol_sim
 		!need to draw these from age-specific distributions for iterations > 1
 		do iteri = 1,niter
 			do i=1,Nsim
-			it=1
-			if(age_it(i,it) > 0 )then
-				do ii=1,Nsim*Tsim
-					call random_number(junk)
-					drawi = max(1,nint(junk*Nsim))
-					call random_number(junk)
-					drawt = max(1,nint(junk*Tsim))
-					if((age_it(drawi,drawt) .eq. age_it(i,it)) ) then
-						exit
-					endif
-				enddo
-				drawi_ititer(i,iteri) = drawi
-				drawt_ititer(i,iteri) = drawt
-			endif
+				it=1
+				if(age_it(i,it) > 0 )then
+					do ii=1,Nsim*Tsim
+						call random_number(junk)
+						drawi = max(1,nint(junk*Nsim))
+						call random_number(junk)
+						drawt = max(1,nint(junk*Tsim))
+						if((age_it(drawi,drawt) .eq. age_it(i,it)) ) then
+							exit
+						endif
+					enddo
+					drawi_ititer(i,iteri) = drawi
+					drawt_ititer(i,iteri) = drawt
+				endif
 			enddo
 		enddo
 
@@ -1826,13 +1831,13 @@ module sol_sim
 	end subroutine
 
 
-	subroutine sim(val_funs, pol_funs,hists)
+	subroutine sim(vfs, pfs,hst)
 		
 		implicit none
 	
-		type(val_struct), intent(inout), target :: val_funs
-		type(pol_struct), intent(inout), target :: pol_funs	
-		type(hist_struct), intent(inout), target :: hists
+		type(val_struct), intent(inout), target :: vfs
+		type(pol_struct), intent(inout), target :: pfs	
+		type(hist_struct), intent(inout), target :: hst
 		
 
 
@@ -1853,7 +1858,7 @@ module sol_sim
 		integer, allocatable :: drawi_ititer(:,:),drawt_ititer(:,:)
 		real(8), allocatable :: occsize_jt(:,:)
 		
-		! write to hists
+		! write to hst
 		real(8), pointer     :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
 		integer, pointer     :: status_it(:,:)	!track W,U,N,D,R : 1,2,3,4,5
 		integer, pointer     :: age_it(:,:)	! ages, drawn randomly
@@ -1864,12 +1869,7 @@ module sol_sim
 		real(8), pointer     ::	al_it(:,:)	! individual shocsk
 
 		! read from vals
-		real(8), pointer ::	VR(:,:,:), &			!Retirement
-					VD(:,:,:,:), &			!Disabled
-					VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
-					VW(:,:,:,:,:,:,:), &	!Working
-					VU(:,:,:,:,:,:,:), &	!Unemployed
-					V(:,:,:,:,:,:,:)	!Participant
+		real(8), pointer ::	V(:,:,:,:,:,:,:)	!Participant
 
 		! read from pols
 		real(8), pointer ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
@@ -1878,7 +1878,8 @@ module sol_sim
 					aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
 		integer, pointer ::	gapp(:,:,:,:,:,:,:), &
 					gwork(:,:,:,:,:,:,:)
-		
+
+		logical :: ptrsuccess
 		real(8) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1),d_var(TT-1),&
 				& a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1)
 	
@@ -1888,54 +1889,24 @@ module sol_sim
 		integer :: ali_hr,d_hr,age_hr,del_hr, zi_hr, j_hr, ai_hr,api_hr,ei_hr, &
 			& beti, status_hr,status_tmrw,drawi,drawt
 		!************************************************************************************************!
-
+		! Allocate things
 		!************************************************************************************************!
-		! Pointers
-		!************************************************************************************************!
-		! (disability extent, earn hist, assets)
-		VR => val_funs%VR
-		aR => pol_funs%aR
-		VD => val_funs%VD
-		aD => pol_funs%aD
-		VN => val_funs%VN
-		VU => val_funs%VU
-		VW => val_funs%VW
-		V => val_funs%V
-		aN => pol_funs%aN
-		aW => pol_funs%aW
-		aU => pol_funs%aU
-		gwork => pol_funs%gwork
-		gapp => pol_funs%gapp
 
-		gapp_dif => pol_funs%gapp_dif
-		gwork_dif => pol_funs%gwork_dif
-
-		status_it => hists%status_hist
-		age_it 	=> hists%age_hist
-		work_dif_it => hists%work_dif_hist
-		app_dif_it => hists%app_dif_hist
-		d_it 	=> hists%d_hist
-		j_i  	=> hists%j_i
-		a_it 	=> hists%a_hist
-		al_it 	=> hists%al_hist
-		occgrow_jt => hists%occgrow_jt
-		occshrink_jt => hists%occshrink_jt
-		
 		iter_draws = 50
-
+		
 		allocate(z_jt_macro(nj,Tsim))
 		allocate(jshock_ij(Nsim,nj))
 		allocate(z_jt_int(Nsim, Tsim))		
 		allocate(del_i(Nsim))
 		!allocate(al_it(Nsim,Tsim))
 		!allocate(j_i(Nsim))
-		allocate(age_it(Nsim,Tsim))
+		!allocate(age_it(Nsim,Tsim))
 		allocate(status_it_innov(Nsim,Tsim))
 		allocate(del_i_int(Nsim))
 		allocate(al_it_int(Nsim,Tsim))
 		allocate(born_it(Nsim,Tsim))
 
-		allocate(a_it(Nsim,Tsim))
+		!allocate(a_it(Nsim,Tsim))
 		allocate(a_it_int(Nsim,Tsim))		
 		allocate(e_it(Nsim,Tsim))
 		allocate(e_it_int(Nsim,Tsim))		
@@ -1951,6 +1922,41 @@ module sol_sim
 		!allocate(occshrink_jt(nj,Tsim))
 		allocate(occsize_jt(nj,Tsim))
 
+		!************************************************************************************************!
+		! Pointers
+		!************************************************************************************************!
+		! (disability extent, earn hist, assets)
+
+		V => vfs%V !need this for the career choice
+		aR => pfs%aR
+		aD => pfs%aD
+		aN => pfs%aN
+		aW => pfs%aW
+		aU => pfs%aU
+		gwork => pfs%gwork
+		gapp => pfs%gapp
+
+		gapp_dif => pfs%gapp_dif
+		gwork_dif => pfs%gwork_dif
+
+		status_it => hst%status_hist
+		age_it 	=> hst%age_hist
+		work_dif_it => hst%work_dif_hist
+		app_dif_it => hst%app_dif_hist
+		d_it 	=> hst%d_hist
+		j_i  	=> hst%j_i
+		a_it 	=> hst%a_hist
+		al_it 	=> hst%al_hist
+		occgrow_jt => hst%occgrow_jt
+		occshrink_jt => hst%occshrink_jt
+		
+		ptrsuccess = associated(d_it,hst%d_hist)
+		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate d_it"
+		ptrsuccess = associated(age_it,hst%age_hist)
+		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate age_it"
+		ptrsuccess = associated(V,vfs%V)
+		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate V"
+		
 
 		seed0 = 941987
 		seed1 = 12281951
@@ -2036,9 +2042,9 @@ module sol_sim
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,iter_draws
 		if(verbose >3) print *, "iter: ", iter
-			! OMP  parallel do default(shared) &
-			! OMP& private(iter,i,del_hr,j_hr,status_hr,it,it_old,drawi,drawt,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr, &
-			! OMP& ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
+			!$OMP  parallel do default(shared) &
+			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,drawi,drawt,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr, &
+			!$OMP& ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 				del_hr = del_i_int(i)
@@ -2112,7 +2118,7 @@ module sol_sim
 					z_hr	= zgrid(zi_hr)
 					
 					wage_hr	= wage(bet_hr,al_hr,d_hr,z_hr,age_hr)
-					hists%wage_hist(i,it) = wage_hr
+					hst%wage_hist(i,it) = wage_hr
 					
 					status_hr = status_it(i,it)
 					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
@@ -2255,7 +2261,7 @@ module sol_sim
 				endif ! age_it(i,it)>0
 				enddo !1,Tsim
 			enddo! 1,Nsim
-			! OMP  end parallel do 
+			!$OMP  end parallel do 
 
 			
 			if(print_lev > 2)then
@@ -2348,13 +2354,13 @@ module sol_sim
 				call mati2csv(d_it,"d_it.csv")
 		endif
 	
-		deallocate(a_it,e_it)
+		deallocate(e_it)
 		deallocate(a_it_int,e_it_int)
 		deallocate(del_i,born_it)
-		deallocate(app_dif_it,app_it,work_it,work_dif_it)
+		deallocate(app_it,work_it)
 		deallocate(del_i_int,al_it_int,z_jt_int,status_it_innov)
 		deallocate(drawi_ititer,drawt_ititer)
-		deallocate(occgrow_jt,occshrink_jt,occsize_jt)
+		deallocate(occshrink_jt)
 
 	end subroutine sim
 
