@@ -21,7 +21,7 @@ real(8), parameter ::	youngD = 20.0, &	!Length of initial young period
 		tlen =12., &		!Number of periods per year (monthly)	
 		Longev = 78.- 25., &		!Median longevity	
 		xi0 = 0.16, &		!Probability of DI accept for d=0
-		xi1 = 0.22, &		!Probability of DI accept for d=1
+		xi1 = 0.20, &		!Probability of DI accept for d=1
 		xi2 = 0.50, &		!Probability of DI accept for d=2
 		ageW = 0.02, &		!Coefficient on Age in Mincer
 		ageW2 = -0.0001, &	!Coefficient on Age^2 in Mincer
@@ -72,7 +72,7 @@ integer, parameter ::	nal = 2, &!11	!Number of individual alpha types
 			ne  = 3, &!10		!Points on earnings grid
 			na  = 50, &!200	!Points on assets grid
 			nz  = 3,  &		!Number of Occ TFP Shocks
-			maxiter = 2, &!2000	!Tolerance parameter	
+			maxiter = 200, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 200, &!		!how many agents to draw
@@ -132,9 +132,9 @@ real(8) :: 	beta= dexp(-.03/tlen),&	!People are impatient (3% annual discount ra
 !Preferences----------------------------------------------------------------!
 ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
 
-real(8) :: 	gam	= 1.0, &	!IES
-		eta 	= -0.2, &	!Util cost of participation
-		theta 	= -0.22		!Util cost of disability	
+real(8) :: 	gam	= 1.5, &	!IES
+		eta 	= -0.5, &	!Util cost of participation
+		theta 	= -0.5		!Util cost of disability	
 
 integer :: print_lev, verbose
 		
