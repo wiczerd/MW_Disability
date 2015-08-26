@@ -9,7 +9,7 @@
 !				  before individual types are drawn.
 !	
 !************************************************************************************************!
-! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -o V0main.out 
+! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -o V0main.out  
 ! val grind line: valgrind --leak-check=yes --error-limit=no --log-file=V0valgrind.log ./V0main.out &
 module helper_funs
 	
@@ -480,18 +480,26 @@ module model_data
 		real(8) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
 				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1)
 
-		totage = 0
-		totst = 0
-		totD = 0
-		totW = 0
-
-		dD_age 	= 0.
-		dD_t 	= 0.
-		a_age 	= 0.
-		a_t 	= 0.
-		alD	= 0.
-		alD_age	= 0.
-
+		!initialize all the sums
+		totage	= 0
+		totst	= 0
+		totD	= 0
+		totW	= 0
+		total	= 0
+		tot3al	= 0
+		tot3age	= 0
+		
+		dD_age 		= 0.
+		dD_t 		= 0.
+		a_age 		= 0.
+		a_t 		= 0.
+		alD		= 0.
+		alD_age		= 0.
+		appdif_age 	= 0.
+		workdif_age 	= 0.
+		alworkdif	= 0.
+		alappdif	= 0.
+		
 		do si = 1,Nsim
 			do st = 1,Tsim
 				if(hists_sim%status_hist(si,st) >0 ) then
@@ -574,7 +582,9 @@ module model_data
 			call vec2csv(a_age,"a_age.csv")
 			call vec2csv(a_t,"a_t.csv")
 			call vec2csv(moments_sim%di_rate,"di_age.csv")
+			call vec2csv(appdif_age, "appdif_age.csv")
 			call vec2csv(moments_sim%work_rate,"work_age.csv")
+			call vec2csv(workdif_age, "workdif_age.csv")
 			call vec2csv(alD,"alD.csv")
 			call mat2csv(alD_age,"alD_age.csv")
 		endif
@@ -823,19 +833,9 @@ module sol_sim
 		!----------------------------------------------------------!
 		!Set value at t=TT to be VR in all other V-functions
 		!----------------------------------------------------------!
-
-			
-
-		do id=1,nd
-		do ie=1,ne
-		do ia=1,na
-			VD(id,ie,ia,TT) = VR(id,ie,ia)
-			VD0(id,ie,ia,TT) = VR(id,ie,ia)
-		enddo
-		enddo
-		enddo
-
-
+		VD(:,:,:,TT) = VR
+		VD0(:,:,:,TT) = VR
+		VD0(:,:,:,TT-1) = VD0(:,:,:,TT) ! this is necessary for initialization given stochastic aging
 
 	!----------------------------------------------------------------!
 	!2) Calculate Value of Disabled: VD(d,e,a,t)	 
@@ -847,11 +847,11 @@ module sol_sim
 		npara = nd*ne
 		!Work backwards from TT
 		do it = TT-1,1,-1
-
+			!Guess will be value at t+1
+			VD0(:,:,:,it) = VD(:,:,:,it+1)
 			iw = 1 ! not working
+
 			do id =1,nd 
-				!Guess will be value at t+1
-				VD0(id,:,:,it) = VD(id,:,:,it+1)
 
 				if(print_lev >3) then
 					call mat2csv(VD0(id,:,:,it),"VD0.csv",0)
@@ -862,37 +862,36 @@ module sol_sim
 					iter=1
 					do WHILE (iter<=maxiter)
 						summer = 0
+						iaa1 = 1
+						!Loop over current state: assets
+						do ia=1,na
+							Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa1,it+1)+ptau(it)*VD0(id,ie,iaa1,it))
+							chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
+					
+							Vtest1 = -1e6
+							apol = iaa1
+							!Find Policy
+							do iaa=iaa1,na
+								chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
+								if(chere >0.) then
+									Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa,it+1)+ptau(it)*VD0(id,ie,iaa,it))
 
-							iaa1 = 1
-							!Loop over current state: assets
-							do ia=1,na
-								Vc1 = beta*((1-ptau(it))*VD0(id,ie,apol,it+1)+ptau(it)*VD0(id,ie,iaa1,it))
-								chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
-						
-								Vtest1 = -1e6
-								apol = iaa1
-								!Find Policy
-								do iaa=iaa1,na
-									chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
-									if(chere >0.) then
-										Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa,it+1)+ptau(it)*VD0(id,ie,iaa,it))
-
-										Vtest2 = util(chere,id,iw)+ Vc1
-										if(Vtest2>Vtest1) then
-											Vtest1 = Vtest2
-											apol = iaa
-										elseif(iaa>apol+iaa_hiwindow) then
-											exit
-										endif
-									else
+									Vtest2 = util(chere,id,iw)+ Vc1
+									if(Vtest2>Vtest1) then
+										Vtest1 = Vtest2
+										apol = iaa
+									elseif(iaa>apol+iaa_hiwindow) then
 										exit
 									endif
-								enddo	!iaa
-								iaa1 = max(apol-iaa_lowindow,1)
-								VD(id,ie,ia,it) = Vtest1
-								aD(id,ie,ia,it) = apol !agrid(apol)
-								summer = summer+ (VD(id,ie,ia,it)-VD0(id,ie,ia,it))**2
-							enddo	!ia
+								else
+									exit
+								endif
+							enddo	!iaa
+							iaa1 = max(apol-iaa_lowindow,1)
+							VD(id,ie,ia,it) = Vtest1
+							aD(id,ie,ia,it) = apol !agrid(apol)
+							summer = summer + (VD(id,ie,ia,it)-VD0(id,ie,ia,it))**2
+						enddo	!ia
 
 						if(print_lev >3) then
 							wo =0
@@ -902,7 +901,7 @@ module sol_sim
 						IF (summer < Vtol) THEN
 							exit	!Converged
 						EndIF
-						VD0(id,:,:,it) = VD(id,:,:,it)	!New guess
+						VD0(id,ie,:,it) = VD(id,ie,:,it)	!New guess
 						iter=iter+1
 					enddo	!iter: V-iter loop
 				enddo	!ie		
@@ -1092,7 +1091,6 @@ module sol_sim
 					!Loop over current state: assets
 					do ia=1,na
 						
-						!*******************************************
 						!**********Value if apply for DI 
 						Vtest1 = -1e6
 						apol = iaa1app
@@ -1469,15 +1467,18 @@ module sol_sim
 			ij  = 1
 			wo  = 0
 
-			id  = 1
-			ie  = 1
-			call mati2csv(aD(id,ie,:,:),"aD.csv",wo)
-			call mat2csv (VD(id,ie,:,:),"VD.csv",wo)
+			do id  = 1,nd
+			do ie  = 1,ne
+				call mati2csv(aD(id,ie,:,:),"aD.csv",wo)
+				call mat2csv (VD(id,ie,:,:),"VD.csv",wo)
 
-			call veci2csv(aR(id,ie,:),"aR.csv",0)
-			call vec2csv (VR(id,ie,:),"VR.csv",0)
+				call veci2csv(aR(id,ie,:),"aR.csv",wo)
+				call vec2csv (VR(id,ie,:),"VR.csv",wo)
+				if(wo == 0) wo =1
+			enddo
+			enddo
 
-
+			wo = 0
 			do idi=1,ndi	!loop over delta(idi)
 			do ial=1,nal	!Loop over alpha (al)
 			do ie=1,ne	!Loop over earnings index
@@ -1823,36 +1824,39 @@ module sol_sim
 		success = 0
 	end subroutine draw_age_it
 
-	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it, niter, seed0, success)
+	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it, seed0, success)
 
-		integer,intent(in) :: seed0,niter
+		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer,intent(in) :: age_it(:,:)
 		integer, dimension(100) :: bdayseed
 		integer,intent(out) :: drawi_ititer(:,:),drawt_ititer(:,:)
-		integer :: i,it,ii,iteri,drawt,drawi
+		integer :: i,it,ii,iteri,drawt,drawi,niter
 		real(8) :: junk
-		
+
+		niter = size(drawi_ititer,2)
 		!need to draw these from age-specific distributions for iterations > 1
 		do iteri = 1,niter
 			do i=1,Nsim
 				it=1
 				if(age_it(i,it) > 0 )then
-					do ii=1,Nsim*Tsim
+					do 
 						call random_number(junk)
-						drawi = max(1,nint(junk*Nsim))
+						drawi = max(1,idnint(junk*Nsim))
 						call random_number(junk)
-						drawt = max(1,nint(junk*Tsim))
+						drawt = max(1,idnint(junk*Tsim))
 						if((age_it(drawi,drawt) .eq. age_it(i,it)) ) then
 							exit
 						endif
 					enddo
 					drawi_ititer(i,iteri) = drawi
 					drawt_ititer(i,iteri) = drawt
+				else
+					drawi_ititer(i,iteri) = i
+					drawt_ititer(i,iteri) = it
 				endif
 			enddo
 		enddo
-
 		success = 0
 	end subroutine
 
@@ -2013,7 +2017,7 @@ module sol_sim
 		seed0 = seed0 + 1
 		call draw_status_innov(status_it_innov,seed1,status)
 		seed1 = seed1 + 1
-		call draw_draw(drawi_ititer, drawt_ititer, age_it, iter_draws-1, seed0, status)
+		call draw_draw(drawi_ititer, drawt_ititer, age_it, seed0, status)
 		seed0 = seed0 + 1
 		
 		! check the distributions

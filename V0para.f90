@@ -64,15 +64,15 @@ real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 2, &!11	!Number of individual alpha types 
+integer, parameter ::	nal = 5,  &!11	!Number of individual alpha types 
 			nbi = 1,  &		!Number of indiVidual beta types
 			ndi = 3,  &!3		!Number of individual disability risk types
 			nj  = 1,  &		!Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		!Number of disability extents
-			ne  = 3, &!10		!Points on earnings grid
-			na  = 50, &!200	!Points on assets grid
+			ne  = 4, &!10		!Points on earnings grid
+			na  = 200, &!200	!Points on assets grid
 			nz  = 3,  &		!Number of Occ TFP Shocks
-			maxiter = 200, &!2000	!Tolerance parameter	
+			maxiter = 2000, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 200, &!		!how many agents to draw
