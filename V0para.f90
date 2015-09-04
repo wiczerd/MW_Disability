@@ -17,26 +17,21 @@ character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 
 !**Environmental Parameters**********************************************************************!
 real(8), parameter ::	youngD = 20.0, &	!Length of initial young period
-		oldD = 10.0, &		!Length of each old period
+		oldD = 5.0, &		!Length of each old period
 		tlen =12., &		!Number of periods per year (monthly)	
 		Longev = 78.- 25., &		!Median longevity	
-		xi0 = 0.16, &		!Probability of DI accept for d=0
-		xi1 = 0.20, &		!Probability of DI accept for d=1
-		xi2 = 0.50, &		!Probability of DI accept for d=2
-		ageW = 0.02, &		!Coefficient on Age in Mincer
-		ageW2 = -0.0001, &	!Coefficient on Age^2 in Mincer
+		ageW = 0.0373076, &	!Coefficient on Age in Mincer,
+		ageW2 = -0.0007414, &	!Coefficient on Age^2 in Mincer
 		ageD = 0.1, &		!Coefficient on Age over 45 in Disability hazard (exponential)
 		UIrr = 0.4, &		!Replacement Rate in UI
-		DItest1 = 1.0, &	!Earnings Index threshold 1 (See Kopecky later)
-		DItest2 = 1.5, &	!Earnings Index threshold 2
-		DItest3 = 2.0, & 	!Earnings Index threshold 3	
 		dRiskL = 0.5,&		!Lower bound on occupation-related extra disability risk (mult factor)
 		dRiskH = 1.5, &		!Upper bound on occupation-related extra disability risk (mult factor)
 		zRiskL = 0.5,&		!Lower bound on occupation-related extra economic risk (mult factor)
 		zRiskH = 1.5,&		!Upper bound on occupation-related extra economic risk (mult factor)
+		eligY  = 0.407,&	!Fraction young who are eligable
 		R = dexp(0.03/tlen)	!People can save
 
-integer, parameter ::  	   oldN = 1, &!2!Number of old periods
+integer, parameter ::  	   oldN = 1,&	!2!Number of old periods
 		TT = oldN+2		!Total number of periods, oldN periods plus young and retired
 
 !----------------------------------------------------------------------------!
@@ -53,24 +48,25 @@ integer, parameter ::  	   oldN = 1, &!2!Number of old periods
  !   1 (1-piz1)     piz1        0
  !   2   pz2     (1-pz2-pz3)   pz3
  !   3    0         piz4      1-piz4 
-
-real(8), parameter :: 	pid1 = 0.005, &	!Probability d0->d1
-		pid2 = 0.05, &  !Probability d1->d2
-		piz1 = 0.05, &  !Probability zl->z0
-		piz2 = 0.01, &  !Probability z0->zl
-		piz3 = 0.30, &  !Probability z0->zh
-		piz4 = 0.20	!Probability zh->z0 (average duration of expansion)
+! annual probabilities
+real(8), parameter :: 	pid1 = 0.074, &	!Probability d0->d1
+		pid2 = 0.014, &  	!Probability d1->d2
+		pid0 = 0.587, &		!Probability d1->d0
+		piz1 = 0.05, & 		!Probability zl->z0
+		piz2 = 0.01, &  	!Probability z0->zl
+		piz3 = 0.30, &  	!Probability z0->zh
+		piz4 = 0.20		!Probability zh->z0 (average duration of expansion)
 
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 5,  &!11	!Number of individual alpha types 
+integer, parameter ::	nal = 3,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		!Number of indiVidual beta types
-			ndi = 3,  &!3		!Number of individual disability risk types
+			ndi = 1,  &!3		!Number of individual disability risk types
 			nj  = 1,  &		!Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		!Number of disability extents
-			ne  = 4, &!10		!Points on earnings grid
-			na  = 200, &!200	!Points on assets grid
+			ne  = 2, &!10		!Points on earnings grid
+			na  = 50, &!200		!Points on assets grid
 			nz  = 3,  &		!Number of Occ TFP Shocks
 			maxiter = 2000, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
@@ -104,37 +100,54 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		ptau(TT), &		!Probability of aging
 		dtau(TT-1), &		!Proportional age-related disability risk
 		delgrid(ndi), &		!Individual specific disability risk
-		zgrid(nz), &		!TFP shock grid
-		xi(nd),&		!DI acceptance probability
+		zgrid(nz,nj), &		!TFP shock grid
+		xi(nd,TT-1), &		!DI acceptance probability
 		agrid(na),&		!Assets grid
 		egrid(ne),&		!Earnings Index Grid
 		pialf(nal,nal),&	!Alpha_i transition matrix
 		piz(nz,nz,nj),&		!TFP transition matrix
 		pid(nd,nd,ndi,TT-1),&	!Disability transition matrix
+		prob_t(TT), &		!Probability of being in each age group to start
+		prborn_t(Tsim),&	!probability of being born at each point t
 		Njdist(nj)		!Fraction in each occupation
 		
 integer :: 	dgrid(nd), &		! just enumerate the d states
 		agegrid(TT)		! the mid points of the ages
 
 !***preferences and technologies that may change
-real(8) :: 	beta= dexp(-.03/tlen),&	!People are impatient (3% annual discount rate to start)
-		nu = 2.50, &		!Psychic cost of applying for DI	
-		alfrho = 0.95, &	!Peristance of Alpha_i type
+real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start)
+		nu = 0.005, &		!Psychic cost of applying for DI - proportion of potential payout	
+		alfrho = 0.988, &	!Peristance of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
-		alfsig = 0.1,&		!Unconditional StdDev of Alpha_i type (Normal)
+		alfsig = 0.015,&	!Unconditional StdDev of Alpha_i type (Normal)
 		b = 0.05,&		!Home production income
-		rhho = 0.2,&		!Probability of finding a job when long-term unemployed (David)
+		lrho = 0.2,&		!Probability of finding a job when long-term unemployed (David)
+		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
-		prob_t(TT), &		!Probability of being in each age group to start
-		prborn_t(Tsim),&	!probability of being born at each point t
-		amenityscale = 1.	!scale parameter of gumbel distribution for occ choice
+		xsep = 0.02, &		!Separation probability into unemployment
+		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
+		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
+		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
+		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
+		xi0M = 0.315, &		!Probability of DI accept for d=0, middle age
+		xi1M = 0.450, &		!Probability of DI accept for d=1, middle age
+		xi2M = 0.503, &		!Probability of DI accept for d=2, middle age
+		xi0O = 0.315, &		!Probability of DI accept for d=0, old
+		xi1O = 0.450, &		!Probability of DI accept for d=1, old
+		xi2O = 0.503, &		!Probability of DI accept for d=2, old
+		xizcoef = -2., &		!This targets the change from 1-30% -> 1-16% acceptance rate with z deterioration
+		DItest1 = 1.0, &	!Earnings Index threshold 1 (These change based on the average wage)
+		DItest2 = 1.5, &	!Earnings Index threshold 2
+		DItest3 = 2.0, & 	!Earnings Index threshold 3
+		smthELPM = 1.		!Smoothing for the LPM
+
 
 !Preferences----------------------------------------------------------------!
 ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
 
 real(8) :: 	gam	= 1.5, &	!IES
-		eta 	= -0.5, &	!Util cost of participation
-		theta 	= -0.5		!Util cost of disability	
+		eta 	= -0.185, &	!Util cost of participation
+		theta 	= -0.448		!Util cost of disability	
 
 integer :: print_lev, verbose
 		
@@ -144,7 +157,7 @@ subroutine setparams()
 	logical, parameter :: lower= .FALSE. 
 	integer:: i, j, k, t
 	real(8):: summy, emin, emax, step, &
-		  node, nodeH, nodeL, midL, midH
+		  node, nodei,nodek,nodemidH,nodemidL, alfcondsig
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
 	!***For Now, Simple Grids for Comparative Statics***!
@@ -164,40 +177,41 @@ subroutine setparams()
 	!beti(2) = 1.2 
 
 	!Individual Wage component (alpha)- grid= 2 std. deviations
-	!Nodes chosen as Gauss-Chebychev
+	!Nodes >2 chosen as chebychev zeros, node 1 chosen to make unemployment
 	emin = alfmu-2*alfsig
 	emax = alfmu+2*alfsig
-	summy = 0
-	do i=1,nal
+	alfcondsig = alfsig*(1-alfrho**2)**0.5
+	do i=2,nal
 		k = nal-i+1
-		node = cos(pival*(2.*k-1.)/dble(2.*nal))
-		nodeL = cos(pival*dble(2*max(k-1,1)-1)/dble(2*nal))
-		nodeH = cos(pival*dble(2*min(k+1,nal)-1)/dble(2*nal))
+		node = cos(pival*dble(2*k-1)/dble(2.*nal))
 		alfgrid(i) = ((node+1.)/2.)*(emax-emin)+emin
-		if (i == 1) then
-			midH = ((nodeH-node)/2.)+node
-			!pialf(:,i) = DNORDF(((midH+1)/2)*(2-2)-2)
-			pialf(:,i) = alnorm((((midH+1)/2.)*(2-2)-2),lower)
-			summy = summy + pialf(1,1)
-		elseif (i == nal) then
-			pialf(:,i) = 1-summy	
-		else
-			midL = node-((node-nodeL)/2.)
-			midH = ((nodeH-node)/2.)+node
-			pialf(:,i) = alnorm((((midH+1)/2)*(2-2)-2),lower)-alnorm((((midL+1)/2)*(2-2)-2),lower)	 
-			summy = summy + pialf(1,i)
-		endif
 	enddo
-
-
-	!Pdf of alpha- N(alfmu,alfsig)
-	 !Probability of landing in bin centered at node
-	do i=1,nal	!Current ai
-		do j=1,nal	!ai'
-			pialf(i,j) = pialf(i,j)*(1-alfrho)
+	do i=2,nal
+		summy = 0.
+		do k=2,nal
+			nodei = alfgrid(i) ! this is the center of the region I'm integrating
+			nodek = alfgrid(k)
+			if(k == 2) then
+				nodemidH = (nodek+alfgrid(k+1))/2.
+				pialf(i,k) = alnorm( (nodemidH - alfmu*(1.-alfrho) -alfrho*nodei)/alfcondsig,lower)
+				summy = summy+pialf(i,k)
+			elseif(k == nal) then
+				pialf(i,k) = 1.-summy
+			else
+				nodemidH = (nodek + alfgrid(k+1))/2.
+				nodemidL = (nodek + alfgrid(k-1))/2.
+				pialf(i,k) = alnorm( (nodemidH - alfmu*(1.-alfrho) - alfrho*nodei)/alfcondsig ,lower) &
+					& -alnorm( (nodemidL - alfmu*(1.-alfrho) - alfrho*nodei)/alfcondsig,lower)
+				summy = summy + pialf(i,k)
+			endif
 		enddo
-		pialf(i,i) = pialf(i,i) + alfrho	!Larger probability of staying
 	enddo
+	! value of alfgrid(1) chosen later
+	pialf(1,1) = (1-srho)
+	pialf(1,2:nal) = srho/dble(nal - 1)
+	pialf(2:nal,1) = xsep
+	forall(i=2:nal,k=2:nal) pialf(i,k) = pialf(i,k)*(1-xsep)
+
 
 	forall(i=1:nd) dgrid(i) = i
 
@@ -211,9 +225,20 @@ subroutine setparams()
 	endif
 
 	!TFP 
-	zgrid(1) = 0.5		!Structural Decline
-	zgrid(2) = 0.9		!Recession
-	zgrid(3) = 1		!Normal Times
+	if(nz == 3) then
+		zgrid(1,:) = 0.5	!Structural Decline
+		zgrid(2,:) = 0.9	!Recession
+		zgrid(3,:) = 1		!Normal Times
+	elseif(nz == 4) then
+		zgrid(1,:) = 0.5	!Structural Decline
+		zgrid(2,:) = 0.9	!Structural, slightly better
+		zgrid(3,:) = 1.0	!Recession
+		zgrid(4,:) = 1.1	!Normal Times
+	else
+		do i=1,nz
+			zgrid(i,:) = 1.0 - .05*dble(i-nz/2)
+		enddo
+	endif
 
 	!Age-Specific Things
 
@@ -224,15 +249,11 @@ subroutine setparams()
 	enddo
 	agegrid(TT) = Longev/2 - (youngD + oldD*oldN) /2 + (youngD + oldD*oldN)
 
-	!Wage Bonus
-!	wtau(1) = ageW*agegrid(1)+ageW2*agegrid(1)**2			     !Young
-!	do t=2,TT-1							
-!		wtau(t) = ageW*agegrid(t)+ageW2*agegrid(t)**2 !Old
-!	enddo
-	wtau(1) = 0.
-	wtau(2) = 0.15
-	if(size(wtau)>=3) wtau(3) = -0.060
-	if(size(wtau)>=4) wtau(4) = -0.1
+	!Wage Bonus 0.0373076,-0.0007414
+	wtau(1) = ageW*agegrid(1)+ageW2*agegrid(1)**2			     !Young
+	do t=2,TT-1							
+		wtau(t) = ageW*agegrid(t)+ageW2*agegrid(t)**2 !Old
+	enddo
 
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
@@ -263,18 +284,40 @@ subroutine setparams()
 
 	!Disability Extent-Specific Things
 	!Wage Penalty 
-	wd(1) = 0	!Healthy, no penalty
-	wd(2) = -0.1	!Partially Disabled, small penalty	
-	wd(3) = -0.2	!Full Disabled, large penalty
+	wd(1) = 0		!Healthy, no penalty
+	wd(2) = -0.2973112	!Partially Disabled, small penalty	
+	wd(3) = -0.50111	!Full Disabled, large penalty
 
-	!DI Acceptance probability, convert to monthly
-	xi(1) = 1.-(1.-xi0)**(1./tlen)
-	xi(2) = 1.-(1.-xi1)**(1./tlen)
-	xi(3) = 1.-(1.-xi2)**(1./tlen)
+	!DI Acceptance probability for each z status
+
+	xi(1,1) = xi0Y
+	xi(2,1) = xi1Y
+	xi(3,1) = xi2Y
+	xi(1,2) = xi0M
+	xi(2,2) = xi1M
+	xi(3,2) = xi2M
+	if(TT-1>=3) then
+		xi(1,2) = xi0M
+		xi(2,2) = xi1M
+		xi(3,2) = xi2M
+	endif
+	if(TT-1>=4) then
+		xi(1,4) = xi0O
+		xi(2,4) = xi1O
+		xi(3,4) = xi2O
+	endif
+	if(TT-1>=5) then
+		xi(1,5) = xi0O
+		xi(2,5) = xi1O
+		xi(3,5) = xi2O
+	endif
+	
+	!set alfgrid(1) now that everything else is known
+	alfgrid(1) = (beti(1)*minval(zgrid)+(alfgrid(2))+wtau(1)+wd(nd))/10
 
 	!Earnings Grid
 	!Make linear from lowest possible wage (disabled entrant, lowest types)
-	emin = dexp(beti(1)*minval(zgrid)+minval(alfgrid)+wtau(1)+wd(nd))
+	emin = dexp(beti(1)*minval(zgrid)+alfgrid(2)+wtau(1)+wd(nd))
 	!... to highest, maximizing over t
 	!wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
 	emax = dexp(beti(nbi)*maxval(zgrid)+maxval(alfgrid)+wtau(TT-1)+wd(1))
@@ -298,11 +341,11 @@ subroutine setparams()
 				& **(1./tlen)	
 		pid(1,1,i,t) = 1.-pid(1,2,i,t)			!Stay healthy
 		pid(1,3,i,t) = 0.				!Full Disability
-		pid(2,1,i,t) = 0.				!Monotone
+		pid(2,1,i,t) = 1.-(1.-pid0)**(1./tlen)		!revert
 		pid(2,3,i,t) = 1.-(1.-pid2*dtau(t)*delgrid(i))&	!Full Disability
 					& **(1./tlen)	
-		pid(2,2,i,t) = 1.-pid(2,3,i,t)			!Stay Partial
-		pid(3,1,i,t) = 0.					!Full is absorbing State
+		pid(2,2,i,t) = 1.-pid(2,3,i,t)-pid(2,1,i,t)	!Stay Partial
+		pid(3,1,i,t) = 0.				!Full is absorbing State
 		pid(3,2,i,t) = 0.
 		pid(3,3,i,t) = 1.
 	enddo
