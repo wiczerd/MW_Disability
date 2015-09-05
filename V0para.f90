@@ -31,7 +31,7 @@ real(8), parameter ::	youngD = 20.0, &	!Length of initial young period
 		eligY  = 0.407,&	!Fraction young who are eligable
 		R = dexp(0.03/tlen)	!People can save
 
-integer, parameter ::  	   oldN = 1,&	!2!Number of old periods
+integer, parameter ::  	   oldN = 4,&	!4!Number of old periods
 		TT = oldN+2		!Total number of periods, oldN periods plus young and retired
 
 !----------------------------------------------------------------------------!
@@ -60,21 +60,21 @@ real(8), parameter :: 	pid1 = 0.074, &	!Probability d0->d1
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 3,  &!11		!Number of individual alpha types 
+integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		!Number of indiVidual beta types
 			ndi = 1,  &!3		!Number of individual disability risk types
-			nj  = 1,  &		!Number of occupations (downward TFP risk variation)
+			nj  = 3,  &		!Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		!Number of disability extents
-			ne  = 2, &!10		!Points on earnings grid
+			ne  = 4, &!10		!Points on earnings grid
 			na  = 50, &!200		!Points on assets grid
-			nz  = 3,  &		!Number of Occ TFP Shocks
+			nz  = 5,  &		!Number of Occ TFP Shocks
 			maxiter = 2000, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 200, &!		!how many agents to draw
 			Ndat = 5000, & 		!size of data, for estimation
-			Tsim = int(tlen*Longev)+1, &	!how many periods to solve
-			Nk   = TT-1+(nd-1)*2+2*2!number of regressors - each period, each health and leading, occupation dynamics
+			Tsim = int(tlen*Longev)+1, &	!how many periods to solve for simulation
+			Nk   = TT-1+(nd-1)*2+2	!number of regressors - each age, each health and leading, occupation dynamics
 
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
@@ -368,9 +368,11 @@ subroutine setparams()
 	
 	! distribution across occupations
 	Njdist(1) = 0.5
-!	Njdist(2) = 0.1
-!	Njdist(3) = 0.2
-!	Njdist(4) = 0.2
+	if(nj>1) then
+		do j=2,nj
+			Njdist(j) = 0.5/dble(nj) 
+		enddo
+	endif
 	Njdist = Njdist/sum(Njdist)
 	
 

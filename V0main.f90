@@ -432,9 +432,7 @@ module helper_funs
 		
 		external dgemm,dgemv
 		external dpotrs,dpotrf,dpotri
-	
 
-	
 		nK = size(XX, dim = 2)
 		nX = size(XX, dim = 1)
 		nY = size(Y)
@@ -442,6 +440,8 @@ module helper_funs
 		allocate(XpX(nK,nK))
 		allocate(XpX_fac(nK,nK))
 		allocate(XpX_inv(nK,nK))
+		allocate(fitted(nX))
+		allocate(resids(nX))
 		coefs = 0.
 		cov_coef = 0.
 		
@@ -465,16 +465,16 @@ module helper_funs
 		if(status == 0) then 
 			XpX_inv = XpX_fac
 			call dpotri('U',nK,XpX_inv,nK,status)
-			call dgemv('N', nX, nK, 1., XX, nK, coefs, 1, 0., fitted, 1)
+			call dgemv('N', nX, nK, 1., XX, nX, coefs, 1, 0., fitted, 1)
 			resids = Y - fitted
 			s2 = 0.
 			do i=1,nY
-				s2 = resids(i)**2/(nX-nK) + s2
+				s2 = (resids(i)**2)/(nX-nK) + s2
 			enddo
 			if(status == 0) cov_coef = s2*XpX_inv
 		endif
 		
-		deallocate(XpX,XpX_fac,XpX_inv)
+		deallocate(XpX,XpX_fac,XpX_inv,fitted,resids)
 	
 	end subroutine OLS
 
@@ -625,7 +625,7 @@ module model_data
 		type(hist_struct)	:: hists_sim
 
 		real(8), allocatable :: obsX_vars(:,:), work_dif_long(:)
-		integer :: i, ij,it,age_hr,id, status
+		integer :: i, ij,it,age_hr,id, status, nobs, yr_stride
 		real(8) :: colmean, colvar
 		logical :: badcoef(Nk)
 
@@ -636,37 +636,46 @@ module model_data
 			if(verbose >= 1) print *, "not correctly passing hists_struct to LPM"
 		endif
 
+		yr_stride = dnint(tlen) ! for doing year-length differences
 		! build X
 		obsX_vars = 0.
+		Nobs = 0
 		do i=1,Nsim
 			do it=1,Tsim
-				work_dif_long( (i-1)*Nsim + it ) = dexp(hists_sim%work_dif_hist(i,it)*smthELPM )/(1. + dexp(hists_sim%work_dif_hist(i,it)*smthELPM) )
-				do age_hr=1,TT-1
-					if(hists_sim%age_hist(i,it) .eq. age_hr ) obsX_vars((i-1)*Nsim + it, age_hr) = 1.
-				enddo
-				do id = 1,nd-1
-					if(hists_sim%d_hist(i,it) .eq. id ) obsX_vars((i-1)*Nsim + it, (TT-1)+id) = 1.
-					! lead 1 period health status
-					if(it <= Tsim - tlen) then
-						if(hists_sim%d_hist(i,it+int(tlen)) .eq. id ) obsX_vars((i-1)*Nsim + it, (TT-1)+nd-1+id) = 1.
-					endif
-				enddo
-				do ij = 1,nj
-					if(hists_sim%j_i(i) == ij )  then 
-						obsX_vars((i-1)*Nsim + it, (TT-1)+(nd-1)*2+1) = hists_sim%occgrow_jt(ij,it)
-						obsX_vars((i-1)*Nsim + it, (TT-1)+(nd-1)*2+2) = hists_sim%occshrink_jt(ij,it)
-						if(it<=Tsim-tlen) then
-							obsX_vars((i-1)*Nsim + it, (TT-1)+(nd-1)*2+1) = hists_sim%occgrow_jt(ij,it+int(tlen))
-							obsX_vars((i-1)*Nsim + it, (TT-1)+(nd-1)*2+2) = hists_sim%occshrink_jt(ij,it+int(tlen))
+				if( hists_sim%age_hist(i,it) <= TT-1 ) then
+					Nobs = Nobs + 1
+					work_dif_long( Nobs ) = dexp(hists_sim%work_dif_hist(i,it)*smthELPM )/(1. + dexp(hists_sim%work_dif_hist(i,it)*smthELPM) )
+					do age_hr=1,TT-1
+						if(hists_sim%age_hist(i,it) .eq. age_hr ) obsX_vars( Nobs, age_hr) = 1.
+					enddo
+					do id = 1,nd-1
+						if(hists_sim%d_hist(i,it) .eq. id ) obsX_vars(Nobs, (TT-1)+id) = 1.
+						! lead 1 period health status
+						if(it <= Tsim - yr_stride) then
+							if(hists_sim%d_hist(i,it+yr_stride) .eq. id ) obsX_vars(Nobs, (TT-1)+nd-1+id) = 1.
 						endif
-					endif
-				enddo
+					enddo
+					do ij = 1,nj
+						if(hists_sim%j_i(i) == ij )  then
+							if(it<=Tsim - yr_stride .and. it>= yr_stride) then
+								obsX_vars(Nobs, (TT-1)+(nd-1)*2+1) = (hists_sim%occsize_jt(ij,it+yr_stride) - hists_sim%occsize_jt(ij,it-yr_stride)) &
+													& /(hists_sim%occsize_jt(ij,it))
+							endif
+							if(it<=Tsim - 2*yr_stride .and. it>= 2*yr_stride) then
+								obsX_vars(Nobs, (TT-1)+(nd-1)*2+2) = hists_sim%occsize_jt(ij,it+2*yr_stride) - hists_sim%occsize_jt(ij,it-2*yr_stride) &
+													& /(hists_sim%occsize_jt(ij,it))
+							endif
+							
+						endif
+					enddo
+				endif
 			enddo
 		enddo
 		moments_sim%work_coefs = 0.
 
-		if(print_lev >=3 ) call mat2csv(obsX_vars,"obsX_vars.csv")
+		if(print_lev >=2 ) call mat2csv(obsX_vars,"obsX_vars.csv")
 		!check that I don't have rank < nk
+		status = 0
 		do ij=1,Nk
 			colmean = sum(obsX_vars(:,ij))/dble(Nsim*Tsim)
 			colvar = 0.
@@ -676,14 +685,15 @@ module model_data
 			colvar = colvar / dble(Nsim*Tsim)
 			if(colvar < 1e-6) then
 				badcoef(ij) = .true.
-				do i=1,Nsim*Tsim
+				status = status+1
+				do i=1,Nobs
 					call random_number(obsX_vars(i,ij))
-					obsX_vars(i,ij) = obsX_vars(i,ij)-0.5
+					obsX_vars(i,ij) = (obsX_vars(i,ij)-0.5)/10.
 				enddo
 			endif
 		enddo
-
-		call OLS(obsX_vars,work_dif_long,moments_sim%work_coefs,moments_sim%work_cov_coefs, status)
+		if(verbose >=2) print *, "bad rows of obsX", status 
+		call OLS(obsX_vars(1:Nobs,:),work_dif_long(1:Nobs),moments_sim%work_coefs,moments_sim%work_cov_coefs, status)
 
 		do ij = 1,Nk
 			if(badcoef(ij)) moments_sim%work_coefs(ij) = 0.
@@ -2010,7 +2020,6 @@ module sol_sim
 		allocate(drawt_ititer(Nsim,iter_draws-1))
 		!allocate(occgrow_jt(nj,Tsim))
 		!allocate(occshrink_jt(nj,Tsim))
-		!allocate(occsize_jt(nj,Tsim))
 
 		!************************************************************************************************!
 		! Pointers
@@ -2382,7 +2391,6 @@ module sol_sim
 							a_mean(age_hr) = a_it(i,it) + a_mean(age_hr)
 							d_mean(age_hr) = d_it(i,it) + d_mean(age_hr)
 							junk = junk + 1.
-
 						endif
 					enddo
 				enddo
