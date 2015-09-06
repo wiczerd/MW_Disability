@@ -79,7 +79,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			maxiter = 2000, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
-			Nsim = 200, &!		!how many agents to draw
+			Nsim = 2000, &!		!how many agents to draw
 			Ndat = 5000, & 		!size of data, for estimation
 			Tsim = int(tlen*Longev)+1, &	!how many periods to solve for simulation
 			Nk   = TT-1+(nd-1)*2+2	!number of regressors - each age, each health and leading, occupation dynamics
@@ -361,11 +361,15 @@ subroutine settfp()
 	integer :: i, k,j
 	logical, parameter :: lower= .FALSE. 
 	real(8) :: nodemidH,nodemidL,nodei, nodek, summy, zcondsig
+	real(8) :: zrhot,zsigt, zcondsigt
 
-	zcondsig = ((zsig**2)*(1.-zsig**2))**(0.5)
+	zrhot = zrho**(1./tlen)
+	zsigt = (zsig**2/tlen)**(0.5)
+	zcondsig = ((zsig**2)*(1.-zrho**2))**(0.5)
+	zcondsigt = ((zsigt**2)*(1.-zrhot**2))**(0.5)
 	do j=1,nj
 		do i=1,nz/2
-			zgrid(i,j) = zmu - 1.5*zsig + dble(i-1)/dble(nz/2 -1)*(3.*zsig)
+			zgrid(i,j) = zmu - 1.5*zsigt + dble(i-1)/dble(nz/2 -1)*(3.*zsigt)
 		enddo
 		do i=nz/2+1,nz
 			zgrid(i,j) = zscale(j) + zgrid(i,j)
@@ -379,22 +383,22 @@ subroutine settfp()
 			nodek = zgrid(k,1)
 			if(k == 1) then
 				nodemidH = (nodek+zgrid(k+1,1))/2.
-				piz(i,k) = alnorm( (nodemidH - zmu*(1.-zrho) -zrho*nodei)/zcondsig,lower)
+				piz(i,k) = alnorm( (nodemidH - zmu*(1.-zrhot) -zrhot*nodei)/zcondsigt,lower)
 				summy = summy+piz(i,k)
 			elseif(k == nz/2) then
 				piz(i,k) = 1.-summy
 			else
 				nodemidH = (nodek + zgrid(k+1,1))/2.
 				nodemidL = (nodek + zgrid(k-1,1))/2.
-				piz(i,k) = alnorm( (nodemidH - zmu*(1.-zrho) - zrho*nodei)/zcondsig,lower) &
-					& -alnorm( (nodemidL - zmu*(1.-zrho) - zrho*nodei)/zcondsig,lower)
+				piz(i,k) = alnorm( (nodemidH - zmu*(1.-zrhot) - zrhot*nodei)/zcondsigt,lower) &
+					& -alnorm( (nodemidL - zmu*(1.-zrhot) - zrhot*nodei)/zcondsigt,lower)
 				summy = summy + piz(i,k)
 			endif
 		enddo
 	enddo
 	forall(i=nz/2+1:nz,k=nz/2+1:nz)	piz(i,k) = piz(i-nz/2,k-nz/2)
-	forall(i=1:nz/2,k=nz/2+1:nz) 	piz(i,k) = 1./Tblock*piz(i,k-nz/2)
-	forall(i=1:nz/2,k=1:nz/2) 	piz(i,k) = (1.-1./Tblock)*piz(i,k)
+	forall(i=1:nz/2,k=nz/2+1:nz) 	piz(i,k) = 1./(Tblock*tlen)*piz(i,k-nz/2)
+	forall(i=1:nz/2,k=1:nz/2) 	piz(i,k) = (1.-1./(Tblock*tlen))*piz(i,k)
 	
 end subroutine settfp
 

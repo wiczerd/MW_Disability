@@ -1317,16 +1317,6 @@ module sol_sim
 					enddo !iz 
 					enddo !id 
 					enddo !ial 
-					
-					wo = 0
-					do iz=1,nz
-					do ie=1,ne
-					do ia=1,na
-						if( wo == 0 ) wo =1
-						call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'dilat0_dalpha_it.csv',wo)
-					enddo
-					enddo
-					enddo
 			  	endif
 		  	
 			  	!update VN0
@@ -1577,27 +1567,6 @@ module sol_sim
 			enddo !ie 
 			enddo !ial 	
 			enddo !idi
-
-			wo = 0
-			do idi=1,ndi
-			do iz=1,nz
-			do ie=1,ne
-			do ia=1,na
-				do it=TT-1,1,-1
-			!				nj*nbi,ndi*nal,nd,ne,na,nz,TT-1
-					call mati2csv(gapp(ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'dipol_dalpha.csv',wo)
-					call mati2csv(gwork(ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'workpol_dalpha.csv',wo)
-
-					call mat2csv(gapp_dif(ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'dilat_dalpha.csv',wo)
-					call mat2csv(gwork_dif(ibi,(idi-1)*nal+1:idi*nal,:,ie,ia,iz,it),'worklat_dalpha.csv',wo)
-					if(wo ==0 ) wo =1
-				enddo
-			enddo
-			enddo
-			enddo
-			enddo
-
-
 		endif
 
 		deallocate(maxer)
@@ -1749,8 +1718,7 @@ module sol_sim
 		real(8)	:: Njcumdist(nj+1)
 		real(8) :: draw_i
 
-		i =1
-		Njcumdist = Njdist(i)
+		Njcumdist = 0
 		if(nj>1) then
 			do i=1,nj
 				Njcumdist(i+1) = Njdist(i) + Njcumdist(i)
@@ -1947,7 +1915,7 @@ module sol_sim
 		integer :: bdayseed(100)
 						
 		real(8), allocatable ::	del_i(:) ! shocks to be drawn
-		integer, allocatable :: z_jt_int(:,:), z_jt_macro(:,:), jshock_ij(:,:) ! shocks to be drawn
+		integer, allocatable :: z_jt_macro(:,:), jshock_ij(:,:) ! shocks to be drawn
 		integer, allocatable :: del_i_int(:)  ! integer valued shocks
 		integer, allocatable :: al_it_int(:,:)! integer valued shocks
 		integer, allocatable :: born_it(:,:) ! born status, drawn randomly		
@@ -1996,7 +1964,6 @@ module sol_sim
 		
 		allocate(z_jt_macro(nj,Tsim))
 		allocate(jshock_ij(Nsim,nj))
-		allocate(z_jt_int(Nsim, Tsim))		
 		allocate(del_i(Nsim))
 		!allocate(al_it(Nsim,Tsim))
 		!allocate(j_i(Nsim))
@@ -2477,6 +2444,7 @@ module sol_sim
 				call mati2csv(status_it,"status_it.csv")
 				call mati2csv(d_it,"d_it.csv")
 				call veci2csv(j_i,"j_i.csv")
+				call mati2csv(z_jt_macro,"z_jt.csv")
 				call mat2csv (occsize_jt,"occsize_jt.csv")
 				call mat2csv (occgrow_jt,"occgrow_jt.csv")
 				call mat2csv (occshrink_jt,"occshrink_jt.csv")
@@ -2486,7 +2454,7 @@ module sol_sim
 		deallocate(a_it_int,e_it_int)
 		deallocate(del_i,born_it)
 		deallocate(app_it,work_it)
-		deallocate(del_i_int,al_it_int,z_jt_int,status_it_innov)
+		deallocate(del_i_int,al_it_int,status_it_innov)
 		deallocate(drawi_ititer,drawt_ititer)
 
 	end subroutine sim
