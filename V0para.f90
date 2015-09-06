@@ -24,10 +24,6 @@ real(8), parameter ::	youngD = 20.0, &	!Length of initial young period
 		ageW2 = -0.0007414, &	!Coefficient on Age^2 in Mincer
 		ageD = 0.1, &		!Coefficient on Age over 45 in Disability hazard (exponential)
 		UIrr = 0.4, &		!Replacement Rate in UI
-		dRiskL = 0.5,&		!Lower bound on occupation-related extra disability risk (mult factor)
-		dRiskH = 1.5, &		!Upper bound on occupation-related extra disability risk (mult factor)
-		zRiskL = 0.5,&		!Lower bound on occupation-related extra economic risk (mult factor)
-		zRiskH = 1.5,&		!Upper bound on occupation-related extra economic risk (mult factor)
 		eligY  = 0.407,&	!Fraction young who are eligable
 		R = dexp(0.03/tlen)	!People can save
 
@@ -36,7 +32,7 @@ integer, parameter ::  	   oldN = 4,&	!4!Number of old periods
 
 !----------------------------------------------------------------------------!
 	
- !Markov Chains----------------------------------------------------!
+ !Transition probabilities ----------------------------------------------------!
  !Baseline transition probabilities
  !Disability
  !	  1          2          3	
@@ -44,19 +40,31 @@ integer, parameter ::  	   oldN = 4,&	!4!Number of old periods
  !   2    0       (1-pid2)     pid2
  !   3    0          0          1          
  !Technology
- !	  l          2          3	
- !   1 (1-piz1)     piz1        0
- !   2   pz2     (1-pz2-pz3)   pz3
- !   3    0         piz4      1-piz4 
+ !	Blocks (PiY1, PiY2) discretize AR process given (zrho,zmu,zsig) such as:
+ !  PiYY =
+ !	  z1YY	   z2YY
+ ! z1YY	  piz11	  (1-piz11)
+ ! z2YY	(1-piz22)  piz22
+ ! Block transition is at rate 1/Tblock
+ ! Pi =
+ ! 	  zzY1	   zzY2
+ ! zzY1   PiYY 	 1/Tblock*PiYY
+ ! zzY2	   0	    PiYY
 ! annual probabilities
-real(8), parameter :: 	pid1 = 0.074, &	!Probability d0->d1
-		pid2 = 0.014, &  	!Probability d1->d2
-		pid0 = 0.587, &		!Probability d1->d0
-		piz1 = 0.05, & 		!Probability zl->z0
-		piz2 = 0.01, &  	!Probability z0->zl
-		piz3 = 0.30, &  	!Probability z0->zh
-		piz4 = 0.20		!Probability zh->z0 (average duration of expansion)
+real(8) ::	pid1	= 0.074, &	!Probability d0->d1
+		pid2	= 0.014, &  	!Probability d1->d2
+		pid0	= 0.587, &	!Probability d1->d0
+		!deprecated to match process parameters instead
+!		piz11	= 0.95, &	!Probability w/in PiYY block
+!		piz12	= 0.025,&	!Probability w/in PiYY block
+!		piz22	= 0.95, &	!Probability w/in PiYY block
+!		piz21	= 0.025,&	!Probability w/in PiYY block
+!		piz32	= 0.025,&	!Probability w/in PiYY block
+!		piz33	= 0.95,&	!Probability w/in PiYY block
+		dRiskL	= 0.5,&		!Lower bound on occupation-related extra disability risk (mult factor)
+		dRiskH	= 1.5		!Upper bound on occupation-related extra disability risk (mult factor)
 
+!NEED TO FIX THIS PART!!!!!!__________________----!!!!!________
 !-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
@@ -67,7 +75,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			nd  = 3,  &		!Number of disability extents
 			ne  = 4, &!10		!Points on earnings grid
 			na  = 50, &!200		!Points on assets grid
-			nz  = 5,  &		!Number of Occ TFP Shocks
+			nz  = 6,  &		!Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
@@ -94,18 +102,18 @@ real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
 !**To build***************************!
 real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		beti(nbi), &		!Beta_i grid- individual wage type parameter
-		occz(nj), &		!Occupation-specific z risk
 		wtau(TT-1), &		!Age-specific wage parameter
 		wd(nd),   &		!Disability-specific wage parameter
 		ptau(TT), &		!Probability of aging
 		dtau(TT-1), &		!Proportional age-related disability risk
 		delgrid(ndi), &		!Individual specific disability risk
+		zscale(nj),&		!scales occupation TFP in second period.  
 		zgrid(nz,nj), &		!TFP shock grid
 		xi(nd,TT-1), &		!DI acceptance probability
 		agrid(na),&		!Assets grid
 		egrid(ne),&		!Earnings Index Grid
 		pialf(nal,nal),&	!Alpha_i transition matrix
-		piz(nz,nz,nj),&		!TFP transition matrix
+		piz(nz,nz),&		!TFP transition matrix
 		pid(nd,nd,ndi,TT-1),&	!Disability transition matrix
 		prob_t(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
@@ -117,6 +125,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 !***preferences and technologies that may change
 real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start)
 		nu = 0.005, &		!Psychic cost of applying for DI - proportion of potential payout	
+!	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristance of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
 		alfsig = 0.015,&	!Unconditional StdDev of Alpha_i type (Normal)
@@ -125,6 +134,12 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
 		xsep = 0.02, &		!Separation probability into unemployment
+!	Agregate income risk
+		Tblock	= 15.,	&	!Expected time before structural change (years)
+		zrho	= 0.98,	&	!Persistence of the AR process
+		zmu	= 0.,	&	!Drift of the AR process, should always be 0
+		zsig	= 0.015,&	!Unconditional standard deviation of AR process
+!		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
@@ -160,16 +175,6 @@ subroutine setparams()
 		  node, nodei,nodek,nodemidH,nodemidL, alfcondsig
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	!***For Now, Simple Grids for Comparative Statics***!
-	!Occupation Specific Transistion Multipliers: 
-	!Extra probability of bad z transitions
-	if(nj>1) then
-		do i=1,nj
-			occz(i) = zRiskL +(zRiskH-zRiskL)*dble(i-1)/dble(nj-1)
-		enddo
-	else
-		occz(1) = 1.
-	endif
 
 	!Individual- Specific Things
 	!Individual exposure to TFP shocks (beta)
@@ -224,22 +229,11 @@ subroutine setparams()
 		delgrid(1) = 0.5*(dRiskH + dRiskL)
 	endif
 
-	!TFP 
-	if(nz == 3) then
-		zgrid(1,:) = 0.5	!Structural Decline
-		zgrid(2,:) = 0.9	!Recession
-		zgrid(3,:) = 1		!Normal Times
-	elseif(nz == 4) then
-		zgrid(1,:) = 0.5	!Structural Decline
-		zgrid(2,:) = 0.9	!Structural, slightly better
-		zgrid(3,:) = 1.0	!Recession
-		zgrid(4,:) = 1.1	!Normal Times
-	else
-		do i=1,nz
-			zgrid(i,:) = 1.0 - .05*dble(i-nz/2)
-		enddo
-	endif
+	! TFP
+	zscale = 0. ! strart with all occupations the same
+	call settfp()
 
+	
 	!Age-Specific Things
 
 	! age grid building
@@ -351,32 +345,58 @@ subroutine setparams()
 	enddo
 	enddo
 		
-	!Technology: piz(iz,iz';j) <--- occupations differ in downside risk       
-	do j=1,nj
-		piz(1,1,j) = (1-piz1)**(1./tlen)	!Stay in really bad shock
-		piz(1,2,j) = 1-piz(1,1,j)		!Move to low shock
-		piz(1,3,j) = 0.
-		piz(2,2,j) = (1-piz2*occz(j)-piz3) &	!Stay in low shock
-				&**(1./tlen)		! 
-		piz(2,3,j) = 1-(1-piz3)**(1./tlen)	!Move to good state
-		piz(2,1,j) = 1-piz(2,2,j)-piz(2,3,j)	!Move to really bad shock (occupations affect it)
-		piz(3,1,j) = 0.				!Must go through low to get to really bad
-		piz(3,3,j) = (1-piz4*occz(j))**(1./tlen)	  !Stay in high shock
-		piz(3,2,j) = 1-piz(3,3,j)		!Move to low shock
-		
-	EndDO
-	
-	! distribution across occupations
+	! Initial distribution of people across occupations
 	Njdist(1) = 0.5
 	if(nj>1) then
 		do j=2,nj
-			Njdist(j) = 0.5/dble(nj) 
+			Njdist(j) = 0.5/dble(nj-1) 
 		enddo
 	endif
 	Njdist = Njdist/sum(Njdist)
-	
 
 end subroutine setparams
+
+subroutine settfp()
+
+	integer :: i, k,j
+	logical, parameter :: lower= .FALSE. 
+	real(8) :: nodemidH,nodemidL,nodei, nodek, summy, zcondsig
+
+	zcondsig = ((zsig**2)*(1.-zsig**2))**(0.5)
+	do j=1,nj
+		do i=1,nz/2
+			zgrid(i,j) = zmu - 1.5*zsig + dble(i-1)/dble(nz/2 -1)*(3.*zsig)
+		enddo
+		do i=nz/2+1,nz
+			zgrid(i,j) = zscale(j) + zgrid(i,j)
+		enddo
+	enddo
+	! set up the transition probabilities
+	do i=1,nz/2
+		summy = 0.
+		do k=1,nz/2
+			nodei = zgrid(i,1) ! this is the center of the region I'm integrating
+			nodek = zgrid(k,1)
+			if(k == 1) then
+				nodemidH = (nodek+zgrid(k+1,1))/2.
+				piz(i,k) = alnorm( (nodemidH - zmu*(1.-zrho) -zrho*nodei)/zcondsig,lower)
+				summy = summy+piz(i,k)
+			elseif(k == nz/2) then
+				piz(i,k) = 1.-summy
+			else
+				nodemidH = (nodek + zgrid(k+1,1))/2.
+				nodemidL = (nodek + zgrid(k-1,1))/2.
+				piz(i,k) = alnorm( (nodemidH - zmu*(1.-zrho) - zrho*nodei)/zcondsig,lower) &
+					& -alnorm( (nodemidL - zmu*(1.-zrho) - zrho*nodei)/zcondsig,lower)
+				summy = summy + piz(i,k)
+			endif
+		enddo
+	enddo
+	forall(i=nz/2+1:nz,k=nz/2+1:nz)	piz(i,k) = piz(i-nz/2,k-nz/2)
+	forall(i=1:nz/2,k=nz/2+1:nz) 	piz(i,k) = 1./Tblock*piz(i,k-nz/2)
+	forall(i=1:nz/2,k=1:nz/2) 	piz(i,k) = (1.-1./Tblock)*piz(i,k)
+	
+end subroutine settfp
 
 !****************************************************************************************************************************************!
 !		FUNCTIONS		

@@ -1085,7 +1085,7 @@ module sol_sim
 										& 	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) )  !Age and might go LTU
 									Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) & 
 										&	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
-									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(ial,iaai)*Vc1  !Probability of alpha_i X z_i draw 
+									Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1  !Probability of alpha_i X z_i draw 
 								enddo
 								enddo
 								Vtest2 = Vtest2 + util(chere,id,iw)
@@ -1177,7 +1177,7 @@ module sol_sim
 									!	& V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ,  &
 										& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)  &
 										& +xi(id,it)*VD0(id,ie,iaa,it))     !Don't age, might go on DI		
-									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(ial,iaai)*Vc1 
+									Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
 								enddo
 								enddo
 								Vtest2 = util(chere,id,iw) + Vtest2 &
@@ -1234,7 +1234,7 @@ module sol_sim
 											&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
 									Vc1 = Vc1+ptau(it)*((1-lrho)* & 
 											&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it) +lrho*maxVNV0)     !Don't age, might go on DI
-									Vtest2 = Vtest2 + beta*piz(iz,izz,ij)*pialf(ial,iaai)*Vc1 
+									Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
 								enddo
 								enddo
 								Vtest2 = Vtest2 + util(chere,id,iw)
@@ -1396,7 +1396,7 @@ module sol_sim
 										& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee1,iaa,izz,it)
 									yH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it+1) & 
 										& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it)
-									Vc1 = piz(iz,izz,ij)*pialf(ial,iaai) &
+									Vc1 = piz(iz,izz)*pialf(ial,iaai) &
 										& * (yH*(1. - iee1wt) + yL*iee1wt )&
 										& + Vc1
 								enddo
@@ -1795,15 +1795,15 @@ module sol_sim
 
 
 		cumpi_j = 0.
+		do iz=1,nz
+			izp = 1
+			cumpi_j(iz,izp+1) = piz(iz,izp)
+			do izp=2,nz
+				cumpi_j(iz,izp+1) = piz(iz,izp) + cumpi_j(iz,izp)
+			enddo
+		enddo
 		!draw on zgrid
 		do ij=1,nj
-			do iz=1,nz
-				izp = 1
-				cumpi_j(iz,izp+1) = piz(iz,izp,ij)
-				do izp=2,nz
-					cumpi_j(iz,izp+1) = piz(iz,izp,ij) + cumpi_j(iz,izp)
-				enddo
-			enddo
 			! start everyone from good state, alternatively could start from random draw on ergodic dist
 			z_jt_t = 3
 			do it = 1,Tsim
@@ -2453,10 +2453,14 @@ module sol_sim
 				occshrink_jt(ij,it) = 0.
 				occsize_jt  (ij,it) = 0.
 				do i=1,Nsim
-					if(j_i(i) ==ij .and. born_it(i,it) == 1 ) occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
-					if(j_i(i) ==ij .and. status_it(i,it-1) > 1  .and. status_it(i,it)== 1) occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
-					if(j_i(i) ==ij .and. status_it(i,it-1) == 1 .and. status_it(i,it) > 1) occshrink_jt(ij,it) = 1. + occshrink_jt(ij,it)
-					if(j_i(i) ==ij .and. status_it(i,it) == 1) occsize_jt(ij,it) = 1. + occsize_jt(ij,it)
+					if(j_i(i) ==ij .and. born_it(i,it) == 1 ) &
+						& occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
+					if(j_i(i) ==ij .and. status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
+						& occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
+					if(j_i(i) ==ij .and. status_it(i,it-1) == 1 .and. status_it(i,it) > 1) &
+						& occshrink_jt(ij,it) = 1. + occshrink_jt(ij,it)
+					if(j_i(i) ==ij .and. status_it(i,it) == 1) &
+						& occsize_jt(ij,it) = 1. + occsize_jt(ij,it)
 					if(status_it(i,it) == 1) Nworkt = 1. + Nworkt
 				enddo
 				occgrow_jt(ij,it) = occgrow_jt(ij,it)/occsize_jt(ij,it)
@@ -2472,6 +2476,7 @@ module sol_sim
 				call mati2csv(a_it_int,"a_it_int.csv")
 				call mati2csv(status_it,"status_it.csv")
 				call mati2csv(d_it,"d_it.csv")
+				call veci2csv(j_i,"j_i.csv")
 				call mat2csv (occsize_jt,"occsize_jt.csv")
 				call mat2csv (occgrow_jt,"occgrow_jt.csv")
 				call mat2csv (occshrink_jt,"occshrink_jt.csv")
@@ -2577,16 +2582,12 @@ program V0main
 		call vec2csv(agrid,"agrid.csv",wo)
 		call vec2csv(delgrid,'delgrid.csv',wo)
 		call vec2csv(alfgrid,'alfgrid.csv',wo)
-		call vec2csv(occz,'occzgrid.csv',wo)
 		call vec2csv(egrid,'egrid.csv',wo)
 		call mat2csv(zgrid,'zgrid.csv',wo)
 		call veci2csv(dgrid,'dgrid.csv',wo)
 		call veci2csv(agegrid,'agegrid.csv',wo)		
-		do ij = 1,nj
-			call mat2csv(piz(:,:,ij),"piz.csv",wo)
-			if(wo==0) wo =1
-		enddo
-		call mat2csv(pialf,"pial.csv")
+		call mat2csv(piz(:,:),"piz.csv",wo)
+		call mat2csv(pialf,"pial.csv",wo)
 		
 		wo=0
 		do it = 1,TT-1
