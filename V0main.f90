@@ -72,10 +72,10 @@ module helper_funs
 	end type
 
 	type moments_struct
-		real(8) :: work_coefs(Nk), di_coefs(Nk)
+		real(8) :: work_coefs(Nk), di_coefs(Nk),ts_emp_coefs(nj+2)
 		real(8) :: di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
 		integer :: alloced
-		real(8) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk)
+		real(8) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+2,nj+2)
 
 	end type 
 
@@ -267,7 +267,10 @@ module helper_funs
 	!--------------------
 	subroutine mat2csv(A,fname,append)
 	!--------------------
-
+	! A: name of matrix
+	! fname: name of file, should end in ".csv"
+	! append: a 1 or 0.  1 if matrx should add to end of existing file, 0, to overwrite.
+	
 	real(8), dimension(:,:), intent(in) :: A
 	character(LEN=*), intent(in) :: fname
 	integer, intent(in), optional :: append
@@ -489,6 +492,121 @@ module model_data
 	
 	contains
 	
+	subroutine ts_employment(hists_sim,moments_sim)
+
+		type(moments_struct)	:: moments_sim
+		type(hist_struct)	:: hists_sim
+
+		real(8), allocatable :: emp_lagtimeconst(:,:), emp_t(:) ! will be a fraction of labor force in each occupation
+		integer ij,it,nobs,yr, status
+
+		allocate(emp_t((Tsim-1)*nj))
+		allocate(emp_lagtimeconst((Tsim-1)*nj,2+nj))
+
+		do it=2,Tsim
+			do ij =1,nj
+				emp_t((ij-1)*(Tsim-1) + it-1*) = hists_sim%occsize_jt(ij,it)
+				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1) = hists_sim%occsize_jt(ij,it-1)
+				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1+ij) = dble(it)/tlen
+				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,2+nj) = 1.
+			enddo
+		enddo
+
+		call OLS(emp_lagtimeconst,emp_t,moments_sim%ts_emp_coefs,moments_sim%ts_emp_cov_coefs, status)
+
+		if(print_lev >=3 ) call vec2csv(moments_sim%ts_emp_coefs,"ts_emp_coefs.csv")
+
+		deallocate(emp_lagtimeconst,emp_t)
+
+	end subroutine ts_employment
+	
+	subroutine LPM_employment(hists_sim,moments_sim)
+	
+		type(moments_struct)	:: moments_sim
+		type(hist_struct)	:: hists_sim
+
+		real(8), allocatable :: obsX_vars(:,:), work_dif_long(:)
+		integer :: i, ij,it,age_hr,id, status, nobs, yr_stride
+		real(8) :: colmean, colvar
+		logical :: badcoef(Nk)
+
+		allocate(obsX_vars(Tsim*Nsim,Nk))
+		allocate(work_dif_long(Tsim*Nsim))
+
+		if(hists_sim%alloced /= 0) then
+			if(verbose >= 1) print *, "not correctly passing hists_struct to LPM"
+		endif
+
+		yr_stride = dnint(tlen) ! for doing year-length differences
+		! build X
+		obsX_vars = 0.
+		Nobs = 0
+		do i=1,Nsim
+			do it=1,Tsim
+				if( hists_sim%age_hist(i,it) <= TT-1 ) then
+					Nobs = Nobs + 1
+					work_dif_long( Nobs ) = dexp(hists_sim%work_dif_hist(i,it)*smthELPM )/(1. + dexp(hists_sim%work_dif_hist(i,it)*smthELPM) )
+					do age_hr=1,TT-1
+						if(hists_sim%age_hist(i,it) .eq. age_hr ) obsX_vars( Nobs, age_hr) = 1.
+					enddo
+					do id = 1,nd-1
+						if(hists_sim%d_hist(i,it) .eq. id ) obsX_vars(Nobs, (TT-1)+id) = 1.
+						! lead 1 period health status
+						if(it <= Tsim - yr_stride) then
+							if(hists_sim%d_hist(i,it+yr_stride) .eq. id ) obsX_vars(Nobs, (TT-1)+nd-1+id) = 1.
+						endif
+					enddo
+					do ij = 1,nj
+						if(hists_sim%j_i(i) == ij )  then
+							if(it<=Tsim - yr_stride .and. it>= yr_stride) then
+								obsX_vars(Nobs, (TT-1)+(nd-1)*2+1) = (hists_sim%occsize_jt(ij,it+yr_stride) - hists_sim%occsize_jt(ij,it-yr_stride)) &
+													& /(hists_sim%occsize_jt(ij,it))
+							endif
+							if(it<=Tsim - 2*yr_stride .and. it>= 2*yr_stride) then
+								obsX_vars(Nobs, (TT-1)+(nd-1)*2+2) = hists_sim%occsize_jt(ij,it+2*yr_stride) - hists_sim%occsize_jt(ij,it-2*yr_stride) &
+													& /(hists_sim%occsize_jt(ij,it))
+							endif
+							
+						endif
+					enddo
+				endif
+			enddo
+		enddo
+		moments_sim%work_coefs = 0.
+
+		if(print_lev >=2 ) call mat2csv(obsX_vars,"obsX_vars.csv")
+		!check that I don't have rank < nk
+		status = 0
+		do ij=1,Nk
+			colmean = sum(obsX_vars(:,ij))/dble(Nsim*Tsim)
+			colvar = 0.
+			do i=1,Nsim*Tsim
+				colvar = (obsX_vars(i,ij) - colmean)**2 + colvar
+			enddo
+			colvar = colvar / dble(Nsim*Tsim)
+			if(colvar < 1e-6) then
+				badcoef(ij) = .true.
+				status = status+1
+				do i=1,Nobs
+					call random_number(obsX_vars(i,ij))
+					obsX_vars(i,ij) = (obsX_vars(i,ij)-0.5)/10.
+				enddo
+			endif
+		enddo
+		if(verbose >=2) print *, "bad rows of obsX", status 
+		call OLS(obsX_vars(1:Nobs,:),work_dif_long(1:Nobs),moments_sim%work_coefs,moments_sim%work_cov_coefs, status)
+
+		do ij = 1,Nk
+			if(badcoef(ij)) moments_sim%work_coefs(ij) = 0.
+		enddo
+
+		if(print_lev >=3 ) call vec2csv(moments_sim%work_coefs,"work_coefs.csv")
+		if(print_lev >=3 ) call mat2csv(moments_sim%work_cov_coefs,"work_cov_coefs.csv")
+
+		deallocate(obsX_vars,work_dif_long)
+		
+	end subroutine LPM_employment
+
 	subroutine moments_compute(hists_sim,moments_sim)
 	
 		type(moments_struct) 	:: moments_sim
@@ -616,95 +734,10 @@ module model_data
 		endif
 
 		call LPM_employment(hists_sim,moments_sim)
-	
-	end subroutine moments_compute
-	
-	subroutine LPM_employment(hists_sim,moments_sim)
-	
-		type(moments_struct)	:: moments_sim
-		type(hist_struct)	:: hists_sim
-
-		real(8), allocatable :: obsX_vars(:,:), work_dif_long(:)
-		integer :: i, ij,it,age_hr,id, status, nobs, yr_stride
-		real(8) :: colmean, colvar
-		logical :: badcoef(Nk)
-
-		allocate(obsX_vars(Tsim*Nsim,Nk))
-		allocate(work_dif_long(Tsim*Nsim))
-
-		if(hists_sim%alloced /= 0) then
-			if(verbose >= 1) print *, "not correctly passing hists_struct to LPM"
-		endif
-
-		yr_stride = dnint(tlen) ! for doing year-length differences
-		! build X
-		obsX_vars = 0.
-		Nobs = 0
-		do i=1,Nsim
-			do it=1,Tsim
-				if( hists_sim%age_hist(i,it) <= TT-1 ) then
-					Nobs = Nobs + 1
-					work_dif_long( Nobs ) = dexp(hists_sim%work_dif_hist(i,it)*smthELPM )/(1. + dexp(hists_sim%work_dif_hist(i,it)*smthELPM) )
-					do age_hr=1,TT-1
-						if(hists_sim%age_hist(i,it) .eq. age_hr ) obsX_vars( Nobs, age_hr) = 1.
-					enddo
-					do id = 1,nd-1
-						if(hists_sim%d_hist(i,it) .eq. id ) obsX_vars(Nobs, (TT-1)+id) = 1.
-						! lead 1 period health status
-						if(it <= Tsim - yr_stride) then
-							if(hists_sim%d_hist(i,it+yr_stride) .eq. id ) obsX_vars(Nobs, (TT-1)+nd-1+id) = 1.
-						endif
-					enddo
-					do ij = 1,nj
-						if(hists_sim%j_i(i) == ij )  then
-							if(it<=Tsim - yr_stride .and. it>= yr_stride) then
-								obsX_vars(Nobs, (TT-1)+(nd-1)*2+1) = (hists_sim%occsize_jt(ij,it+yr_stride) - hists_sim%occsize_jt(ij,it-yr_stride)) &
-													& /(hists_sim%occsize_jt(ij,it))
-							endif
-							if(it<=Tsim - 2*yr_stride .and. it>= 2*yr_stride) then
-								obsX_vars(Nobs, (TT-1)+(nd-1)*2+2) = hists_sim%occsize_jt(ij,it+2*yr_stride) - hists_sim%occsize_jt(ij,it-2*yr_stride) &
-													& /(hists_sim%occsize_jt(ij,it))
-							endif
-							
-						endif
-					enddo
-				endif
-			enddo
-		enddo
-		moments_sim%work_coefs = 0.
-
-		if(print_lev >=2 ) call mat2csv(obsX_vars,"obsX_vars.csv")
-		!check that I don't have rank < nk
-		status = 0
-		do ij=1,Nk
-			colmean = sum(obsX_vars(:,ij))/dble(Nsim*Tsim)
-			colvar = 0.
-			do i=1,Nsim*Tsim
-				colvar = (obsX_vars(i,ij) - colmean)**2 + colvar
-			enddo
-			colvar = colvar / dble(Nsim*Tsim)
-			if(colvar < 1e-6) then
-				badcoef(ij) = .true.
-				status = status+1
-				do i=1,Nobs
-					call random_number(obsX_vars(i,ij))
-					obsX_vars(i,ij) = (obsX_vars(i,ij)-0.5)/10.
-				enddo
-			endif
-		enddo
-		if(verbose >=2) print *, "bad rows of obsX", status 
-		call OLS(obsX_vars(1:Nobs,:),work_dif_long(1:Nobs),moments_sim%work_coefs,moments_sim%work_cov_coefs, status)
-
-		do ij = 1,Nk
-			if(badcoef(ij)) moments_sim%work_coefs(ij) = 0.
-		enddo
-
-		if(print_lev >=3 ) call vec2csv(moments_sim%work_coefs,"work_coefs.csv")
-		if(print_lev >=3 ) call mat2csv(moments_sim%work_cov_coefs,"work_cov_coefs.csv")
-
-		deallocate(obsX_vars,work_dif_long)
+		call ts_employment(hists_sim, moments_sim)
 		
-	end subroutine LPM_employment
+	end subroutine moments_compute
+
 
 end module model_data
 
@@ -2378,6 +2411,7 @@ module sol_sim
 				if(verbose >=2 ) then
 					print *, "done simulating after convergence in", iter
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
+					! NOTE: this is not actually mean because it does not have demographic weights
 					print *, "a mean, a var",  sum(a_mean), sum(a_var)**2
 					print *, "dif d mean,     d var",  sum((d_mean - d_mean_liter)**2), sum((d_var - d_var_liter)**2)
 					print *,  "-------------------------------"
@@ -2613,6 +2647,7 @@ program V0main
 	call sim(val_sol, pol_sol, hists_sim)
 	if(verbose >2) print *, "Computing moments"
 	call moments_compute(hists_sim,moments_sim)
+
 
 !    .----.   @   @
 !   / .-"-.`.  \v/

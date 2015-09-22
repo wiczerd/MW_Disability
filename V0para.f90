@@ -73,10 +73,10 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			ndi = 1,  &!3		!Number of individual disability risk types
 			nj  = 3,  &		!Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		!Number of disability extents
-			ne  = 4, &!10		!Points on earnings grid
+			ne  = 2, &!10		!Points on earnings grid
 			na  = 50, &!200		!Points on assets grid
 			nz  = 6,  &		!Number of Occ TFP Shocks (MUST BE multiple of 2)
-			maxiter = 2000, &!2000	!Tolerance parameter	
+			maxiter = 200, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 2000, &!		!how many agents to draw
@@ -91,13 +91,13 @@ logical, parameter ::	del_contin = .false., &	!make delta draws take continuous 
 			j_rand = .false. 	!randomly assign j, or let choose.
 
 
-real(8), parameter ::   Vtol     = 0.0001, & 	!Tolerance on V-dist
+real(8), parameter ::   Vtol = 0.0001, & 	!Tolerance on V-dist
 !		beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
 !		beti_sig = 0.0,    & 	!Var of beta_i wage parameter (Log Normal)
 !		di_lambd = 1.0,    &	!Shape of disability dist. (Exponential)
 		amax 	 = 10.0,   &	!Max on Asset Grid
 		amin = 0.0	   	!Min on Asset Grid
-								   	
+
 
 !**To build***************************!
 real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
@@ -397,8 +397,11 @@ subroutine settfp()
 		enddo
 	enddo
 	forall(i=nz/2+1:nz,k=nz/2+1:nz)	piz(i,k) = piz(i-nz/2,k-nz/2)
-	forall(i=1:nz/2,k=nz/2+1:nz) 	piz(i,k) = 1./(Tblock*tlen)*piz(i,k-nz/2)
-	forall(i=1:nz/2,k=1:nz/2) 	piz(i,k) = (1.-1./(Tblock*tlen))*piz(i,k)
+	forall(i=1:nz/2,k=nz/2+1:nz) 	piz(i,k) = 1./(Tblock*tlen)*piz(i,k-nz/2) ! struct change
+	forall(i=1:nz/2,k=1:nz/2) 	piz(i,k) = (1.-1./(Tblock*tlen))*piz(i,k) ! make it markov
+	forall(i=nz/2+1:nz,k=1:nz/2)	piz(i,k) = 1./(Tblock*tlen)*piz(i,k+nz/2) ! go back
+	forall(i=nz/2+1:nz,k=1+nz/2:nz)	piz(i,k) = (1.-1./(Tblock*tlen))*piz(i,k) ! go back
+	
 	
 end subroutine settfp
 
