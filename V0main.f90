@@ -505,7 +505,7 @@ module model_data
 
 		do it=2,Tsim
 			do ij =1,nj
-				emp_t((ij-1)*(Tsim-1) + it-1*) = hists_sim%occsize_jt(ij,it)
+				emp_t((ij-1)*(Tsim-1) + it-1) = hists_sim%occsize_jt(ij,it)
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1) = hists_sim%occsize_jt(ij,it-1)
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1+ij) = dble(it)/tlen
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,2+nj) = 1.
@@ -764,7 +764,7 @@ module sol_sim
 	!************************************************************************************************!
 
 		integer  :: i, j, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp, anapp,aapp, apol, ibi, ial, ij , idi, izz, iaai,  &
-			    iee1, iee2, iz, iw,wo, iter,npara,ipara
+			    iee1, iee2, iz, iw,wo, iter,npara,ipara, Vevals 
 		integer, dimension(5) :: maxer_i
 
 		logical :: ptrsucces
@@ -845,15 +845,16 @@ module sol_sim
 		!d in{1,2,3}  : disability extent
 		!e inR+       :	earnings index
 		!a inR+	      : asset holdings
-		
+		Vevals  = 0
 		iw = 1 ! not working
 		!VFI with good guess
 		!Initialize
 		junk = (1.0+(beta*ptau(TT)*R**(1.0-gam))**(-1.0/gam))**(-1.0)
-		id=1
+		do id=1,nd
 		do ie=1,ne
 		do ia=1,na
 			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,iw)* (1./(1.-beta*ptau(TT)))
+		enddo
 		enddo
 		enddo
 		if(print_lev >3) then
@@ -861,7 +862,7 @@ module sol_sim
 			call vec2csv(VR0(i,i,:),"VR0.csv",0)
 		endif		
 		iter = 1
-		do WHILE (iter<=maxiter)
+		do while (iter<=maxiter)
 			summer = 0
 			id =1
 		  	do ie=1,ne
@@ -870,6 +871,7 @@ module sol_sim
 					Vtest1 = -1e6
 					apol = iaa1
 					do iaa=iaa1,na
+						Vevals = Vevals + 1
 						chere = SSI(egrid(ie))+ R*agrid(ia) - agrid(iaa)
 						if( chere .gt. 0.) then !ensure positive consumption
 							Vc1 = beta*ptau(TT)*VR0(id,ie,iaa)

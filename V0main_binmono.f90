@@ -505,7 +505,7 @@ module model_data
 
 		do it=2,Tsim
 			do ij =1,nj
-				emp_t((ij-1)*(Tsim-1) + it-1*) = hists_sim%occsize_jt(ij,it)
+				emp_t((ij-1)*(Tsim-1) + it-1) = hists_sim%occsize_jt(ij,it)
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1) = hists_sim%occsize_jt(ij,it-1)
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1+ij) = dble(it)/tlen
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,2+nj) = 1.
@@ -749,8 +749,79 @@ module sol_val
 ! module with subroutines to solve the model and simulate data from it 
 
 	implicit none
+
+	integer ::  Vevals
 	
 	contains
+
+	subroutine maxVR(id,ie,ia, VR0, iaa0, iaaA, apol,Vout)
+		integer, intent(in) :: id,ie,ia
+		integer, intent(in) :: iaa0, iaaA 
+		integer, intent(out) :: apol
+		real(8), intent(out) :: Vout
+		real(8), intent(in) :: VR0(:,:,:)
+		real(8) :: Vtest1,Vtest2,chere, Vc1
+		integer :: iaa, iw
+		
+
+		iw=1
+		Vtest1 = -1e6
+		apol = iaa0
+		do iaa=iaa0,iaaA
+			Vevals = Vevals +1
+			chere = SSI(egrid(ie))+ R*agrid(ia) - agrid(iaa)
+			if( chere .gt. 0.) then !ensure positive consumption
+				Vc1 = beta*ptau(TT)*VR0(id,ie,iaa)
+				Vtest2 = util(chere ,id,iw) + Vc1
+
+				if(Vtest2 > Vtest1  .or. iaa .eq. iaa0 ) then !always replace on the first loop
+					Vtest1 = Vtest2
+					apol = iaa
+				!elseif(iaa > apol+iaa_hiwindow) then ! gone some steps w/o new max (weak way of using concavity)
+				!	exit
+				endif
+			else!saved too much and negative consumtion
+				exit
+			endif
+		enddo
+		Vout = Vtest1
+	end subroutine maxVR
+
+	subroutine maxVD(id,ie,ia,it, VD0, iaa0, iaaA, apol,Vout)
+		integer, intent(in) :: id,ie,ia,it
+		integer, intent(in) :: iaa0, iaaA 
+		integer, intent(out) :: apol
+		real(8), intent(out) :: Vout
+		real(8), intent(in) :: VD0(:,:,:,:)
+		real(8) :: Vc1,chere,Vtest1,Vtest2
+		integer :: iw, iaa
+
+		iw = 1 ! don't work
+		Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa0,it+1)+ptau(it)*VD0(id,ie,iaa0,it))
+		chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa0)
+
+		Vtest1 = -1e6
+		apol = iaa0
+		!Find Policy
+		do iaa=iaa0,iaaA
+			chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
+			if(chere >0.) then
+				Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa,it+1)+ptau(it)*VD0(id,ie,iaa,it))
+
+				Vtest2 = util(chere,id,iw)+ Vc1
+				if(Vtest2>Vtest1) then
+					Vtest1 = Vtest2
+					apol = iaa
+				!elseif(iaa>apol+iaa_hiwindow) then
+				!	exit
+				endif
+			else
+				exit
+			endif
+		enddo	!iaa
+		Vout = Vtest1
+		
+	end subroutine maxVD
 
 	subroutine sol(val_funs, pol_funs)
 
@@ -766,7 +837,8 @@ module sol_val
 		integer  :: i, j, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp, anapp,aapp, apol, ibi, ial, ij , idi, izz, iaai,  &
 			    iee1, iee2, iz, iw,wo, iter,npara,ipara
 		integer, dimension(5) :: maxer_i
-		integer :: apol_l(na), apol_u(na),apol_g(na)
+
+		integer :: aa_l(na), aa_u(na), iaa_k,iaa0,iaaA
 
 		logical :: ptrsucces
 		!************************************************************************************************!
@@ -847,14 +919,15 @@ module sol_val
 		!e inR+       :	earnings index
 		!a inR+	      : asset holdings
 		
-		iw = 1 ! not working
+		Vevals = 0
 		!VFI with good guess
 		!Initialize
-		junk = (1.0+(beta*ptau(TT)*R**(1.0-gam))**(-1.0/gam))**(-1.0)
-		id=1
+		iw=1
+		do id=1,nd
 		do ie=1,ne
 		do ia=1,na
 			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,iw)* (1./(1.-beta*ptau(TT)))
+		enddo
 		enddo
 		enddo
 		if(print_lev >3) then
@@ -862,39 +935,62 @@ module sol_val
 			call vec2csv(VR0(i,i,:),"VR0.csv",0)
 		endif		
 		iter = 1
-		do WHILE (iter<=maxiter)
+		do while (iter<=maxiter)
 			summer = 0
 			id =1
 		  	do ie=1,ne
-				iaa1 = 1
-			  	do ia=1,na
-					Vtest1 = -1e6
-					apol = iaa1
-					do iaa=iaa1,na
-						chere = SSI(egrid(ie))+ R*agrid(ia) - agrid(iaa)
-						if( chere .gt. 0.) then !ensure positive consumption
-							Vc1 = beta*ptau(TT)*VR0(id,ie,iaa)
-							Vtest2 = util(chere ,id,iw) + Vc1
+				
+				ia = 1
+				iaa0 = 1
+				iaaA = na
+				call maxVR(id,ie,ia, VR0, iaa0, iaaA, apol,Vtest1)
+				VR(id,ie,ia) = Vtest1
+				aR(id,ie,ia) = apol !agrid(apol)
 
-							if(Vtest2 > Vtest1  .or. iaa .eq. iaa1 ) then !always replace on the first loop
-								Vtest1 = Vtest2
-								apol = iaa
-							elseif(iaa > apol+iaa_hiwindow) then ! gone some steps w/o new max
-								exit
-							endif
-						else!saved too much and negative consumtion
-							exit
-						endif
+				ia = na
+				iaa0 = aR(id,ie,1)
+				iaaA = na
+				call maxVR(id,ie,ia, VR0, iaa0, iaaA, apol,Vtest1)
+				VR(id,ie,ia) = Vtest1
+				aR(id,ie,ia) = apol !agrid(apol)
+
+				iaa_k = 1
+				aa_l(iaa_k) = 1
+				aa_u(iaa_k) = na
+
+				!main loop (step 1 of Gordon & Qiu completed)
+				outerVR: do
+					!Expand list (step 2 of Gordon & Qiu)
+					do
+						if(aa_u(iaa_k) == aa_l(iaa_k)+1) exit
+						iaa_k = iaa_k+1
+						aa_l(iaa_k) = aa_l(iaa_k-1)
+						aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
+						!search given ia from iaa0 to iaaA
+						ia = aa_u(iaa_k)
+						iaa0 = aR(id,ie, aa_l(iaa_k-1) )
+						iaaA = aR(id,ie, aa_u(iaa_k-1) )
+						call maxVR(id,ie,ia, VR0, iaa0, iaaA, apol,Vtest1)
+						VR(id,ie,ia) = Vtest1
+						aR(id,ie,ia) = apol 
 					enddo
-					iaa1  = max(apol-iaa_lowindow,1)  	!concave, start next loop here
-					VR(id,ie,ia) = Vtest1
-					aR(id,ie,ia) = apol !agrid(apol)
+					! Move to a higher interval or stop (step 3 of Gordon & Qiu)
+					do
+						if(iaa_k==1) exit outerVR
+						if( aa_u(iaa_k)/= aa_u(iaa_k - 1) ) exit
+						iaa_k = iaa_k -1
+					end do
+					! more to the right subinterval
+					aa_l(iaa_k) = aa_u(iaa_k)
+					aa_u(iaa_k) = aa_u(iaa_k-1)
+				end do outerVR
+				
+				do ia=1,na
 					summer = summer+ (VR(id,ie,ia)-VR0(id,ie,ia))**2
-					!Polices for disabled are the same, just scale V-function
-				enddo !ia
-				VR0(id,ie,:) = VR(id,ie,:)	!New guess, recall, only using id =1 
+				enddo
+				VR0(id,ie,:) = VR(id,ie,:)
 			enddo !ie
-			IF (summer < Vtol) THEN
+			if (summer < Vtol) then
 				exit	!Converged				
 			else
 				iter=iter+1
@@ -963,47 +1059,68 @@ module sol_val
 					iter=1
 					do WHILE (iter<=maxiter)
 						summer = 0
-						iaa1 = 1
-						!Loop over current state: assets
-						do ia=1,na
-							Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa1,it+1)+ptau(it)*VD0(id,ie,iaa1,it))
-							chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa1)
-					
-							Vtest1 = -1e6
-							apol = iaa1
-							!Find Policy
-							do iaa=iaa1,na
-								chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
-								if(chere >0.) then
-									Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa,it+1)+ptau(it)*VD0(id,ie,iaa,it))
 
-									Vtest2 = util(chere,id,iw)+ Vc1
-									if(Vtest2>Vtest1) then
-										Vtest1 = Vtest2
-										apol = iaa
-									elseif(iaa>apol+iaa_hiwindow) then
-										exit
-									endif
-								else
-									exit
-								endif
-							enddo	!iaa
-							iaa1 = max(apol-iaa_lowindow,1)
-							VD(id,ie,ia,it) = Vtest1
-							aD(id,ie,ia,it) = apol !agrid(apol)
-							summer = summer + (VD(id,ie,ia,it)-VD0(id,ie,ia,it))**2
-						enddo	!ia
+
+						ia = 1
+						iaa0 = 1
+						iaaA = na
+						call maxVD(id,ie,ia,it, VD0, iaa0, iaaA, apol,Vtest1)
+						VD(id,ie,ia,it) = Vtest1
+						aD(id,ie,ia,it) = apol !agrid(apol)
+
+						ia = na
+						iaa0 = aD(id,ie,1,it)
+						iaaA = na
+						call maxVD(id,ie,ia,it, VD0, iaa0, iaaA, apol,Vtest1)
+						VD(id,ie,ia,it) = Vtest1
+						aD(id,ie,ia,it) = apol !agrid(apol)
+
+						iaa_k = 1
+						aa_l(iaa_k) = 1
+						aa_u(iaa_k) = na
+
+						!main loop (step 1 of Gordon & Qiu completed)
+						outerVD: do
+							!Expand list (step 2 of Gordon & Qiu)
+							do
+								if(aa_u(iaa_k) == aa_l(iaa_k)+1) exit
+								iaa_k = iaa_k+1
+								aa_l(iaa_k) = aa_l(iaa_k-1)
+								aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
+								!search given ia from iaa0 to iaaA
+								ia = aa_u(iaa_k)
+								iaa0 = aD(id,ie, aa_l(iaa_k-1),it)
+								iaaA = aD(id,ie, aa_u(iaa_k-1),it)
+								call maxVD(id,ie,ia,it, VD0, iaa0, iaaA, apol,Vtest1)
+								VD(id,ie,ia,it) = Vtest1
+								aD(id,ie,ia,it) = apol 
+							enddo
+							! Move to a higher interval or stop (step 3 of Gordon & Qiu)
+							do
+								if(iaa_k==1) exit outerVD
+								if( aa_u(iaa_k)/= aa_u(iaa_k - 1) ) exit
+								iaa_k = iaa_k -1
+							end do
+							! more to the right subinterval
+							aa_l(iaa_k) = aa_u(iaa_k)
+							aa_u(iaa_k) = aa_u(iaa_k-1)
+						end do outerVD
+						
+						do ia=1,na
+							summer = summer+ (VD(id,ie,ia,it)-VD0(id,ie,ia,it))**2
+						enddo
 
 						if(print_lev >3) then
 							wo =0
 							call veci2csv(aD(id,ie,:,it),"aD.csv",wo)
 							call vec2csv(VD(id,ie,:,it),"VD.csv",wo)
 						endif
-						IF (summer < Vtol) THEN
+						if (summer < Vtol) then
 							exit	!Converged
-						EndIF
+						endif
 						VD0(id,ie,:,it) = VD(id,ie,:,it)	!New guess
 						iter=iter+1
+
 					enddo	!iter: V-iter loop
 				enddo	!ie		
 
