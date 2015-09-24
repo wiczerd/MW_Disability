@@ -1081,7 +1081,7 @@ module sol_sim
 			!***********************************************************************************************************
 			!Loop over V=max(VU,VW)	
 			iter=1
-			smthV0param  =1. ! will tighten this down
+			smthV0param  =100. ! will tighten this down
 			do WHILE (iter<=maxiter)
 				maxer = 0.
 				summer = 0.	!Use to calc |V-V0|<eps
@@ -1089,9 +1089,10 @@ module sol_sim
 
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
-			!------------------------------------------------!  
+			!------------------------------------------------!
+			summer = 0.
 			npara = nal*nd*ne*nz
-			!$OMP  parallel do default(shared) &
+			!$OMP  parallel do default(shared) reduction(+:summer) &
 			!$OMP& private(ial,id,ie,iz,iw,apol,iaa1,ia,iaa,ipara,chere,Vtest2,Vtest1,Vc1,iaai,izz,maxVNV0)
 			  	do ipara = 1,npara
 					iz = mod(ipara-1,nz)+1
@@ -1139,11 +1140,9 @@ module sol_sim
 						aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
 
 					enddo !ia
-				
-!				enddo !id
-!			  	enddo !ie
-!			  	enddo !iz
-!				enddo !ial	
+					summer = sum(( VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
+						& - VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
+!				enddo !id 	enddo !ie  	enddo !iz	enddo !ial	
 				enddo !ipara
 			!$OMP END PARALLEL do
 
@@ -1165,9 +1164,10 @@ module sol_sim
 	
 			!------------------------------------------------!
 			!Solve VN given guesses on VW, VN, and implied V
-			!------------------------------------------------! 
+			!------------------------------------------------!
+			summer= 0. 
 			npara = nal*nd*ne*nz
-			!$OMP  parallel do default(shared) &
+			!$OMP  parallel do default(shared)  reduction(+:summer) &
 			!$OMP& private(ipara,ial,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz,maxVNV0) 
 			  	do ipara = 1,npara
 					iz = mod(ipara-1,nz)+1
@@ -1216,7 +1216,7 @@ module sol_sim
 								enddo
 								enddo
 								Vtest2 = util(chere,id,iw) + Vtest2 &
-									& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) )
+									& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) )
 								
 								if (Vtest2>Vtest1  .or. iaa .eq. iaa1app) then	
 									apol = iaa
@@ -1329,6 +1329,9 @@ module sol_sim
 !				enddo !ie 
 !				enddo !id 
 !				enddo !ial
+					summer = sum((VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
+						& - VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
+
 				enddo !ipara
 			!$OMP END PARALLEL do
 			
@@ -1370,6 +1373,7 @@ module sol_sim
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
+			summer = 0.
 			npara = nal*nd*ne*nz
 			!$OMP   parallel do default(shared) reduction(+:summer) &
 			!$OMP & private(ipara,ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz,iw) 
@@ -1475,12 +1479,10 @@ module sol_sim
 
 						gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere - VUhere
 						
-						summer = summer+ & 
-							& (V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)-V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it))**2
-						
 						maxer(ia,iz,ie,id,ial) = (V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)-V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it))**2
 
 					enddo !ia
+					summer = sum((V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it)-V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
 !				enddo !iz  enddo !ie   	enddo !id  	enddo !ial
 				enddo
 			!$OMP  END PARALLEL do
@@ -2575,7 +2577,7 @@ program V0main
 	narg_in = iargc()
 
 	verbose = 3
-	print_lev = 2
+	print_lev = 4
 
 
 	call setparams()

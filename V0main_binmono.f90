@@ -820,8 +820,241 @@ module sol_val
 			endif
 		enddo	!iaa
 		Vout = Vtest1
-		
 	end subroutine maxVD
+
+	subroutine maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vout)
+		integer, intent(in) :: ij,ibi,idi,ial,id,ie,ia,iz,it
+		integer, intent(in) :: iaa0, iaaA 
+		integer, intent(out) :: apol
+		real(8), intent(out) :: Vout
+		real(8), intent(in) :: VN0(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
+		real(8) :: Vc1,chere,Vtest1,Vtest2
+		integer :: iw, iaa,iaai,izz
+
+		iw = 1 ! don't work
+
+		Vtest1 = -1e6 ! just a very bad number, does not really matter
+		apol = iaa0
+		do iaa=iaa0,iaaA
+			chere = UI(egrid(ie))+R*agrid(ia)-agrid(iaa)
+			if(chere>0.) then 
+				Vtest2 = 0. !Continuation value if don't go on disability
+				do izz = 1,nz	 !Loop over z'
+				do iaai = 1,nal !Loop over alpha_i'
+					Vc1 = (1.-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
+						& 	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) )  !Age and might go LTU
+					Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) & 
+						&	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1  !Probability of alpha_i X z_i draw 
+				enddo
+				enddo
+				Vtest2 = Vtest2 + util(chere,id,iw)
+				if(Vtest2>Vtest1 .or. iaa .eq. iaa0) then !first value or optimal
+					apol = iaa! set the policy
+					Vtest1 = Vtest2
+				!elseif(iaa > apol+iaa_hiwindow) then
+				!	exit
+				endif
+			else
+				exit
+			endif
+		enddo
+		Vout = Vtest1
+	end subroutine maxVU
+
+	subroutine maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0, V0, iaa0,iaaA,apol,gapp_pol,gapp_dif,Vout  )
+		integer, intent(in) :: ij,ibi,idi,ial,id,ie,ia,iz,it
+		integer, intent(in) :: iaa0, iaaA 
+		integer, intent(out) :: apol,gapp_pol
+		real(8), intent(out) :: gapp_dif
+		real(8), intent(out) :: Vout
+		real(8), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:)
+		real(8) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, maxVNV0
+		integer :: iw, iaa,iaai,izz,aapp,aNapp
+
+		iw = 1 ! not working
+		!**********Value if apply for DI 
+		Vtest1 = -1e6
+		apol = iaa0
+		do iaa = iaa0,iaaA
+			chere = b+R*agrid(ia)-agrid(iaa)
+			if(chere >0.) then
+				Vtest2 = 0.
+				!Continuation if apply for DI
+				do izz = 1,nz	 !Loop over z'
+				do iaai = 1,nal !Loop over alpha_i'
+					Vc1 = (1-ptau(it))*((1-xi(id,it))* &
+						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1)  &
+						& +xi(id,it)*VD0(id,ie,iaa,it+1)) !Age and might go on DI
+					Vc1 = Vc1 + ptau(it)*((1-xi(id,it))* &
+						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)  &
+						& +xi(id,it)*VD0(id,ie,iaa,it))     !Don't age, might go on DI		
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
+				enddo
+				enddo
+				Vtest2 = util(chere,id,iw) + Vtest2 &
+					& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) )
+				
+				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then	
+					apol = iaa
+					Vtest1 = Vtest2
+				endif
+			!elseif(iaa<= iaa0 .and. Vtest1 <= -1e5 .and. apol == iaa0) then
+			!	iaa = 1 !started too much saving, go back towards zero
+			else
+				exit
+			endif
+		enddo !iaa
+		Vapp = Vtest1
+		aapp = apol !agrid(apol)					
+
+		if(Vapp <-1e5) then
+			write(*,*) "ruh roh!"
+			write(*,*) "Vapp, aapp: ", Vapp, aapp
+			write(*,*) "VD: ",id,ie,iaa,it
+			write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,it
+		endif
+
+		!*******************************************
+		!**************Value if do not apply for DI
+		Vtest1 = -1e6
+		apol = iaa0
+		do iaa = iaa0,iaaA
+			chere = b+R*agrid(ia)-agrid(iaa)
+			if(chere >0.) then
+				Vtest2 = 0.
+				!Continuation if do not apply for DI
+				do izz = 1,nz	 !Loop over z'
+				do iaai = 1,nal !Loop over alpha_i'
+				
+					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
+							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1))
+					Vc1 = (1-ptau(it))*((1-lrho)* &
+							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1) +lrho*maxVNV0) !Age and might go on DI
+					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
+							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
+					Vc1 = Vc1+ptau(it)*((1-lrho)* & 
+							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it) +lrho*maxVNV0)     !Don't age, might go on DI
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
+				enddo
+				enddo
+				Vtest2 = Vtest2 + util(chere,id,iw)
+				
+				if( Vtest2 > Vtest1 .or. iaa .eq. iaa0) then
+					apol = iaa 
+					Vtest1 = Vtest2 
+				endif
+			!elseif(iaa .eq. iaa0 .and. Vtest1 <= -1e5 .and. apol .eq. iaa0) then
+			!	iaa = 1 !started too much saving, go back towards zero
+			else
+				exit
+			endif
+		enddo !iaa
+		Vnapp = Vtest1 					
+		aNapp = apol !agrid(apol)
+		if(Vnapp <-1e5 .and. verbose >0) then
+			write(*,*) "ruh roh!"
+			write(*,*) "Vnapp, aNapp: ", Vnapp, aNapp
+			write(*,*) "VD: ",id,ie,iaa,it
+			write(*,*) "VN: ",ij,ibi,idi,ial,id,ie,ia,iz,it
+		endif
+
+		!******************************************************
+		!***************** Discrete choice for application
+		!smthV = dexp(smthV0param*Vnapp)/( dexp(smthV0param*Vnapp) +dexp(smthV0param*Vapp) )
+		!if( smthV .lt. 1e-5 .or. smthV .gt. 0.999999 .or. isnan(smthV)) then
+			if( Vapp > Vnapp ) smthV =0.
+			if(Vnapp > Vapp  ) smthV =1.
+		!endif
+		if (Vapp > Vnapp) then
+			apol = aapp
+			gapp_pol = 1
+		else !Don't apply
+			apol = aNapp
+			gapp_pol = 0
+		endif
+
+		gapp_dif = Vapp - Vnapp
+		if(verbose .gt. 4) print *, Vapp - Vnapp
+		if(it>1) then
+			Vout = smthV*Vnapp + (1. - smthV)*Vapp
+		else
+			Vout = smthV*Vnapp + (1. - smthV)*(eligY*Vapp + (1.- eligY)*Vnapp)
+		endif
+
+	end subroutine maxVN
+
+	subroutine maxVW(ij,ibi,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt,iaa0,iaaA,apol,gwork_pol,gwork_dif,Vout ,VWout )
+		integer, intent(in) :: ij,ibi,idi,ial,id,ie,ia,iz,it
+		integer, intent(in) :: iaa0, iaaA,iee1,iee2
+		real(8), intent(in) :: iee1wt,wagehere
+		integer, intent(out) :: apol,gwork_pol
+		real(8), intent(out) :: gwork_dif
+		real(8), intent(out) :: Vout, VWout
+		real(8), intent(in) :: VU(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
+		real(8) :: Vc1,utilhere,chere,Vtest1,Vtest2,VWhere,VUhere,smthV, yL, yH
+		integer :: iw, iaa,iaai,izz,aapp,aNapp
+
+		iw = 2 ! working
+		Vtest1= -1.e6 ! just to initialize, does not matter
+		!Find saving Policy
+		do iaa=iaa0,iaaA
+			!Continuation value if don't go on disability
+			chere = wagehere+R*agrid(ia)-agrid(iaa)
+			if (chere >0.) then
+				Vc1 = 0.
+				do izz = 1,nz	 !Loop over z'
+				do iaai = 1,nal !Loop over alpha_i'
+					!Linearly interpolating on e'
+					yL = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee1,iaa,izz,it+1) & 
+						& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee1,iaa,izz,it)
+					yH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it+1) & 
+						& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it)
+					Vc1 = piz(iz,izz)*pialf(ial,iaai) &
+						& * (yH*(1. - iee1wt) + yL*iee1wt )&
+						& + Vc1
+				enddo
+				enddo
+				utilhere = util(chere,id,iw)
+				Vtest2 = utilhere + beta*Vc1 ! flow utility
+
+				if (Vtest2>Vtest1 .or. iaa .eq. iaa0 ) then  !always replace on the first, or best
+					Vtest1 = Vtest2
+					apol = iaa
+				endif
+			!elseif(iaa == iaa1 .and. Vtest1<=-5e4 .and. apol == iaa1 ) then
+				!back it up because started with unfeasible savings / negative consumption
+			!	iaa = 1
+			!	iaa1 =1
+			else 
+				exit
+			endif
+		enddo	!iaa
+
+		VWhere = Vtest1
+		VUhere = VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+		
+		!------------------------------------------------!
+		!Calculate V with solved vals of VW and VU -- i.e. can quit into unemployment
+		!------------------------------------------------!
+		
+		if (VWhere>VUhere) then
+			gwork_pol = 1
+		else
+			gwork_pol = 0
+		endif
+		!smthV = dexp( smthV0param *VWhere  ) &
+		!	& /( dexp(smthV0param * VWhere) + dexp(smthV0param * VUhere ) )
+		!if (smthV <1e-5 .or. smthV>.999999 .or. isnan(smthV) ) then
+			if(VWhere > VUhere)	smthV = 1. 
+			if(VWhere < VUhere)	smthV = 0. 							
+		!endif
+		Vout = smthV*VWhere + (1.-smthV)*VUhere
+		
+		gwork_dif = VWhere - VUhere
+		VWout = VWhere
+		
+	end subroutine maxVW
 
 	subroutine sol(val_funs, pol_funs)
 
@@ -834,7 +1067,7 @@ module sol_val
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: i, j, ia, ie, id, it, iaa,iaa1, iaa1app,iaa1napp, anapp,aapp, apol, ibi, ial, ij , idi, izz, iaai,  &
+		integer  :: i, j, ia, ie, id, it, iaa,iaa1, iaa1app,ga,gw, anapp,aapp, apol, ibi, ial, ij , idi, izz, iaai,  &
 			    iee1, iee2, iz, iw,wo, iter,npara,ipara
 		integer, dimension(5) :: maxer_i
 
@@ -845,7 +1078,7 @@ module sol_val
 		! Value Functions- Stack z-risk j and indiv. exposure beta_i
 		!************************************************************************************************!
 		real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, Vc1, Vnapp, maxer_v, smthV,smthV0param, &
-					&	iee1wt, maxVNV0
+					&	iee1wt, maxVNV0,gadif,gwdif
 		real(8), allocatable	:: maxer(:,:,:,:,:)
 		real(8), allocatable :: VR0(:,:,:), &			!Retirement
 					VD0(:,:,:,:), &			!Disabled
@@ -1057,7 +1290,7 @@ module sol_val
 				do ie=1,ne
 					!Loop to find V(..,it) as fixed point
 					iter=1
-					do WHILE (iter<=maxiter)
+					do while (iter<=maxiter)
 						summer = 0
 
 
@@ -1198,71 +1431,89 @@ module sol_val
 			!Loop over V=max(VU,VW)	
 			iter=1
 			smthV0param  =1. ! will tighten this down
-			do WHILE (iter<=maxiter)
+			do while (iter<=maxiter)
 				maxer = 0.
 				summer = 0.	!Use to calc |V-V0|<eps
 				! lots f printing every 100 iterations (mod 1 because Fortran is designed by idiots using base-1 indexing)
 
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
-			!------------------------------------------------!  
+			!------------------------------------------------!
+			summer = 0.
 			npara = nal*nd*ne*nz
-			!$OMP  parallel do default(shared) &
-			!$OMP& private(ial,id,ie,iz,iw,apol,iaa1,ia,iaa,ipara,chere,Vtest2,Vtest1,Vc1,iaai,izz,maxVNV0)
+			!$OMP  parallel do default(shared) reduction(+:summer)&
+			!$OMP& private(ial,id,ie,iz,iw,apol,iaa0,iaaA,ia,iaa,ipara,Vtest1,aa_l,aa_u,iaa_k)
 			  	do ipara = 1,npara
 					iz = mod(ipara-1,nz)+1
 					ie = mod(ipara-1,nz*ne)/nz + 1
 					id = mod(ipara-1,nz*ne*nd)/(nz*ne) +1
 					ial= mod(ipara-1,nz*ne*nd*nal)/(nz*ne*nd)+1
-!			  	do ial=1,nal	!Loop over alpha (ai)
-!				do id=1,nd	!Loop over disability index
-!			  	do ie=1,ne	!Loop over earnings index
-!			  	do iz=1,nz	!Loop over TFP
-			  		iw = 1 !not working
-					!Restart at bottom of asset grid for each of the above (ai,d,e,z)
-					apol = 1
-					iaa1 = 1
-					!----------------------------------------------------------------
-					!Loop over current state: assets
-					do ia=1,na
-						Vtest1 = -1e5 ! just a very bad number, does not really matter
-						do iaa=iaa1,na
-							chere = UI(egrid(ie))+R*agrid(ia)-agrid(iaa)
-							if(chere>0.) then 
-								Vtest2 = 0. !Continuation value if don't go on disability
-								do izz = 1,nz	 !Loop over z'
-								do iaai = 1,nal !Loop over alpha_i'
-									Vc1 = (1.-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
-										& 	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) )  !Age and might go LTU
-									Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) & 
-										&	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
-									Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1  !Probability of alpha_i X z_i draw 
-								enddo
-								enddo
-								Vtest2 = Vtest2 + util(chere,id,iw)
-								if(Vtest2>Vtest1 .or. iaa .eq. iaa1) then !first value or optimal
-									apol = iaa! set the policy
-									Vtest1 = Vtest2
-								elseif(iaa > apol+iaa_hiwindow) then
-									exit
-								endif
-							else
-								exit
-							endif
-						enddo	!iaa
-						iaa1 = max(apol - iaa_lowindow,1) !concave, start next loop here
+
+					! search over ia
+						ia = 1
+						iaa0 = 1
+						iaaA = na
+						call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vtest1)
 						VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
 						aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
 
-					enddo !ia
-				
-!				enddo !id
-!			  	enddo !ie
-!			  	enddo !iz
-!				enddo !ial	
+						ia = na
+						iaa0 = aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,1,iz,it)
+						iaaA = na
+						call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vtest1)
+						VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+						aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
+
+						iaa_k = 1
+						aa_l(iaa_k) = 1
+						aa_u(iaa_k) = na
+
+						!main loop (step 1 of Gordon & Qiu completed)
+						outerVU: do
+							!Expand list (step 2 of Gordon & Qiu)
+							do
+								if(aa_u(iaa_k) == aa_l(iaa_k)+1) exit
+								iaa_k = iaa_k+1
+								aa_l(iaa_k) = aa_l(iaa_k-1)
+								aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
+								!search given ia from iaa0 to iaaA
+								ia = aa_u(iaa_k)
+								iaa0 = aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_l(iaa_k-1)  ,iz,it)
+								iaaA = aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_u(iaa_k-1)  ,iz,it)
+								call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vtest1)
+								VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+								aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
+
+							enddo
+							! Move to a higher interval or stop (step 3 of Gordon & Qiu)
+							do
+								if(iaa_k==1) exit outerVU
+								if( aa_u(iaa_k)/= aa_u(iaa_k - 1) ) exit
+								iaa_k = iaa_k -1
+							end do
+							! more to the right subinterval
+							aa_l(iaa_k) = aa_u(iaa_k)
+							aa_u(iaa_k) = aa_u(iaa_k-1)
+						end do outerVU
+						if((iz>nz .or. ie>ne .or. id>nd .or. ial>nal) .and. verbose > 2) then
+							print *, "ipara is not working right", iz,ie,id,ial
+						endif
+						summer = sum( (VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
+							& - VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
 				enddo !ipara
 			!$OMP END PARALLEL do
-
+				!update VU0
+				do ial=1,nal	!Loop over alpha (ai)
+				do id=1,nd	!Loop over disability index
+			  	do ie=1,ne	!Loop over earnings index
+			  	do iz=1,nz	!Loop over TFP
+					do ia =1,na
+						VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+					enddo	!ia
+				enddo !ial
+			  	enddo !id
+			  	enddo !ie
+			  	enddo !iz
 				if (print_lev > 3) then
 					wo = 0
 					do ial=1,nal	!Loop over alpha (ai)
@@ -1282,169 +1533,68 @@ module sol_val
 			!------------------------------------------------!
 			!Solve VN given guesses on VW, VN, and implied V
 			!------------------------------------------------! 
+			summer = 0.
 			npara = nal*nd*ne*nz
-			!$OMP  parallel do default(shared) &
-			!$OMP& private(ipara,ial,id,ie,iz,iw,apol,iaa1app,iaa1napp,ia,iaa,chere,Vc1,Vtest2,Vtest1,smthV,Vapp,Vnapp,aapp,anapp,iaai,izz,maxVNV0) 
+			!$OMP  parallel do default(shared) reduction(+:summer)&
+			!$OMP& private(ipara,ial,id,ie,iz,apol,ga,gadif,ia,iaa,iaa0,iaaA,iaa_k,aa_l,aa_u,Vtest1) 
 			  	do ipara = 1,npara
 					iz = mod(ipara-1,nz)+1
 					ie = mod(ipara-1,nz*ne)/nz + 1
 					id = mod(ipara-1,nz*ne*nd)/(nz*ne) +1
 					ial= mod(ipara-1,nz*ne*nd*nal)/(nz*ne*nd)+1
 
-!			  	do ial=1,nal	!Loop over alpha (ai)
-!				do id=1,nd	!Loop over disability index
-!			  	do ie=1,ne	!Loop over earnings index
-!			  	do iz=1,nz	!Loop over TFP
-					iw = 1 ! not working
-					!******************************************************************************
-					!---------------------------------------------------------------!
-					!First Solve as if do NOT apply (since assets are a joint choice)
-					!---------------------------------------------------------------!
-					!Restart at bottom of asset grid for each of the above (ai,d,e,z)
-					iaa1napp = 1
-					iaa1app = 1
-					Vapp  = -5e6
-					Vnapp = -5e6				
 					!----------------------------------------------------------------
 					!Loop over current state: assets
-					do ia=1,na
-						
-						!**********Value if apply for DI 
-						Vtest1 = -1e6
-						apol = iaa1app
-						iaa = iaa1app
-						do while (iaa <= na)
-							chere = b+R*agrid(ia)-agrid(iaa)
-							if(chere >0.) then
-								Vtest2 = 0.
-								!Continuation if apply for DI
-								do izz = 1,nz	 !Loop over z'
-								do iaai = 1,nal !Loop over alpha_i'
-									Vc1 = (1-ptau(it))*((1-xi(id,it))* &
-									!	& max( V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) ,  &
-										& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1)  &
-										& +xi(id,it)*VD0(id,ie,iaa,it+1)) !Age and might go on DI
-									Vc1 = Vc1 + ptau(it)*((1-xi(id,it))* &
-									!	& V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ,  &
-										& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)  &
-										& +xi(id,it)*VD0(id,ie,iaa,it))     !Don't age, might go on DI		
-									Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
-								enddo
-								enddo
-								Vtest2 = util(chere,id,iw) + Vtest2 &
-									& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) )
-								
-								if (Vtest2>Vtest1  .or. iaa .eq. iaa1app) then	
-									apol = iaa
-									Vtest1 = Vtest2
-								elseif(iaa > apol +iaa_hiwindow) then
-									exit
-								elseif( (Vtest2 < Vtest1) .and. (iaa <= iaa1app+1) .and. (iaa1app > 1)) then 
-								!if the second and it's going down, then back up
-									iaa = 1
-									iaa1app =1
-								endif
-							elseif(iaa<= iaa1app .and. Vtest1 <= -1e5 .and. apol <= iaa1app) then
-								iaa = 1 !started too much saving, go back towards zero
-								iaa1app = 1
-							else
-								exit
-							endif
-							iaa = iaa + 1
-						enddo !iaa
-						Vapp = Vtest1
-						iaa1app = max(apol -iaa_lowindow,1) !concave, start next loop here
-						aapp = apol !agrid(apol)					
-						if(Vapp <-1e5) then
-							write(*,*) "ruh roh!"
-							write(*,*) "Vapp, aapp: ", Vapp, aapp
-							write(*,*) "VD: ",id,ie,iaa,it
-							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,it
-						endif
+					ia = 1
+					iaa0 = 1
+					iaaA = na
+					call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0,iaa0,iaaA,apol,ga,gadif,Vtest1)
+					aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+					VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+					gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
+					gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
 
-						!*******************************************
-						!**************Value if do not apply for DI
-						Vtest1 = -1e6
-						apol = iaa1napp
-						iaa=iaa1napp
-						do while (iaa <= na)
-							chere = b+R*agrid(ia)-agrid(iaa)
-							if(chere >0.) then
-								Vtest2 = 0.
-								!Continuation if do not apply for DI
-								do izz = 1,nz	 !Loop over z'
-								do iaai = 1,nal !Loop over alpha_i'
-								
-								!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-								!  Make this a max s.t. can go to V0 or can go to VN0
-									maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
-											& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1))
-									Vc1 = (1-ptau(it))*((1-lrho)* &
-											&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1) +lrho*maxVNV0) !Age and might go on DI
-									maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
-											&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
-									Vc1 = Vc1+ptau(it)*((1-lrho)* & 
-											&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it) +lrho*maxVNV0)     !Don't age, might go on DI
-									Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
-								enddo
-								enddo
-								Vtest2 = Vtest2 + util(chere,id,iw)
-								
-								if( Vtest2 > Vtest1 .or. iaa .eq. iaa1napp) then
-									apol = iaa 
-									Vtest1 = Vtest2 
-								elseif(iaa > apol+iaa_hiwindow) then
-									exit
-								elseif( (Vtest2 < Vtest1) .and. (iaa <= iaa1napp+1) .and. (iaa1napp > 1)) then 
-								!if the second and it's going down, then back up
-									iaa = 1
-									iaa1napp =1
-								endif
-							elseif(iaa .eq. iaa1napp .and. Vtest1 <= -1e5 .and. apol .eq. iaa1napp) then
-								iaa = 1 !started too much saving, go back towards zero
-								iaa1napp = 1
-							else
-								exit
-							endif
-							iaa = iaa + 1
-						enddo !iaa
-						iaa1napp = max(apol-iaa_lowindow,1)
-						Vnapp = Vtest1 					
-						aNapp = apol !agrid(apol)
-						if(Vnapp <-1e5 .and. verbose >0) then
-							write(*,*) "ruh roh!"
-							write(*,*) "Vnapp, aNapp: ", Vnapp, aNapp
-							write(*,*) "VD: ",id,ie,iaa,it
-							write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,it
-						endif
+					ia = na
+					iaa0 = aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,1,iz,it)
+					iaaA = na
+					call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0, iaa0,iaaA,apol,ga,gadif,Vtest1)
+					VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+					aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
+					gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
+					gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
 
-						!******************************************************
-						!***************** Discrete choice for application
-						smthV = dexp(smthV0param*Vnapp)/( dexp(smthV0param*Vnapp) +dexp(smthV0param*Vapp) )
-						if( smthV .lt. 1e-5 .or. smthV .gt. 0.999999 .or. isnan(smthV)) then
-							if( Vapp > Vnapp ) smthV =0.
-							if(Vnapp > Vapp  ) smthV =1.
-						endif
-						IF (Vapp > Vnapp) THEN
-							aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = aapp
-							gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = 1
-						ELSE !Don't apply
-							aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = aNapp
-							gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = 0
-						EndIF
+					iaa_k = 1
+					aa_l(iaa_k) = 1
+					aa_u(iaa_k) = na
 
-						gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vapp - Vnapp
-						if(verbose .gt. 4) print *, Vapp - Vnapp
-						if(it>1) then
-							VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = smthV*Vnapp + (1. - smthV)*Vapp
-						else
-							VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = smthV*Vnapp + (1. - smthV)*(eligY*Vapp + (1.- eligY)*Vnapp)
-						endif
-					enddo !ia
-!				enddo !iz 
-!				enddo !ie 
-!				enddo !id 
-!				enddo !ial
+					outerVN: do
+						do
+							if(aa_u(iaa_k) == aa_l(iaa_k)+1) exit
+							iaa_k = iaa_k+1
+							aa_l(iaa_k) = aa_l(iaa_k-1)
+							aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
+							!search given ia from iaa0 to iaaA
+							ia = aa_u(iaa_k)
+							iaa0 = aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_l(iaa_k-1)  ,iz,it)
+							iaaA = aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_u(iaa_k-1)  ,iz,it)
+							call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,VD0,V0, iaa0,iaaA,apol,ga,gadif,Vtest1)
+							VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+							aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
+							gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
+							gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
+
+						enddo
+						do
+							if(iaa_k==1) exit outerVN
+							if( aa_u(iaa_k)/= aa_u(iaa_k - 1) ) exit
+							iaa_k = iaa_k -1
+						end do
+						aa_l(iaa_k) = aa_u(iaa_k)
+						aa_u(iaa_k) = aa_u(iaa_k-1)
+					end do outerVN
+					
+					summer = sum((VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
+						& - VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
 				enddo !ipara
 			!$OMP END PARALLEL do
 			
@@ -1486,16 +1636,16 @@ module sol_val
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
+			summer = 0.
 			npara = nal*nd*ne*nz
 			!$OMP   parallel do default(shared) reduction(+:summer) &
-			!$OMP & private(ipara,ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa,iaa1,chere,yL,yH,Vc1,utilhere,Vtest2,Vtest1,smthV,VUhere,VWhere,iaai,izz,iw) 
+			!$OMP & private(ipara,ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,aa_l,aa_u,iaa_k,Vtest1,VWhere,gwdif,gw) 
 			  	do ipara = 1,npara
 					iz = mod(ipara-1,nz)+1
 					ie = mod(ipara-1,nz*ne)/nz + 1
 					id = mod(ipara-1,nz*ne*nd)/(nz*ne) +1
 					ial= mod(ipara-1,nz*ne*nd*nal)/(nz*ne*nd)+1
 
-			  		iw = 2 !working
 					!Earnings evolution independent of choices.
 					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz,ij),it)
 					eprime = Hearn(it,ie,wagehere)
@@ -1517,86 +1667,71 @@ module sol_val
 						iee2 = ne
 					endif
 
-					!Restart at bottom of asset grid for each of the above (ai,d,e,z)
-					iaa1 = 1
 					!----------------------------------------------------------------
 					!Loop over current state: assets
+					!----------------------------------------------------------------
+
+					ia = 1
+					iaa0 = 1
+					iaaA = na
+					call maxVW(ij,ibi,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
+						& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
+					V	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+					VW	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
+					gwork	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
+					gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
+					aW	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+
+					ia = na
+					iaa0 = aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,1,iz,it)
+					iaaA = na
+					call maxVW(ij,ibi,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
+						& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
+					V	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+					VW	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
+					gwork	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
+					gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
+					aW	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+
+					iaa_k = 1
+					aa_l(iaa_k) = 1
+					aa_u(iaa_k) = na
+
+					outerVW: do
+						do
+							if(aa_u(iaa_k) == aa_l(iaa_k)+1) exit
+							iaa_k = iaa_k+1
+							aa_l(iaa_k) = aa_l(iaa_k-1)
+							aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
+							!search given ia from iaa0 to iaaA
+							ia = aa_u(iaa_k)
+							iaa0 = aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_l(iaa_k-1)  ,iz,it)
+							iaaA = aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_u(iaa_k-1)  ,iz,it)
+							call maxVW(ij,ibi,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
+								& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
+							V	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+							VW	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
+							gwork	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
+							gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)= gwdif
+							aW	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+
+						enddo
+						do
+							if(iaa_k==1) exit outerVW
+							if( aa_u(iaa_k)/= aa_u(iaa_k - 1) ) exit
+							iaa_k = iaa_k -1
+						end do
+						aa_l(iaa_k) = aa_u(iaa_k)
+						aa_u(iaa_k) = aa_u(iaa_k-1)
+					end do outerVW
+					
+					summer = sum((V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
+						& - V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
+
 					do ia=1,na
-						Vtest1= -1.e5 ! just to initialize, does not matter
-						!Find saving Policy
-						iaa = iaa1 
-						do while (iaa <= na)
-							!Continuation value if don't go on disability
-							chere = wagehere+R*agrid(ia)-agrid(iaa)
-							if (chere >0.) then
-								Vc1 = 0.
-								do izz = 1,nz	 !Loop over z'
-								do iaai = 1,nal !Loop over alpha_i'
-									!Linearly interpolating on e'
-									yL = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee1,iaa,izz,it+1) & 
-										& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee1,iaa,izz,it)
-									yH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it+1) & 
-										& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it)
-									Vc1 = piz(iz,izz)*pialf(ial,iaai) &
-										& * (yH*(1. - iee1wt) + yL*iee1wt )&
-										& + Vc1
-								enddo
-								enddo
-								utilhere = util(chere,id,iw)
-								Vtest2 = utilhere + beta*Vc1 ! flow utility
-
-								if (Vtest2>Vtest1 .or. iaa .eq. iaa1 ) then  !always replace on the first, or best
-									Vtest1 = Vtest2
-									apol = iaa
-								elseif(iaa>apol+iaa_hiwindow) then
-									exit
-								elseif( (Vtest2 < Vtest1) .and. (iaa <= iaa1+1) .and. (iaa1 > 1)) then 
-								!if the second and it's going down, then back up
-									iaa = 1
-									iaa1 =1
-								endif
-							elseif(iaa == iaa1 .and. Vtest1<=-5e4 .and. apol == iaa1 ) then
-								!back it up because started with unfeasible savings / negative consumption
-								iaa = 1
-								iaa1 =1
-							else 
-								exit
-							endif
-							iaa = iaa+1
-						enddo	!iaa
-						iaa1 = max(iaa -iaa_lowindow,1)	!concave? start next loop here
-						VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-						aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
-
-
-						!------------------------------------------------!
-						!Calculate V with solved vals of VW and VU -- i.e. can quit into unemployment
-						!------------------------------------------------!
-						VUhere = VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
-						VWhere = VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
-
-						if (VWhere>VUhere) then
-							gwork((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = 1
-						else
-							gwork((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = 0
-						endif
-						smthV = dexp( smthV0param *VWhere  ) &
-							& /( dexp(smthV0param * VWhere) + dexp(smthV0param * VUhere ) )
-						if (smthV <1e-5 .or. smthV>.999999 .or. isnan(smthV) ) then
-							if(VWhere > VUhere)	smthV = 1. 
-							if(VWhere < VUhere)	smthV = 0. 							
-						endif
-						V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = smthV*VWhere &
-								& + (1.-smthV)*VUhere
-
-						gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere - VUhere
-						
-						summer = summer+ & 
-							& (V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)-V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it))**2
-						
 						maxer(ia,iz,ie,id,ial) = (V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)-V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it))**2
-
-					enddo !ia
+					enddo
+					
 !				enddo !iz  enddo !ie   	enddo !id  	enddo !ial
 				enddo
 			!$OMP  END PARALLEL do
@@ -1604,19 +1739,21 @@ module sol_val
 				maxer_v = maxval(maxer)
 				maxer_i = maxloc(maxer)
 
-			  	!update VW0
+			  	!update VW0, V0
 			  	do ial=1,nal	!Loop over alpha (ai)
 				do id=1,nd	!Loop over disability index
 			  	do ie=1,ne	!Loop over earnings index
 			  	do iz=1,nz	!Loop over TFP
 				do ia =1,na
 					VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+					V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
 				enddo !ia		  	
 				enddo !ial
 			  	enddo !id
 			  	enddo !ie
 			  	enddo !iz
 
+			  				  	
 				if (print_lev >2) then
 					wo = 0
 					do ial=1,nal	!Loop over alpha (ai)
@@ -1634,18 +1771,6 @@ module sol_val
 				endif
 
 
-			  	!update V0
-			  	do ial=1,nal	!Loop over alpha (ai)
-				do id=1,nd	!Loop over disability index
-			  	do ie=1,ne	!Loop over earnings index
-			  	do iz=1,nz	!Loop over TFP
-				do ia =1,na
-					V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
-				enddo !ia		  	
-				enddo !ial
-			  	enddo !id
-			  	enddo !ie
-			  	enddo !iz
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2702,7 +2827,7 @@ program V0main
 	narg_in = iargc()
 
 	verbose = 3
-	print_lev = 2
+	print_lev = 4
 
 
 	call setparams()
