@@ -453,6 +453,7 @@ module helper_funs
 			if(verbose>0 ) print *, 'size of X and Y in regression not compatible'
 			status = 1
 		else 
+			XpX = 0.
 			call dgemm('T', 'N', nK, nK, nX, 1., XX, nX, XX, nX, 0., XpX, nK)
 			XpX_fac = XpX
 			call dpotrf('U',Nk,XpX_fac,Nk,status)
@@ -468,6 +469,7 @@ module helper_funs
 		if(status == 0) then 
 			XpX_inv = XpX_fac
 			call dpotri('U',nK,XpX_inv,nK,status)
+			fitted = 0.
 			call dgemv('N', nX, nK, 1., XX, nX, coefs, 1, 0., fitted, 1)
 			resids = Y - fitted
 			s2 = 0.
@@ -558,11 +560,11 @@ module model_data
 					enddo
 					do ij = 1,nj
 						if(hists_sim%j_i(i) == ij )  then
-							if(it<=Tsim - yr_stride .and. it>= yr_stride) then
+							if(it<=Tsim - yr_stride .and. it>= yr_stride+1) then
 								obsX_vars(Nobs, (TT-1)+(nd-1)*2+1) = (hists_sim%occsize_jt(ij,it+yr_stride) - hists_sim%occsize_jt(ij,it-yr_stride)) &
 													& /(hists_sim%occsize_jt(ij,it))
 							endif
-							if(it<=Tsim - 2*yr_stride .and. it>= 2*yr_stride) then
+							if(it<=Tsim - 2*yr_stride .and. it>= 2*yr_stride+1) then
 								obsX_vars(Nobs, (TT-1)+(nd-1)*2+2) = hists_sim%occsize_jt(ij,it+2*yr_stride) - hists_sim%occsize_jt(ij,it-2*yr_stride) &
 													& /(hists_sim%occsize_jt(ij,it))
 							endif
@@ -658,7 +660,7 @@ module model_data
 					do it = 1,TT-1
 						if(age_hr == it) then
 							if(hists_sim%status_hist(si,st) == 1) totW(it) = totW(it) + 1
-							if(hists_sim%status_hist(si,st) <= 3) &
+							if(hists_sim%status_hist(si,st) < 3) &
 							&	workdif_age(it) = workdif_age(it) + hists_sim%work_dif_hist(si,st)
 
 							if(hists_sim%status_hist(si,st) == 4) then
@@ -689,13 +691,13 @@ module model_data
 					do ial = 1,nal
 						if( hists_sim%al_hist(si,st) < alfgrid(ial)+2*epsilon(1.) &
 						&	.and. hists_sim%al_hist(si,st) > alfgrid(ial)-2*epsilon(1.)) then
-							if(hists_sim%status_hist(si,st) <=3) then
+							if(hists_sim%status_hist(si,st) <3) then
 								!work choice:
 								alworkdif(ial) = alworkdif(ial) + hists_sim%work_dif_hist(si,st)
 								total(ial) = total(ial) + 1
 							endif
 							if(hists_sim%status_hist(si,st) == 3) then
-								alappdif(ial) = alappdif(ial) + hists_sim%work_dif_hist(si,st)
+								alappdif(ial) = alappdif(ial) + hists_sim%app_dif_hist(si,st)
 								tot3al(ial) = tot3al(ial) + 1
 							endif
 							if(hists_sim%status_hist(si,st) == 4) &
@@ -993,10 +995,11 @@ module sol_val
 		real(8), intent(out) :: Vout, VWout
 		real(8), intent(in) :: VU(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
 		real(8) :: Vc1,utilhere,chere,Vtest1,Vtest2,VWhere,VUhere,smthV, yL, yH
-		integer :: iw, iaa,iaai,izz,aapp,aNapp
+		integer :: iw, iaa,iaai,izz
 
 		iw = 2 ! working
 		Vtest1= -1.e6 ! just to initialize, does not matter
+		apol = iaa0
 		!Find saving Policy
 		do iaa=iaa0,iaaA
 			!Continuation value if don't go on disability
@@ -1067,18 +1070,18 @@ module sol_val
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: i, j, ia, ie, id, it, iaa,iaa1, iaa1app,ga,gw, anapp,aapp, apol, ibi, ial, ij , idi, izz, iaai,  &
-			    iee1, iee2, iz, iw,wo, iter,npara,ipara
+		integer  :: i, j, ia, ie, id, it, ga,gw, anapp,aapp, apol, ibi, ial, ij , idi,  &
+			    iee1, iee2, iz, iw,wo, iter,npara,ipara, iaa_k,iaa0,iaaA,iaN
 		integer, dimension(5) :: maxer_i
 
-		integer :: aa_l(na), aa_u(na), iaa_k,iaa0,iaaA
+		integer :: aa_l(na), aa_u(na), ia_o(na),aa_m(na)
 
 		logical :: ptrsucces
 		!************************************************************************************************!
 		! Value Functions- Stack z-risk j and indiv. exposure beta_i
 		!************************************************************************************************!
-		real(8)  	  	:: Vtest1, Vtest2, utilhere, Vapp, Vc1, Vnapp, maxer_v, smthV,smthV0param, &
-					&	iee1wt, maxVNV0,gadif,gwdif
+		real(8)  	  	:: Vtest1, maxer_v, smthV,smthV0param, wagehere, iee1wt, gadif,gwdif
+		
 		real(8), allocatable	:: maxer(:,:,:,:,:)
 		real(8), allocatable :: VR0(:,:,:), &			!Retirement
 					VD0(:,:,:,:), &			!Disabled
@@ -1104,7 +1107,7 @@ module sol_val
 		!************************************************************************************************!
 		! Other
 		!************************************************************************************************!
-			real(8)	:: wagehere,chere, junk,summer, eprime, yL, yH, emin, emax, VUhere, VWhere
+			real(8)	:: junk,summer, eprime, emin, emax, VWhere, V_m(na)
 		!************************************************************************************************!
 		
 		!************************************************************************************************!
@@ -1172,20 +1175,26 @@ module sol_val
 			summer = 0
 			id =1
 		  	do ie=1,ne
-				
+
+				iaN =0
 				ia = 1
 				iaa0 = 1
 				iaaA = na
 				call maxVR(id,ie,ia, VR0, iaa0, iaaA, apol,Vtest1)
 				VR(id,ie,ia) = Vtest1
 				aR(id,ie,ia) = apol !agrid(apol)
-
+				iaN = iaN+1
+				ia_o(iaN) = ia
+					
 				ia = na
 				iaa0 = aR(id,ie,1)
 				iaaA = na
 				call maxVR(id,ie,ia, VR0, iaa0, iaaA, apol,Vtest1)
 				VR(id,ie,ia) = Vtest1
 				aR(id,ie,ia) = apol !agrid(apol)
+				iaN = iaN+1
+				ia_o(iaN) = ia
+					
 
 				iaa_k = 1
 				aa_l(iaa_k) = 1
@@ -1205,7 +1214,10 @@ module sol_val
 						iaaA = aR(id,ie, aa_u(iaa_k-1) )
 						call maxVR(id,ie,ia, VR0, iaa0, iaaA, apol,Vtest1)
 						VR(id,ie,ia) = Vtest1
-						aR(id,ie,ia) = apol 
+						aR(id,ie,ia) = apol
+						iaN = iaN+1
+						ia_o(iaN) = ia
+					
 					enddo
 					! Move to a higher interval or stop (step 3 of Gordon & Qiu)
 					do
@@ -1293,13 +1305,16 @@ module sol_val
 					do while (iter<=maxiter)
 						summer = 0
 
-
+						iaN = 0
 						ia = 1
 						iaa0 = 1
 						iaaA = na
 						call maxVD(id,ie,ia,it, VD0, iaa0, iaaA, apol,Vtest1)
 						VD(id,ie,ia,it) = Vtest1
 						aD(id,ie,ia,it) = apol !agrid(apol)
+						iaN = iaN+1
+						ia_o(iaN) = ia
+					
 
 						ia = na
 						iaa0 = aD(id,ie,1,it)
@@ -1307,7 +1322,10 @@ module sol_val
 						call maxVD(id,ie,ia,it, VD0, iaa0, iaaA, apol,Vtest1)
 						VD(id,ie,ia,it) = Vtest1
 						aD(id,ie,ia,it) = apol !agrid(apol)
+						iaN = iaN+1
+						ia_o(iaN) = ia
 
+					
 						iaa_k = 1
 						aa_l(iaa_k) = 1
 						aa_u(iaa_k) = na
@@ -1326,7 +1344,10 @@ module sol_val
 								iaaA = aD(id,ie, aa_u(iaa_k-1),it)
 								call maxVD(id,ie,ia,it, VD0, iaa0, iaaA, apol,Vtest1)
 								VD(id,ie,ia,it) = Vtest1
-								aD(id,ie,ia,it) = apol 
+								aD(id,ie,ia,it) = apol
+								iaN = iaN+1
+								ia_o(iaN) = ia
+					
 							enddo
 							! Move to a higher interval or stop (step 3 of Gordon & Qiu)
 							do
@@ -1440,9 +1461,10 @@ module sol_val
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!
 			summer = 0.
+			wo = 0
 			npara = nal*nd*ne*nz
-			!$OMP  parallel do default(shared) reduction(+:summer)&
-			!$OMP& private(ial,id,ie,iz,iw,apol,iaa0,iaaA,ia,iaa,ipara,Vtest1,aa_l,aa_u,iaa_k)
+			!$OMP  parallel do reduction(+:summer)&
+			!$OMP& private(ial,id,ie,iz,iw,apol,iaa0,iaaA,ia,ipara,Vtest1,aa_m,V_m,aa_l,aa_u,iaa_k,iaN,ia_o)
 			  	do ipara = 1,npara
 					iz = mod(ipara-1,nz)+1
 					ie = mod(ipara-1,nz*ne)/nz + 1
@@ -1450,19 +1472,25 @@ module sol_val
 					ial= mod(ipara-1,nz*ne*nd*nal)/(nz*ne*nd)+1
 
 					! search over ia
+						iaN =0
 						ia = 1
 						iaa0 = 1
 						iaaA = na
 						call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vtest1)
-						VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-						aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
-
+						V_m(ia) = Vtest1
+						aa_m(ia) = apol !agrid(apol)
+						iaN = iaN+1
+						ia_o(iaN) = ia
+					
 						ia = na
-						iaa0 = aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,1,iz,it)
+						iaa0 = aa_m(1)
 						iaaA = na
 						call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vtest1)
-						VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-						aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
+						V_m(ia) = Vtest1
+						aa_m(ia) = apol !agrid(apol)
+						iaN = iaN+1
+						ia_o(iaN) = ia
+					
 
 						iaa_k = 1
 						aa_l(iaa_k) = 1
@@ -1478,12 +1506,14 @@ module sol_val
 								aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
 								!search given ia from iaa0 to iaaA
 								ia = aa_u(iaa_k)
-								iaa0 = aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_l(iaa_k-1)  ,iz,it)
-								iaaA = aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_u(iaa_k-1)  ,iz,it)
+								iaa0 = aa_m( aa_l(iaa_k-1) )
+								iaaA = aa_m( aa_u(iaa_k-1) )
 								call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vtest1)
-								VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-								aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
-
+								V_m(ia) = Vtest1
+								aa_m(ia) = apol !agrid(apol)
+								iaN = iaN+1
+								ia_o(iaN) = ia
+					
 							enddo
 							! Move to a higher interval or stop (step 3 of Gordon & Qiu)
 							do
@@ -1495,11 +1525,21 @@ module sol_val
 							aa_l(iaa_k) = aa_u(iaa_k)
 							aa_u(iaa_k) = aa_u(iaa_k-1)
 						end do outerVU
+						
+						aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) = aa_m
+						VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) = V_m
+							
 						if((iz>nz .or. ie>ne .or. id>nd .or. ial>nal) .and. verbose > 2) then
 							print *, "ipara is not working right", iz,ie,id,ial
 						endif
-						summer = sum( (VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
+						Vtest1 = sum( (VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
 							& - VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
+						summer = Vtest1 + summer
+						if(print_lev >3) then
+							call veci2csv(ia_o,"ia_o_VU.csv",wo)
+							if(wo == 0) wo =1
+						endif
+						
 				enddo !ipara
 			!$OMP END PARALLEL do
 				!update VU0
@@ -1534,9 +1574,11 @@ module sol_val
 			!Solve VN given guesses on VW, VN, and implied V
 			!------------------------------------------------! 
 			summer = 0.
+			wo = 0
+			aa_u = 0
 			npara = nal*nd*ne*nz
-			!$OMP  parallel do default(shared) reduction(+:summer)&
-			!$OMP& private(ipara,ial,id,ie,iz,apol,ga,gadif,ia,iaa,iaa0,iaaA,iaa_k,aa_l,aa_u,Vtest1) 
+			!$OMP  parallel do reduction(+:summer)&
+			!$OMP& private(ipara,ial,id,ie,iz,apol,ga,gadif,ia,iaa0,iaaA,iaa_k,aa_l,aa_u,aa_m,V_m,Vtest1,iaN,ia_o) 
 			  	do ipara = 1,npara
 					iz = mod(ipara-1,nz)+1
 					ie = mod(ipara-1,nz*ne)/nz + 1
@@ -1545,23 +1587,30 @@ module sol_val
 
 					!----------------------------------------------------------------
 					!Loop over current state: assets
+					iaN=0
 					ia = 1
 					iaa0 = 1
 					iaaA = na
 					call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0,iaa0,iaaA,apol,ga,gadif,Vtest1)
-					aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
-					VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+					aa_m(ia) = apol
+					V_m(ia) = Vtest1
 					gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
 					gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
+					iaN = iaN+1
+					ia_o(iaN) = ia
+					
 
 					ia = na
-					iaa0 = aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,1,iz,it)
+					iaa0 = aa_m(1)
 					iaaA = na
 					call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0, iaa0,iaaA,apol,ga,gadif,Vtest1)
-					VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-					aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
+					V_m(ia) = Vtest1
+					aa_m(ia) = apol !agrid(apol)
 					gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
 					gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
+					iaN = iaN+1
+					ia_o(iaN) = ia
+					
 
 					iaa_k = 1
 					aa_l(iaa_k) = 1
@@ -1575,13 +1624,16 @@ module sol_val
 							aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
 							!search given ia from iaa0 to iaaA
 							ia = aa_u(iaa_k)
-							iaa0 = aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_l(iaa_k-1)  ,iz,it)
-							iaaA = aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,  aa_u(iaa_k-1)  ,iz,it)
+							iaa0 = aa_m( aa_l(iaa_k-1) )
+							iaaA = aa_m( aa_u(iaa_k-1) )
 							call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,VD0,V0, iaa0,iaaA,apol,ga,gadif,Vtest1)
-							VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-							aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol !agrid(apol)
+							V_m(ia) = Vtest1
+							aa_m(ia) = apol !agrid(apol)
 							gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
 							gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
+							iaN = iaN+1
+							ia_o(iaN) = ia
+					
 
 						enddo
 						do
@@ -1592,9 +1644,17 @@ module sol_val
 						aa_l(iaa_k) = aa_u(iaa_k)
 						aa_u(iaa_k) = aa_u(iaa_k-1)
 					end do outerVN
+
+					aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) = aa_m
+					VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) = V_m
 					
-					summer = sum((VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
+					Vtest1 = sum((VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
 						& - VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
+					summer = Vtest1 + summer
+					if(print_lev >3) then
+						call veci2csv(ia_o,"ia_o_VN.csv", wo)
+						if(wo == 0) wo = 1
+					endif
 				enddo !ipara
 			!$OMP END PARALLEL do
 			
@@ -1637,9 +1697,10 @@ module sol_val
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
 			summer = 0.
+			wo = 0
 			npara = nal*nd*ne*nz
-			!$OMP   parallel do default(shared) reduction(+:summer) &
-			!$OMP & private(ipara,ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,aa_l,aa_u,iaa_k,Vtest1,VWhere,gwdif,gw) 
+			!$OMP   parallel do reduction(+:summer) &
+			!$OMP & private(ipara,ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa0,iaaA,aa_l,aa_u,iaa_k,ia_o,iaN,Vtest1,VWhere,gwdif,gw) 
 			  	do ipara = 1,npara
 					iz = mod(ipara-1,nz)+1
 					ie = mod(ipara-1,nz*ne)/nz + 1
@@ -1670,7 +1731,7 @@ module sol_val
 					!----------------------------------------------------------------
 					!Loop over current state: assets
 					!----------------------------------------------------------------
-
+					iaN = 0
 					ia = 1
 					iaa0 = 1
 					iaaA = na
@@ -1681,6 +1742,9 @@ module sol_val
 					gwork	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
 					gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
 					aW	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+					iaN = iaN+1
+					ia_o(iaN) = ia
+					
 
 					ia = na
 					iaa0 = aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,1,iz,it)
@@ -1692,7 +1756,9 @@ module sol_val
 					gwork	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
 					gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
 					aW	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
-
+					iaN = iaN+1
+					ia_o(iaN) = ia
+					
 					iaa_k = 1
 					aa_l(iaa_k) = 1
 					aa_u(iaa_k) = na
@@ -1714,7 +1780,8 @@ module sol_val
 							gwork	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
 							gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)= gwdif
 							aW	((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
-
+							iaN = iaN+1
+							ia_o(iaN) = ia
 						enddo
 						do
 							if(iaa_k==1) exit outerVW
@@ -1725,13 +1792,18 @@ module sol_val
 						aa_u(iaa_k) = aa_u(iaa_k-1)
 					end do outerVW
 					
-					summer = sum((V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
+					Vtest1 = sum((V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it) &
 						& - V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
+
+					summer = Vtest1	+ summer
 
 					do ia=1,na
 						maxer(ia,iz,ie,id,ial) = (V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)-V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it))**2
 					enddo
-					
+					if(print_lev >3) then
+						call veci2csv(ia_o,"ia_o_VW.csv", wo)
+						if(wo == 0) wo = 1
+					endif
 !				enddo !iz  enddo !ie   	enddo !id  	enddo !ial
 				enddo
 			!$OMP  END PARALLEL do
@@ -2302,7 +2374,7 @@ module sim_hists
 		occgrow_jt => hst%occgrow_jt
 		occshrink_jt => hst%occshrink_jt
 		occsize_jt => hst%occsize_jt
-		
+
 		ptrsuccess = associated(d_it,hst%d_hist)
 		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate d_it"
 		ptrsuccess = associated(age_it,hst%age_hist)
@@ -2311,6 +2383,9 @@ module sim_hists
 		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate V"
 		
 		Tret = (Longev - youngD - oldD*oldN)*tlen
+		work_dif_it = 0.
+		app_dif_it = 0.
+
 
 		seed0 = 941987
 		seed1 = 12281951
@@ -2397,8 +2472,24 @@ module sim_hists
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,iter_draws
 		if(verbose >3) print *, "iter: ", iter
-			!$OMP  parallel do default(shared) &
-			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,drawi,drawt,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,ep_hr, &
+			it = 1
+			do i =1,Nsim
+				!need to draw these from age-specific distributions for iterations > 1
+				if(iter>1 .and. age_it(i,it)  > 0 ) then
+					drawi = drawi_ititer(i,1)!iter-1
+					drawt = drawt_ititer(i,1)!iter-1
+					
+!					status_it(i,it) = status_it(drawi,drawt)
+					d_it(i,it) = d_it(drawi,drawt)
+					a_it(i,it) = a_it(drawi,drawt)
+					e_it(i,it) = e_it(drawi,drawt)
+					e_it_int(i,it) = e_it_int(drawi,drawt)
+					a_it_int(i,it) = a_it_int(drawi,drawt)
+				endif
+			enddo
+			
+			!$OMP  parallel do &
+			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,ep_hr, &
 			!$OMP& ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
@@ -2412,19 +2503,6 @@ module sim_hists
 				it_old = 1
 				status_hr = 1
 				status_it(i,it) = 1 !always start working or rest unemployed (will choose that later)
-
-				!need to draw these from age-specific distributions for iterations > 1
-				if(iter>1 .and. age_it(i,it)  > 0 ) then
-					drawi = drawi_ititer(i,1)!iter-1
-					drawt = drawt_ititer(i,1)!iter-1
-					
-!					status_it(i,it) = status_it(drawi,drawt)
-					d_it(i,it) = d_it(drawi,drawt)
-					a_it(i,it) = a_it(drawi,drawt)
-					e_it(i,it) = e_it(drawi,drawt)
-					e_it_int(i,it) = e_it_int(drawi,drawt)
-					a_it_int(i,it) = a_it_int(drawi,drawt)
-				endif
 
 				
 				do it=1,Tsim
@@ -2827,7 +2905,7 @@ program V0main
 	narg_in = iargc()
 
 	verbose = 3
-	print_lev = 4
+	print_lev = 2
 
 
 	call setparams()

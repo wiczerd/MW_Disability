@@ -76,7 +76,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			ne  = 2, &!10		!Points on earnings grid
 			na  = 50, &!200		!Points on assets grid
 			nz  = 6,  &		!Number of Occ TFP Shocks (MUST BE multiple of 2)
-			maxiter = 2000, &!2000	!Tolerance parameter	
+			maxiter = 2, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 2000, &!		!how many agents to draw
@@ -371,8 +371,8 @@ subroutine settfp()
 		do i=1,nz/2
 			zgrid(i,j) = zmu - 1.5*zsigt + dble(i-1)/dble(nz/2 -1)*(3.*zsigt)
 		enddo
-		do i=nz/2+1,nz
-			zgrid(i,j) = zscale(j) + zgrid(i,j)
+		do i=(nz/2+1),nz
+			zgrid(i,j) = zscale(j) + zgrid(i-nz/2,j)
 		enddo
 	enddo
 	! set up the transition probabilities
