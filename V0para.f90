@@ -71,18 +71,18 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		!Number of indiVidual beta types
 			ndi = 1,  &!3		!Number of individual disability risk types
-			nj  = 3,  &		!Number of occupations (downward TFP risk variation)
+			nj  = 1,  &		!Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		!Number of disability extents
-			ne  = 2, &!10		!Points on earnings grid
-			na  = 50, &!200		!Points on assets grid
+			ne  = 3, &!10		!Points on earnings grid
+			na  = 5, &!100		!Points on assets grid
 			nz  = 6,  &		!Number of Occ TFP Shocks (MUST BE multiple of 2)
-			maxiter = 2, &!2000	!Tolerance parameter	
+			maxiter = 200, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 2000, &!		!how many agents to draw
 			Ndat = 5000, & 		!size of data, for estimation
 			Tsim = int(tlen*Longev)+1, &	!how many periods to solve for simulation
-			Nk   = TT-1+(nd-1)*2+2	!number of regressors - each age, each health and leading, occupation dynamics
+			Nk   = TT+(nd-1)*2+2	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
@@ -115,8 +115,9 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		pialf(nal,nal),&	!Alpha_i transition matrix
 		piz(nz,nz),&		!TFP transition matrix
 		pid(nd,nd,ndi,TT-1),&	!Disability transition matrix
-		prob_t(TT), &		!Probability of being in each age group to start
+		prob_age(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
+		hazborn_t(Tsim), &	!hazard of being born at each point t
 		Njdist(nj)		!Fraction in each occupation
 		
 integer :: 	dgrid(nd), &		! just enumerate the d states
@@ -175,6 +176,7 @@ subroutine setparams()
 		  node, nodei,nodek,nodemidH,nodemidL, alfcondsig
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
+	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim)
 
 	!Individual- Specific Things
 	!Individual exposure to TFP shocks (beta)
@@ -187,8 +189,8 @@ subroutine setparams()
 	emax = alfmu+2*alfsig
 	alfcondsig = alfsig*(1-alfrho**2)**0.5
 	do i=2,nal
-		k = nal-i+1
-		node = cos(pival*dble(2*k-1)/dble(2.*nal))
+		k = nal-i +(-1 +1)
+		node = cos(pival*dble(2*k-1)/dble(2*(nal-1)))
 		alfgrid(i) = ((node+1.)/2.)*(emax-emin)+emin
 	enddo
 	do i=2,nal
@@ -238,42 +240,60 @@ subroutine setparams()
 
 	! age grid building
 	agegrid(1) = youngD/2
-	do t = 2,TT-1
-		agegrid(t) = youngD + oldD*(t-2) + oldD/2
+	do i = 2,TT-1
+		agegrid(i) = youngD + oldD*(i-2) + oldD/2
 	enddo
 	agegrid(TT) = Longev/2 - (youngD + oldD*oldN) /2 + (youngD + oldD*oldN)
 
 	!Wage Bonus 0.0373076,-0.0007414
-	wtau(1) = ageW*agegrid(1)+ageW2*agegrid(1)**2			     !Young
-	do t=2,TT-1							
-		wtau(t) = ageW*agegrid(t)+ageW2*agegrid(t)**2 !Old
+	do i=1,TT-1							
+		wtau(i) = ageW*agegrid(i)+ageW2*agegrid(i)**2 !Old
 	enddo
 
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
-	ptau(1) = 1-(tlen*youngD+1)**(-1)
+	ptau(1) = 1-(tlen*youngD)**(-1)
 
-	do t=2,TT-1
-		ptau(t) = 1-(tlen*oldD+1)**(-1)
+	do i=2,TT-1
+		ptau(i) = 1-(tlen*oldD)**(-1)
 	enddo
-	ptau(TT) = 1-((Longev-youngD+oldN*oldD)*tlen-1)**(-1)
+	! rate exit retirement (only one way to go.... down)
+	ptau(TT) = 1-((Longev-(youngD+oldN*oldD))*tlen)**(-1)
 
 	!initial age structure
-	prob_t(1) = youngD/Longev
-	do t=2,TT-1
-		prob_t(t) = oldD/(Longev - 25.)
+	prob_age(1) = youngD/Longev
+	do i=2,TT-1
+		prob_age(i) = oldD/Longev
 	enddo
-	prob_t(TT) = 1.-sum(prob_t)
+	prob_age(TT) = (Longev- (youngD+oldN*oldD))/Longev
+	prob_age = prob_age/sum(prob_age) !just to be sure
+	pop_size(1) = sum(prob_age(1:TT-1))
+	!evolution of age-structure
+	prob_age_tsim(:,1) = prob_age
+	cumprnborn_t = 1.
 	!prob of getting born
 	do t=2,Tsim
-		prborn_t(t) = 0.01/tlen !1% population growth per year
+		i=1
+		prborn_t(t) = prob_age_tsim(TT-1,t-1)*(1.-ptau(TT-1)) !keeps const labor force.  Otherwise =>0.01/tlen 1% population growth per year
+		prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prborn_t(t)
+		do i = 2,TT
+			prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prob_age_tsim(i-1,t-1)*(1.-ptau(i-1))
+		enddo
+		pop_size(t) = sum(prob_age_tsim(:,t)) !should always be 1
+		!prborn_t(t) = hazborn_t(t)*cumprnborn_t(t-1) !not actually hazard yet because not have initial prob
 	enddo
-	prborn_t(1) = 1. - sum(prborn_t(2:Tsim))
+	prborn_t(1) =  max(1.-sum(prborn_t(2:Tsim)),0.1) ! need to have some positive mass alive when the survey starts
+	cumprnborn_t(1) = prborn_t(1)
+	hazborn_t(1) = prborn_t(1)
+	do t=2,Tsim
+		hazborn_t(t) = prborn_t(t)/cumprnborn_t(t-1)
+		cumprnborn_t(t) = (1.-prborn_t(t))*cumprnborn_t(t-1)
+	enddo
 	
 	!Age-related disability risk
 	dtau(1) = 0.5	!Young's Risk
-	do t=2,TT-1
-		dtau(t) = dexp(ageD*t*oldD)	!Old (exponential)
+	do i=2,TT-1
+		dtau(i) = dexp(ageD*dble(i)*oldD)	!Old (exponential)
 	enddo
 
 	!Disability Extent-Specific Things
@@ -306,15 +326,15 @@ subroutine setparams()
 		xi(3,5) = xi2O
 	endif
 	
-	!set alfgrid(1) now that everything else is known
-	alfgrid(1) = (beti(1)*minval(zgrid)+(alfgrid(2))+wtau(1)+wd(nd))/10
+	!set alfgrid(1) now that everything else is known, -1 just for good measure, so they really don't want to work
+	alfgrid(1) = (beti(1)*minval(zgrid)+(alfgrid(2))+wtau(1)+wd(nd))-1.
 
 	!Earnings Grid
 	!Make linear from lowest possible wage (disabled entrant, lowest types)
 	emin = dexp(beti(1)*minval(zgrid)+alfgrid(2)+wtau(1)+wd(nd))
 	!... to highest, maximizing over t
 	!wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
-	emax = dexp(beti(nbi)*maxval(zgrid)+maxval(alfgrid)+wtau(TT-1)+wd(1))
+	emax = dexp(beti(nbi)*maxval(zgrid)+maxval(alfgrid)+maxval(wtau)+wd(1))
 	step = (emax-emin)/dble(ne-1)
 	do i=1,ne
 		egrid(i) = emin+step*dble(i-1)
@@ -328,31 +348,31 @@ subroutine setparams()
 
 	!Make Markov transition matrices with all wierd invidual stuff
 	!Disability: pid(id,id';i,t) <---indv. type and age specific
-	do i=1,ndi
-	do t=1,TT-1
+	do j=1,ndi
+	do i=1,TT-1
 
-		pid(1,2,i,t) = 1.-(1.-pid1*dtau(t)*delgrid(i))&	!Partial Disability 
+		pid(1,2,j,i) = 1.-(1.-pid1*dtau(i)*delgrid(j))&	!Partial Disability 
 				& **(1./tlen)	
-		pid(1,1,i,t) = 1.-pid(1,2,i,t)			!Stay healthy
-		pid(1,3,i,t) = 0.				!Full Disability
-		pid(2,1,i,t) = 1.-(1.-pid0)**(1./tlen)		!revert
-		pid(2,3,i,t) = 1.-(1.-pid2*dtau(t)*delgrid(i))&	!Full Disability
+		pid(1,1,j,i) = 1.-pid(1,2,j,i)			!Stay healthy
+		pid(1,3,j,i) = 0.				!Full Disability
+		pid(2,1,j,i) = 1.-(1.-pid0)**(1./tlen)		!revert
+		pid(2,3,j,i) = 1.-(1.-pid2*dtau(i)*delgrid(j))&	!Full Disability
 					& **(1./tlen)	
-		pid(2,2,i,t) = 1.-pid(2,3,i,t)-pid(2,1,i,t)	!Stay Partial
-		pid(3,1,i,t) = 0.				!Full is absorbing State
-		pid(3,2,i,t) = 0.
-		pid(3,3,i,t) = 1.
+		pid(2,2,j,i) = 1.-pid(2,3,j,i)-pid(2,1,j,i)	!Stay Partial
+		pid(3,1,j,i) = 0.				!Full is absorbing State
+		pid(3,2,j,i) = 0.
+		pid(3,3,j,i) = 1.
 	enddo
 	enddo
 		
-	! Initial distribution of people across occupations
-	Njdist(1) = 0.5
-	if(nj>1) then
-		do j=2,nj
-			Njdist(j) = 0.5/dble(nj-1) 
-		enddo
-	endif
-	Njdist = Njdist/sum(Njdist)
+	! Initial distribution (just for debugging) of people across occupations
+	!Njdist(1) = 0.5
+	!if(nj>1) then
+	do j=1,nj
+		Njdist(j) = 1./dble(nj)
+	enddo
+	!endif
+	!Njdist = Njdist/sum(Njdist)
 
 end subroutine setparams
 

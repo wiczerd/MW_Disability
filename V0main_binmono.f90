@@ -509,14 +509,14 @@ module model_data
 			do ij =1,nj
 				emp_t((ij-1)*(Tsim-1) + it-1) = hists_sim%occsize_jt(ij,it)
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1) = hists_sim%occsize_jt(ij,it-1)
-				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1+ij) = dble(it)/tlen
+				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1+ij) = dble(it-1)/tlen
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,2+nj) = 1.
 			enddo
 		enddo
 
 		call OLS(emp_lagtimeconst,emp_t,moments_sim%ts_emp_coefs,moments_sim%ts_emp_cov_coefs, status)
 
-		if(print_lev >=3 ) call vec2csv(moments_sim%ts_emp_coefs,"ts_emp_coefs.csv")
+		if(print_lev >=2 ) call vec2csv(moments_sim%ts_emp_coefs,"ts_emp_coefs.csv")
 
 		deallocate(emp_lagtimeconst,emp_t)
 
@@ -530,7 +530,7 @@ module model_data
 		real(8), allocatable :: obsX_vars(:,:), work_dif_long(:)
 		integer :: i, ij,it,age_hr,id, status, nobs, yr_stride
 		real(8) :: colmean, colvar
-		logical :: badcoef(Nk)
+		logical :: badcoef(Nk) = .false.
 
 		allocate(obsX_vars(Tsim*Nsim,Nk))
 		allocate(work_dif_long(Tsim*Nsim))
@@ -574,18 +574,20 @@ module model_data
 				endif
 			enddo
 		enddo
+		! the constant
+		obsX_vars(:,Nk) = 1.
 		moments_sim%work_coefs = 0.
 
 		if(print_lev >=2 ) call mat2csv(obsX_vars,"obsX_vars.csv")
-		!check that I don't have rank < nk
+		!check that I don't have constants other than the constant rank < nk
 		status = 0
-		do ij=1,Nk
-			colmean = sum(obsX_vars(:,ij))/dble(Nsim*Tsim)
+		do ij=1,Nk-1
+			colmean = sum(obsX_vars(1:Nobs,ij))/dble(Nobs)
 			colvar = 0.
-			do i=1,Nsim*Tsim
+			do i=1,Nobs
 				colvar = (obsX_vars(i,ij) - colmean)**2 + colvar
 			enddo
-			colvar = colvar / dble(Nsim*Tsim)
+			colvar = colvar / dble(Nobs)
 			if(colvar < 1e-6) then
 				badcoef(ij) = .true.
 				status = status+1
@@ -595,15 +597,15 @@ module model_data
 				enddo
 			endif
 		enddo
-		if(verbose >=2) print *, "bad rows of obsX", status 
+		if(verbose >=2) print *, "bad cols of obsX", status 
 		call OLS(obsX_vars(1:Nobs,:),work_dif_long(1:Nobs),moments_sim%work_coefs,moments_sim%work_cov_coefs, status)
 
 		do ij = 1,Nk
 			if(badcoef(ij)) moments_sim%work_coefs(ij) = 0.
 		enddo
 
-		if(print_lev >=3 ) call vec2csv(moments_sim%work_coefs,"work_coefs.csv")
-		if(print_lev >=3 ) call mat2csv(moments_sim%work_cov_coefs,"work_cov_coefs.csv")
+		if(print_lev >=2 ) call vec2csv(moments_sim%work_coefs,"work_coefs.csv")
+		if(print_lev >=2 ) call mat2csv(moments_sim%work_cov_coefs,"work_cov_coefs.csv")
 
 		deallocate(obsX_vars,work_dif_long)
 		
@@ -668,8 +670,8 @@ module model_data
 								dD_age(it) = dD_age(it)+hists_sim%d_hist(si,st)
 								! associate this with its shock
 								do ial = 1,nal
-									if(  hists_sim%al_hist(si,st) < alfgrid(ial)+2*epsilon(1.) &
-									&	.and. hists_sim%al_hist(si,st) > alfgrid(ial)-2*epsilon(1.) &
+									if(  hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1.) &
+									&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1.) &
 									&	.and. hists_sim%status_hist(si,st) == 4 ) &
 									&  alD_age(ial,it) = 1. + alD_age(ial,it)
 								enddo
@@ -689,8 +691,8 @@ module model_data
 					
 					! disability and app choice by shock level
 					do ial = 1,nal
-						if( hists_sim%al_hist(si,st) < alfgrid(ial)+2*epsilon(1.) &
-						&	.and. hists_sim%al_hist(si,st) > alfgrid(ial)-2*epsilon(1.)) then
+						if( hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1.) &
+						&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1.)) then
 							if(hists_sim%status_hist(si,st) <3) then
 								!work choice:
 								alworkdif(ial) = alworkdif(ial) + hists_sim%work_dif_hist(si,st)
@@ -2152,7 +2154,7 @@ module sim_hists
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
 		real(8), dimension(TT) :: cumpi_t0
-		real(8), dimension(TT-1) :: prob_t_nTT
+		real(8), dimension(TT-1) :: prob_age_nTT
 		real(8) :: rand_age,rand_born
 		
 		call random_seed(size = ss)
@@ -2161,12 +2163,12 @@ module sim_hists
 
 		!set up cumulative probabilities for t0 and conditional draws
 		!not begining with anyone from TT
-		forall(it=1:TT-1) prob_t_nTT(it) = prob_t(it)/(1-prob_t(TT))
+		forall(it=1:TT-1) prob_age_nTT(it) = prob_age(it)/(1-prob_age(TT))
 		cumpi_t0 = 0.
 		it = 1
-		cumpi_t0(it+1) = prob_t_nTT(it)
+		cumpi_t0(it+1) = prob_age_nTT(it)
 		do it=2,TT-1
-			cumpi_t0(it+1) = prob_t_nTT(it) + cumpi_t0(it)
+			cumpi_t0(it+1) = prob_age_nTT(it) + cumpi_t0(it)
 		enddo
 		
 		born_it = 0
@@ -2702,7 +2704,7 @@ module sim_hists
 			!$OMP  end parallel do 
 
 			
-			if(print_lev > 2)then
+			if(print_lev >=3)then
 				call mat2csv (e_it,"e_it.csv")
 				call mat2csv (a_it,"a_it.csv")
 				call mati2csv(a_it_int,"a_it_int.csv")
@@ -2772,7 +2774,7 @@ module sim_hists
 			occgrow_jt(ij,it) = 0.
 			occshrink_jt(ij,it) = 0.
 			do i=1,Nsim
-				if(j_i(i) == ij .and. age_it(i,it) >= 1) occsize_jt(ij,it) = 1.+occsize_jt(ij,it)
+				if(j_i(i) == ij .and. age_it(i,it) >= 1 .and. status_it(i,it)== 1) occsize_jt(ij,it) = 1.+occsize_jt(ij,it)
 				if( age_it(i,it) >= 1 ) Nworkt = 1. + Nworkt
 			enddo
 			occsize_jt(ij,it) = occsize_jt(ij,it) / Nworkt
@@ -2788,12 +2790,12 @@ module sim_hists
 					if(j_i(i) ==ij .and. born_it(i,it) == 1 ) &
 						& occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
 					if(j_i(i) ==ij .and. status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
-						& occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
+						& occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it) !wasn't working last period
 					if(j_i(i) ==ij .and. status_it(i,it-1) == 1 .and. status_it(i,it) > 1) &
 						& occshrink_jt(ij,it) = 1. + occshrink_jt(ij,it)
 					if(j_i(i) ==ij .and. status_it(i,it) == 1) &
 						& occsize_jt(ij,it) = 1. + occsize_jt(ij,it)
-					if(status_it(i,it) == 1) Nworkt = 1. + Nworkt
+					if(status_it(i,it) <= 3 .and. age_it(i,it) > 0 ) Nworkt = 1. + Nworkt !labor force in this period
 				enddo
 				occgrow_jt(ij,it) = occgrow_jt(ij,it)/occsize_jt(ij,it)
 				occshrink_jt(ij,it) = occshrink_jt(ij,it)/occsize_jt(ij,it)
