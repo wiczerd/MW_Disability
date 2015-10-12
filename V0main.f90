@@ -2216,7 +2216,7 @@ module sim_hists
 			bn_i = 0 ! initialize, not yet born
 			it = 1
 			call random_number(rand_born)
-			if(rand_born < prborn_t(1)) then 
+			if(rand_born < hazborn_t(1)) then 
 				born_it(i,it) = 0 ! no one is "born" in the first period
 				bn_i = 1
 				!draw an age
@@ -2229,7 +2229,7 @@ module sim_hists
 			do it=2,Tsim
 				if(age_it(i,it-1)<TT) then
 					call random_number(rand_born)
-					if(rand_born < prborn_t(it) .and. bn_i == 0 ) then
+					if(rand_born < hazborn_t(it) .and. bn_i == 0 ) then
 						age_it(i,it) =1
 						born_it(i,it) = 1
 						bn_i = 1
@@ -2497,7 +2497,9 @@ module sim_hists
 		a_it_int = 1
 		e_it = egrid(1)
 		e_it_int = 1
-!		status_it = 1
+		status_it = 1 ! just to initialize on the first round - everyone working age starts working
+		where(age_it>=TT) status_it = 5
+		where(age_it <=0) status_it = 0
 		
 		a_mean_liter = 0.
 		d_mean_liter = 0.
@@ -2532,7 +2534,9 @@ module sim_hists
 							exit
 						endif
 					ii=ii+1
-					if(ii> size(drawi_ititer) ) ii = 1 !should never happen
+					if(ii> size(drawi_ititer) ) then
+						ii = 1 !should never happen
+					endif
 					enddo
 				endif
 			enddo
@@ -2550,7 +2554,6 @@ module sim_hists
 				!initialize stuff
 				it = 1
 				it_old = 1
-				status_hr = status_it(i,it)
 				
 				do it=1,Tsim
 				if(age_it(i,it) > 0) then !they've been born 

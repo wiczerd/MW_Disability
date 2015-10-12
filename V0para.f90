@@ -81,7 +81,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 2000, &!		!how many agents to draw
 			Ndat = 5000, & 		!size of data, for estimation
-			Tsim = int(tlen*Longev)+1, &	!how many periods to solve for simulation
+			Tsim = int(tlen*(2010-1980)), &	!how many periods to solve for simulation
 			Nk   = TT+(nd-1)*2+2	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 
 
