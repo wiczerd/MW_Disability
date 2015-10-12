@@ -616,12 +616,13 @@ module model_data
 		type(moments_struct) 	:: moments_sim
 		type(hist_struct)	:: hists_sim
 	
-		integer :: i, ij,id,it,ial,st,si,age_hr
+		integer :: i, ij,id,it,ial,st,si,age_hr,status_hr
 		integer :: totage(TT),totD(TT),totW(TT),totst(Tsim),total(nal), tot3al(nal), &
 				& tot3age(TT-1)
 
 		real(8) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
-				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1)
+				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1), &
+				& status_Nt(5,Tsim)
 
 
 		if(hists_sim%alloced /= 0) then
@@ -647,17 +648,20 @@ module model_data
 		workdif_age 	= 0.
 		alworkdif	= 0.
 		alappdif	= 0.
+		status_Nt 	= 0.
 		
 		do si = 1,Nsim
 			do st = 1,Tsim
-				if(hists_sim%status_hist(si,st) >0 ) then
+				if(hists_sim%status_hist(si,st) >0 .and. hists_sim%age_hist(si,st) >0 ) then
 					age_hr = hists_sim%age_hist(si,st)
 					! savings and disability by time
-					if( hists_sim%age_hist(si,st) >0 ) then
-						totst(st) = totst(st) + 1
-						a_t(st) = hists_sim%a_hist(si,st) + a_t(st)
-						if(hists_sim%status_hist(si,st) == 4) dD_t(st) = dD_t(st)+hists_sim%d_hist(si,st)
-					endif
+					totst(st) = totst(st) + 1
+					a_t(st) = hists_sim%a_hist(si,st) + a_t(st)
+					status_hr = hists_sim%status_hist(si,st)
+					if(status_hr == 4) dD_t(st) = dD_t(st)+hists_sim%d_hist(si,st)
+					
+					status_Nt(status_hr,st) = 1. + status_Nt(status_hr,st)
+
 					! disability by age and age X shock
 					do it = 1,TT-1
 						if(age_hr == it) then
@@ -726,6 +730,8 @@ module model_data
 		forall(it=1:TT ) a_age(it) = a_age(it)/dble(totage(it))
 		forall(st=1:Tsim) a_t(st) = a_t(st)/dble(totst(st))
 
+		forall(st=1:Tsim) status_Nt(:,st)= status_Nt(:,st)/sum(status_Nt(:,st))
+
 		if(print_lev >= 2) then
 			call vec2csv(a_age,"a_age.csv")
 			call vec2csv(a_t,"a_t.csv")
@@ -735,6 +741,7 @@ module model_data
 			call vec2csv(workdif_age, "workdif_age.csv")
 			call vec2csv(alD,"alD.csv")
 			call mat2csv(alD_age,"alD_age.csv")
+			call mat2csv(status_Nt,"status_Nt.csv")
 		endif
 
 		call LPM_employment(hists_sim,moments_sim)
@@ -1419,6 +1426,37 @@ module sol_val
 	enddo
 
 
+	!initial guess for the value functions
+	do ij = 1,nj
+	! And betas
+	do ibi = 1,nbi 
+	! And individual disability type
+	do idi = 1,ndi
+	!************************************************************************************************!
+	do it=TT-1,1,-1
+		!----Initialize---!
+		do ial=1,nal
+		do id =1,nd
+		do ie =1,ne
+		do iz =1,nz
+		do ia =1,na
+			
+		!Guess once, then use next period same occupation/beta as guess
+		! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
+			VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+			VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+			VN0((ij-1)*nbi+ibi,(idi-1)*nal +ial,id,ie,ia,iz,it) = VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+			V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)= VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+
+		enddo	!ia
+		enddo	!iz
+		enddo	!ie
+		enddo 	!id
+		enddo	!ial   
+	enddo
+	enddo
+	enddo
+	enddo
 	
 	! Begin loop over occupations
 		do ij = 1,nj
@@ -2229,34 +2267,36 @@ module sim_hists
 		integer,intent(out) :: success
 		integer,intent(in) :: age_it(:,:)
 		integer, dimension(100) :: bdayseed
-		integer,intent(out) :: drawi_ititer(:,:),drawt_ititer(:,:)
-		integer :: i,it,ii,iteri,drawt,drawi,niter
+		integer,intent(out) :: drawi_ititer(:),drawt_ititer(:)
+		integer :: i,it,ii,m,ss,drawt,drawi,ndraw
 		real(8) :: junk
 
-		niter = size(drawi_ititer,2)
+		call random_seed(size = ss)
+		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
+		call random_seed(put = bdayseed(1:ss) )
+
+		Ndraw = size(drawi_ititer)
 		!need to draw these from age-specific distributions for iterations > 1
-		do iteri = 1,niter
-			do i=1,Nsim
-				it=1
-				if(age_it(i,it) > 0 )then
-					do 
-						call random_number(junk)
-						drawi = max(1,idnint(junk*Nsim))
-						call random_number(junk)
-						drawt = max(1,idnint(junk*Tsim))
-						if((age_it(drawi,drawt) .eq. age_it(i,it)) ) then
-							exit
-						endif
-					enddo
-					drawi_ititer(i,iteri) = drawi
-					drawt_ititer(i,iteri) = drawt
-				else
-					drawi_ititer(i,iteri) = i
-					drawt_ititer(i,iteri) = it
-				endif
-			enddo
+		do i=1,Ndraw
+			it=1
+			if(age_it(i,it) > 0 )then
+				do 
+					call random_number(junk)
+					drawi = max(1,idnint(junk*Nsim))
+					call random_number(junk)
+					drawt = max(1,idnint(junk*Tsim))
+					if((age_it(drawi,drawt) .eq. age_it(i,it)) ) then
+						exit
+					endif
+				enddo
+				drawi_ititer(i) = drawi
+				drawt_ititer(i) = drawt
+			else
+				drawi_ititer(i) = i
+				drawt_ititer(i) = it
+			endif
 		enddo
-		success = 0
+	success = 0
 	end subroutine
 
 
@@ -2284,7 +2324,7 @@ module sim_hists
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
 		real(8), allocatable :: e_it(:,:)
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
-		integer, allocatable :: drawi_ititer(:,:),drawt_ititer(:,:)
+		integer, allocatable :: drawi_ititer(:),drawt_ititer(:)
 		
 		! write to hst
 		real(8), pointer     :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
@@ -2343,8 +2383,8 @@ module sim_hists
 		allocate(app_it(Nsim,Tsim))
 		!allocate(app_dif_it(Nsim,Tsim))
 		!allocate(status_it(Nsim,Tsim))
-		allocate(drawi_ititer(Nsim,iter_draws-1))
-		allocate(drawt_ititer(Nsim,iter_draws-1))
+		allocate(drawi_ititer(Nsim*2))
+		allocate(drawt_ititer(Nsim*2))
 		!allocate(occgrow_jt(nj,Tsim))
 		!allocate(occshrink_jt(nj,Tsim))
 
@@ -2428,7 +2468,7 @@ module sim_hists
 			call mati2csv(z_jt_macro,"z_jt_macro.csv")
 			call mati2csv(al_it_int,"al_it_int.csv")
 			call mati2csv(age_it,"age_it.csv")
-			call mati2csv(drawi_ititer,"drawi.csv")
+			call veci2csv(drawi_ititer,"drawi.csv")
 		endif
 		
 		!set up cumpid,cumptau
@@ -2475,18 +2515,25 @@ module sim_hists
 		do iter=1,iter_draws
 		if(verbose >3) print *, "iter: ", iter
 			it = 1
+			ii = 1
 			do i =1,Nsim
 				!need to draw these from age-specific distributions for iterations > 1
 				if(iter>1 .and. age_it(i,it)  > 0 ) then
-					drawi = drawi_ititer(i,1)!iter-1
-					drawt = drawt_ititer(i,1)!iter-1
-					
-!					status_it(i,it) = status_it(drawi,drawt)
-					d_it(i,it) = d_it(drawi,drawt)
-					a_it(i,it) = a_it(drawi,drawt)
-					e_it(i,it) = e_it(drawi,drawt)
-					e_it_int(i,it) = e_it_int(drawi,drawt)
-					a_it_int(i,it) = a_it_int(drawi,drawt)
+					do
+						drawi = drawi_ititer(ii)!iter-1
+						drawt = drawt_ititer(ii)!iter-1
+						if( minval(status_it(drawi,drawt:Tsim)) == 1 ) then !enforce that this guy works some time in the future
+							status_it(i,it) = status_it(drawi,drawt)
+							d_it(i,it) = d_it(drawi,drawt)
+							a_it(i,it) = a_it(drawi,drawt)
+							e_it(i,it) = e_it(drawi,drawt)
+							e_it_int(i,it) = e_it_int(drawi,drawt)
+							a_it_int(i,it) = a_it_int(drawi,drawt)
+							exit
+						endif
+					ii=ii+1
+					if(ii> size(drawi_ititer) ) ii = 1 !should never happen
+					enddo
 				endif
 			enddo
 			
@@ -2503,9 +2550,7 @@ module sim_hists
 				!initialize stuff
 				it = 1
 				it_old = 1
-				status_hr = 1
-				status_it(i,it) = 1 !always start working or rest unemployed (will choose that later)
-
+				status_hr = status_it(i,it)
 				
 				do it=1,Tsim
 				if(age_it(i,it) > 0) then !they've been born 
@@ -2745,7 +2790,7 @@ module sim_hists
 					print *, "done simulating after convergence in", iter
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
 					! NOTE: this is not actually mean because it does not have demographic weights
-					print *, "a mean, a var",  sum(a_mean), sum(a_var)**2
+					print *, "a mean, a var",  sum(a_mean), sum(a_var)
 					print *, "dif d mean,     d var",  sum((d_mean - d_mean_liter)**2), sum((d_var - d_var_liter)**2)
 					print *,  "-------------------------------"
 				endif
@@ -2754,7 +2799,7 @@ module sim_hists
 				if(verbose >=4 .or. (verbose >=2 .and. mod(iter,100) == 0)) then
 					print *, "iter:", iter
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
-					print *, "a mean, a var",  sum(a_mean), sum(a_var)**2
+					print *, "a mean, a var",  sum(a_mean), sum(a_var)
 					print *, "dif d mean,     d var",  sum((d_mean - d_mean_liter)**2), sum((d_var - d_var_liter)**2)
 					print *,  "-------------------------------"
 				endif
