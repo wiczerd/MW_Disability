@@ -71,7 +71,7 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		!Number of indiVidual beta types
 			ndi = 1,  &!3		!Number of individual disability risk types
-			nj  = 1,  &		!Number of occupations (downward TFP risk variation)
+			nj  = 2,  &		!Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		!Number of disability extents
 			ne  = 3, &!10		!Points on earnings grid
 			na  = 50, &!100		!Points on assets grid
@@ -79,7 +79,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			maxiter = 200, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
-			Nsim = 2000, &!		!how many agents to draw
+			Nsim = 5000, &!		!how many agents to draw
 			Ndat = 5000, & 		!size of data, for estimation
 			Tsim = int(tlen*(2010-1980)), &	!how many periods to solve for simulation
 			Nk   = TT+(nd-1)*2+2	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
@@ -136,10 +136,10 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
 		xsep = 0.02, &		!Separation probability into unemployment
 !	Agregate income risk
-		Tblock	= 15.,	&	!Expected time before structural change (years)
+		Tblock	= 20.,	&	!Expected time before structural change (years)
 		zrho	= 0.98,	&	!Persistence of the AR process
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
-		zsig	= 0.015,&	!Unconditional standard deviation of AR process
+		zsig	= 0.15,&	!Unconditional standard deviation of AR process
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
@@ -173,7 +173,9 @@ subroutine setparams()
 	logical, parameter :: lower= .FALSE. 
 	integer:: i, j, k, t
 	real(8):: summy, emin, emax, step, &
-		  node, nodei,nodek,nodemidH,nodemidL, alfcondsig
+		  node, nodei,nodek,nodemidH,nodemidL, &
+		  alfcondsig,alfcondsigt,alfrhot
+		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
 	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim)
@@ -187,32 +189,11 @@ subroutine setparams()
 	!Nodes >2 chosen as chebychev zeros, node 1 chosen to make unemployment
 	emin = alfmu-2*alfsig
 	emax = alfmu+2*alfsig
-	alfcondsig = alfsig*(1-alfrho**2)**0.5
-	do i=2,nal
-		k = nal-i +(-1 +1)
-		node = cos(pival*dble(2*k-1)/dble(2*(nal-1)))
-		alfgrid(i) = ((node+1.)/2.)*(emax-emin)+emin
-	enddo
-	do i=2,nal
-		summy = 0.
-		do k=2,nal
-			nodei = alfgrid(i) ! this is the center of the region I'm integrating
-			nodek = alfgrid(k)
-			if(k == 2) then
-				nodemidH = (nodek+alfgrid(k+1))/2.
-				pialf(i,k) = alnorm( (nodemidH - alfmu*(1.-alfrho) -alfrho*nodei)/alfcondsig,lower)
-				summy = summy+pialf(i,k)
-			elseif(k == nal) then
-				pialf(i,k) = 1.-summy
-			else
-				nodemidH = (nodek + alfgrid(k+1))/2.
-				nodemidL = (nodek + alfgrid(k-1))/2.
-				pialf(i,k) = alnorm( (nodemidH - alfmu*(1.-alfrho) - alfrho*nodei)/alfcondsig ,lower) &
-					& -alnorm( (nodemidL - alfmu*(1.-alfrho) - alfrho*nodei)/alfcondsig,lower)
-				summy = summy + pialf(i,k)
-			endif
-		enddo
-	enddo
+	alfrhot = alfrho**(1./tlen)
+	alfcondsig = (alfsig**2*(1-alfrho**2))**0.5
+	alfcondsigt = (alfsig**2*(1-alfrhot**2))**0.5
+	call rouwenhorst(nal-1,alfmu,alfrhot,alfcondsigt,alfgrid(2:nal),pialf(2:nal,2:nal))
+
 	! value of alfgrid(1) chosen later
 	pialf(1,1) = (1-srho)
 	pialf(1,2:nal) = srho/dble(nal - 1)
@@ -232,7 +213,10 @@ subroutine setparams()
 	endif
 
 	! TFP
-	zscale = 0. ! strart with all occupations the same
+	zscale = 0. 
+	do j=1,nj
+		zscale(j) = zsig*(dble(j)-dble(nj-1)/2.-1.)/dble(nj-1)
+	enddo
 	call settfp()
 
 	
@@ -283,7 +267,7 @@ subroutine setparams()
 		!prborn_t(t) = hazborn_t(t)*cumprnborn_t(t-1) !not actually hazard yet because not have initial prob
 	enddo
 	prborn_t(1) =  max(1.-sum(prborn_t(2:Tsim)),0.1) ! need to have some positive mass alive when the survey starts
-	cumprnborn_t(1) = prborn_t(1)
+	cumprnborn_t(1) = 1. - prborn_t(1)
 	hazborn_t(1) = prborn_t(1)
 	do t=2,Tsim
 		hazborn_t(t) = prborn_t(t)/cumprnborn_t(t-1)
@@ -387,40 +371,19 @@ subroutine settfp()
 	zsigt = (zsig**2/tlen)**(0.5)
 	zcondsig = ((zsig**2)*(1.-zrho**2))**(0.5)
 	zcondsigt = ((zsigt**2)*(1.-zrhot**2))**(0.5)
+	call rouwenhorst(nz/2,zmu,zrhot,zcondsigt,zgrid(1:nz/2,1),piz(1:nz/2,1:nz/2))
+	!adjust the mean for after the transition
 	do j=1,nj
-		do i=1,nz/2
-			zgrid(i,j) = zmu - 1.5*zsigt + dble(i-1)/dble(nz/2 -1)*(3.*zsigt)
-		enddo
 		do i=(nz/2+1),nz
 			zgrid(i,j) = zscale(j) + zgrid(i-nz/2,j)
 		enddo
 	enddo
-	! set up the transition probabilities
-	do i=1,nz/2
-		summy = 0.
-		do k=1,nz/2
-			nodei = zgrid(i,1) ! this is the center of the region I'm integrating
-			nodek = zgrid(k,1)
-			if(k == 1) then
-				nodemidH = (nodek+zgrid(k+1,1))/2.
-				piz(i,k) = alnorm( (nodemidH - zmu*(1.-zrhot) -zrhot*nodei)/zcondsigt,lower)
-				summy = summy+piz(i,k)
-			elseif(k == nz/2) then
-				piz(i,k) = 1.-summy
-			else
-				nodemidH = (nodek + zgrid(k+1,1))/2.
-				nodemidL = (nodek + zgrid(k-1,1))/2.
-				piz(i,k) = alnorm( (nodemidH - zmu*(1.-zrhot) - zrhot*nodei)/zcondsigt,lower) &
-					& -alnorm( (nodemidL - zmu*(1.-zrhot) - zrhot*nodei)/zcondsigt,lower)
-				summy = summy + piz(i,k)
-			endif
-		enddo
-	enddo
-	forall(i=nz/2+1:nz,k=nz/2+1:nz)	piz(i,k) = piz(i-nz/2,k-nz/2)
-	forall(i=1:nz/2,k=nz/2+1:nz) 	piz(i,k) = 1./(Tblock*tlen)*piz(i,k-nz/2) ! struct change
-	forall(i=1:nz/2,k=1:nz/2) 	piz(i,k) = (1.-1./(Tblock*tlen))*piz(i,k) ! make it markov
-	forall(i=nz/2+1:nz,k=1:nz/2)	piz(i,k) = 1./(Tblock*tlen)*piz(i,k+nz/2) ! go back
-	forall(i=nz/2+1:nz,k=1+nz/2:nz)	piz(i,k) = (1.-1./(Tblock*tlen))*piz(i,k) ! go back
+
+	piz(nz/2+1:nz,nz/2+1:nz)= piz(1:nz/2,1:nz/2)
+	piz(1:nz/2,nz/2+1:nz) 	= 1./(Tblock*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! struct change
+	piz(1:nz/2,1:nz/2) = (1.-1./(Tblock*tlen))*piz(1:nz/2,1:nz/2) ! make it markov
+	piz(nz/2+1:nz,1:nz/2) = 1./(Tblock*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! go back
+	piz(nz/2+1:nz,1+nz/2:nz) = (1.-1./(Tblock*tlen))*piz(nz/2+1:nz,1+nz/2:nz) ! go back
 	
 	
 end subroutine settfp
@@ -429,6 +392,57 @@ end subroutine settfp
 !		FUNCTIONS		
 !
 !****************************************************************************************************************************************!
+
+
+subroutine rouwenhorst(N,mu,rho,sigma,grid,PP)
+
+!Purpose:    Finds a Markov chain whose sample paths approximate those of
+!            the AR(1) process
+!                z(t+1) = (1-rho)*mu + rho * z(t) + eps(t+1)
+!            where eps are normal with stddev sigma
+!
+!Format:     [Z, PI] = rouwenhorst(N,mu,rho,sigma)
+!
+!Input:      N       scalar, number of nodes for Z
+!            mu      scalar, unconditional mean of process
+!            rho     scalar
+!            sigma   scalar, std. dev. of epsilons
+!
+!Output:     Z       N*1 vector, nodes for Z
+!            PI      N*N matrix, transition probabilities
+!based on Kopecky & Suen (2010) by David Wiczer
+
+	integer, intent(in)	:: N
+	real(8), intent(in)	:: mu,rho,sigma
+	real(8), dimension(N,N)	, intent(out)	:: PP
+	real(8), dimension(N)	, intent(out)	:: grid
+	real(8), dimension(N,N)	:: PPZ, PZP, ZPP	
+	real(8)	:: sigmaz, p, fi
+	integer :: i
+	PP	= 0.0
+	PPZ	= 0.0
+	PZP	= 0.0
+	ZPP	= 0.0		
+	sigmaz	= sigma / (1.0-rho*rho)**0.5
+	p	= (1.0+rho)/2.0
+	PP(1,1:2)	= (/ p	 , 1.0-p/)
+	PP(2,1:2)	= (/1.0-p,  p 	/)
+	if (N>=3) then
+	do i= 3,N
+		PPZ	= 0.0
+		PZP	= 0.0
+		ZPP	= 0.0
+		PPZ(1:i-1,2:i)	= PP(1:i-1,1:i-1)
+		PZP(2:i,1:i-1)	= PP(1:i-1,1:i-1)
+		ZPP(2:i,2:i)	= PP(1:i-1,1:i-1)
+		PP(1:i,1:i) 	= p*PP(1:i,1:i) + (1.0 - p)*PPZ(1:i,1:i) + (1.0 - p)*PZP(1:i,1:i) + p*ZPP(1:i,1:i)
+		PP(2:i-1,1:i)	= PP(2:i-1,1:i)/2
+	enddo
+	endif
+	fi	= (dble(N)-1.0)**0.5*sigmaz
+	grid	= (/ (i, i=0,N-1) /)
+	grid	= grid *(2.0*fi / (dble(N) - 1.0)) - fi + mu
+end subroutine rouwenhorst
 
 		
 function alnorm ( x, upper )
