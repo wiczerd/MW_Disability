@@ -54,18 +54,8 @@ integer, parameter ::  	   oldN = 4,&	!4!Number of old periods
 real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 		pid2	= 0.014, &  	!Probability d1->d2
 		pid0	= 0.587, &	!Probability d1->d0
-		!deprecated to match process parameters instead
-!		piz11	= 0.95, &	!Probability w/in PiYY block
-!		piz12	= 0.025,&	!Probability w/in PiYY block
-!		piz22	= 0.95, &	!Probability w/in PiYY block
-!		piz21	= 0.025,&	!Probability w/in PiYY block
-!		piz32	= 0.025,&	!Probability w/in PiYY block
-!		piz33	= 0.95,&	!Probability w/in PiYY block
 		dRiskL	= 0.5,&		!Lower bound on occupation-related extra disability risk (mult factor)
 		dRiskH	= 1.5		!Upper bound on occupation-related extra disability risk (mult factor)
-
-!NEED TO FIX THIS PART!!!!!!__________________----!!!!!________
-!-------------------------------------------------------------------!			
 
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
@@ -76,7 +66,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			ne  = 3, &!10		!Points on earnings grid
 			na  = 50, &!100		!Points on assets grid
 			nz  = 6,  &		!Number of Occ TFP Shocks (MUST BE multiple of 2)
-			maxiter = 200, &!2000	!Tolerance parameter	
+			maxiter = 2000, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
 			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 5000, &!		!how many agents to draw
@@ -91,7 +81,7 @@ logical, parameter ::	del_contin = .false., &	!make delta draws take continuous 
 			j_rand = .false. 	!randomly assign j, or let choose.
 
 
-real(8), parameter ::   Vtol = 0.0001, & 	!Tolerance on V-dist
+real(8), parameter ::   Vtol = 1e-5, & 	!Tolerance on V-dist
 !		beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
 !		beti_sig = 0.0,    & 	!Var of beta_i wage parameter (Log Normal)
 !		di_lambd = 1.0,    &	!Shape of disability dist. (Exponential)
@@ -129,17 +119,17 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristance of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
-		alfsig = 0.015,&	!Unconditional StdDev of Alpha_i type (Normal)
+		alfsig = 0.015**0.5,&	!Unconditional StdDev of Alpha_i type (Normal)
 		b = 0.05,&		!Home production income
 		lrho = 0.2,&		!Probability of finding a job when long-term unemployed (David)
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
-		xsep = 0.02, &		!Separation probability into unemployment
+		xsep = 0.015, &		!Separation probability into unemployment
 !	Agregate income risk
 		Tblock	= 20.,	&	!Expected time before structural change (years)
-		zrho	= 0.98,	&	!Persistence of the AR process
+		zrho	= 0.9,	&	!Persistence of the AR process
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
-		zsig	= 0.15,&	!Unconditional standard deviation of AR process
+		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
@@ -174,7 +164,7 @@ subroutine setparams()
 	integer:: i, j, k, t
 	real(8):: summy, emin, emax, step, &
 		  node, nodei,nodek,nodemidH,nodemidL, &
-		  alfcondsig,alfcondsigt,alfrhot
+		  alfcondsig,alfcondsigt,alfrhot,alfsigt
 		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
@@ -187,12 +177,21 @@ subroutine setparams()
 
 	!Individual Wage component (alpha)- grid= 2 std. deviations
 	!Nodes >2 chosen as chebychev zeros, node 1 chosen to make unemployment
-	emin = alfmu-2*alfsig
-	emax = alfmu+2*alfsig
+	
 	alfrhot = alfrho**(1./tlen)
 	alfcondsig = (alfsig**2*(1-alfrho**2))**0.5
-	alfcondsigt = (alfsig**2*(1-alfrhot**2))**0.5
-	call rouwenhorst(nal-1,alfmu,alfrhot,alfcondsigt,alfgrid(2:nal),pialf(2:nal,2:nal))
+	alfsigt = (alfsig**2/tlen)**0.5
+	alfcondsigt = (alfsigt**2*(1-alfrhot**2))**0.5
+	call rouwenhorst(nal-1,alfmu,alfrho,alfcondsig,alfgrid(2:nal),pialf(2:nal,2:nal))
+	! this is the transformation if I use the annual-frequency shocks and experience them ever 1/tlen periods
+	do i=2,nal
+		pialf(i,i) = pialf(i,i)**(1./tlen)
+		do k=2,nal
+			if(k /= i) pialf(i,k) = 1. - (1.-pialf(i,k))**(1./tlen)
+		enddo
+		summy = sum(pialf(i,2:nal))
+		if(summy /=1 ) pialf(i,2:nal)=pialf(i,2:nal)/summy !this is just numerical error
+	enddo
 
 	! value of alfgrid(1) chosen later
 	pialf(1,1) = (1-srho)
@@ -364,19 +363,32 @@ subroutine settfp()
 
 	integer :: i, k,j
 	logical, parameter :: lower= .FALSE. 
-	real(8) :: nodemidH,nodemidL,nodei, nodek, summy, zcondsig
+	real(8) ::  summy, zcondsig
 	real(8) :: zrhot,zsigt, zcondsigt
 
 	zrhot = zrho**(1./tlen)
 	zsigt = (zsig**2/tlen)**(0.5)
 	zcondsig = ((zsig**2)*(1.-zrho**2))**(0.5)
 	zcondsigt = ((zsigt**2)*(1.-zrhot**2))**(0.5)
-	call rouwenhorst(nz/2,zmu,zrhot,zcondsigt,zgrid(1:nz/2,1),piz(1:nz/2,1:nz/2))
+	!first set transition probabilities at an annual basis
+	call rouwenhorst(nz/2,zmu,zrho,zcondsig,zgrid(1:nz/2,1),piz(1:nz/2,1:nz/2))
+	do j=2,nj
+		zgrid(1:nz/2,j) = zgrid(1:nz/2,1)
+	enddo
 	!adjust the mean for after the transition
 	do j=1,nj
 		do i=(nz/2+1),nz
 			zgrid(i,j) = zscale(j) + zgrid(i-nz/2,j)
 		enddo
+	enddo
+	!adjust transition probabilities to come only ever tlen periods
+	do i=1,nz/2
+		piz(i,i) = piz(i,i)**(1./tlen)
+		do k=1,nz/2
+			if(k /= i) piz(i,k) = 1.-(1.-piz(i,k))**(1./tlen)
+		enddo
+		summy = sum(piz(i,1:nz/2))
+		if(summy /= 1) piz(i,1:nz/2) = piz(i,1:nz/2)/summy !this is correcting numerical error
 	enddo
 
 	piz(nz/2+1:nz,nz/2+1:nz)= piz(1:nz/2,1:nz/2)
@@ -444,7 +456,22 @@ subroutine rouwenhorst(N,mu,rho,sigma,grid,PP)
 	grid	= grid *(2.0*fi / (dble(N) - 1.0)) - fi + mu
 end subroutine rouwenhorst
 
-		
+
+subroutine rand_num_closed(harvest)
+	!ensures we're drawing uniform [0,1] on a closed interval
+	real(8), intent(inout) :: harvest
+	integer :: i
+	rngbound: do
+		call random_number(harvest)
+		harvest = harvest*1.1D0 - 0.05D0
+		if(harvest<= 1.D0 .and. harvest>=0.D0) then
+			exit rngbound
+		endif
+	enddo rngbound
+	
+
+end subroutine rand_num_closed
+
 function alnorm ( x, upper )
 
 !*****************************************************************************80

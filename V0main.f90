@@ -1997,7 +1997,7 @@ module sim_hists
 		delgridH = maxval(delgrid)
 
 		do i=1,Nsim
-			call random_number(delgrid_i) ! draw uniform on 0,1
+			call rand_num_closed(delgrid_i) ! draw uniform on 0,1
 			delgrid_i = delgrid_i*(delgridH-delgridL) + delgridL !change domain of uniform
 			di_int = finder(delgrid,delgrid_i)
 			! round up or down:
@@ -2046,18 +2046,27 @@ module sim_hists
 		integer, intent(out),optional :: success
 		real(8), dimension(:,:) :: al_it
 		integer, dimension(:,:) :: al_it_int
-		integer :: ss, Nsim, alfgrid_int, t,m,i
+		integer :: ss, Nsim, alfgrid_int, t,m,i,k
 		real(8) :: alfgridL, alfgridH,alf_innov,alfgrid_i
 		integer, dimension(100) :: bdayseed
+		real(8), allocatable :: cumpi_al(:,:)
+
+		allocate(cumpi_al(nal,nal+1))
 
 		call random_seed(size = ss)
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
+		cumpi_al =0.
 		Nsim = size(al_it,1)
-		alfgridL = minval(alfgrid)
-		alfgridH = maxval(alfgrid)
 
+		do i=1,nal
+			do k=2,nal+1
+				cumpi_al(i,k) = pialf(i,k-1)+cumpi_al(i,k-1)
+			enddo
+		enddo
+
+		success =0
 		do i=1,Nsim
 
 			! draw starting values
@@ -2067,10 +2076,10 @@ module sim_hists
 			! transform it by the ergodic distribution for the first period:
 			alfgrid_i = alf_innov*alfsig + alfmu
 
-			if(alfgrid_i >alfgridH .or. alfgrid_i < alfgridL) success = 1+success !count how often we truncate
+			if(alfgrid_i >maxval(alfgrid) .or. alfgrid_i < minval(alfgrid)) success = 1+success !count how often we truncate
 			!impose bounds
-			alfgrid_i = max(alfgrid_i,alfgridL)
-			alfgrid_i = min(alfgrid_i,alfgridH)
+			alfgrid_i = max(alfgrid_i,minval(alfgrid))
+			alfgrid_i = min(alfgrid_i,maxval(alfgrid))
 			alfgrid_int = finder(alfgrid,alfgrid_i)
 			! round up or down:
 			if( (alfgrid_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
@@ -2084,25 +2093,21 @@ module sim_hists
 			! draw sequence:
 
 			do t=2,Tsim
-				call random_normal(alf_innov)
-				alf_innov = alf_innov*alfsig*(1.-alfrho**2) ! mean 0 with conditional standard deviation implied by (alfsig, alfrho)
-				alfgrid_i = alfrho*alfgrid_i + (1-alfrho)*alfmu + alf_innov
-				if(alfgrid_i >alfgridH .or. alfgrid_i < alfgridL) success = 1+success !count how often we truncate
-				alfgrid_i = max(alfgrid_i,alfgridL)
-				alfgrid_i = min(alfgrid_i,alfgridH)
-				alfgrid_int = finder(alfgrid,alfgrid_i)
-				if( (alfgrid_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
+				call rand_num_closed(alf_innov)
+				alfgrid_int 	= finder(cumpi_al(alfgrid_int,:), alf_innov )
+				alfgrid_i	= alfgrid(alfgrid_int)
 				if(al_contin .eqv. .true.) then
 					al_it(i,t) = alfgrid_i ! log of wage shock
 				else
 					al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
 				endif
 				al_it_int(i,t) = alfgrid_int					
-
 			enddo
 		enddo
 		if(success > 0.2*Nsim*Tsim)  success = success
 		if(success <= 0.2*Nsim*Tsim) success = 0
+		call mat2csv(cumpi_al,"cumpi_al.csv")
+		deallocate(cumpi_al)
 		
 	end subroutine draw_alit
 
@@ -2151,36 +2156,51 @@ module sim_hists
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
 		real(8) :: z_innov
-		real(8), allocatable :: cumpi_j(:,:)
+		real(8), allocatable :: cumpi_z(:,:),cumpi_zblock(:,:)
 
 
 		allocate(cumpi_j(nz,nz+1))
+		allocate(cumpi_jblock(nz/2,nz/2+1))
 		
 		call random_seed(size = ss)
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
 
-		cumpi_j = 0.
+		cumpi_z = 0.
+		cumpi_jblock = 0.
+		! for random transitions of time block
 		do iz=1,nz
-			izp = 1
-			cumpi_j(iz,izp+1) = piz(iz,izp)
-			do izp=2,nz
-				cumpi_j(iz,izp+1) = piz(iz,izp) + cumpi_j(iz,izp)
+			do izp=1,nz
+				cumpi_z(iz,izp+1) = piz(iz,izp) + cumpi_z(iz,izp)
 			enddo
 		enddo
+		! for deterministic transition of time block
+		do iz=1,nz/2
+			do izp=1,nz/2
+				cumpi_zblock(iz,izp+1) = piz(iz,izp) + cumpi_zblock(iz,izp)
+			enddo
+			cumpi_zblock(i,:) = cumpi_zblock(i,:)/cumpi_zblock(i,nz/2)
+		enddo
+		
 		!draw on zgrid
-		! start everyone from good state, alternatively could start from random draw on ergodic dist
-		z_jt_t = 2
+		! start everyone from middle state, alternatively could start from random draw on ergodic dist
+		z_jt_t = (nz/2+1)/2
 		do it = 1,Tsim
-			call random_number(z_innov)
-			! use conditional probability
-			z_jt_t = finder(cumpi_j(z_jt_t,:),z_innov ) 
-			z_jt_macro(it) = z_jt_t
+			call rand_num_closed(z_innov)
+			! use conditional probability w/in time block
+			z_jt_t = finder(cumpi_zblock(z_jt_t,:),z_innov )
+			if( dble(it)<Tblock*tlen ) then
+				z_jt_macro(it) = z_jt_t
+			else
+				z_jt_macro(it) = z_jt_t + nz/2
+			endif
+			! allow random time-block transitions
+			! z_jt_t = finder(cumpi_z(z_jt_t,:),z_innov )			
 		enddo
 		success = 0
-		call mat2csv(cumpi_j,"cumpi_j.csv")
-		deallocate(cumpi_j)
+		call mat2csv(cumpi_z,"cumpi_z.csv")
+		deallocate(cumpi_z,cumpi_zblock)
 	end subroutine draw_zjt
 	
 	subroutine draw_age_it(age_it, born_it, seed0, success)
@@ -2202,9 +2222,8 @@ module sim_hists
 		!not begining with anyone from TT
 		forall(it=1:TT-1) prob_age_nTT(it) = prob_age(it)/(1-prob_age(TT))
 		cumpi_t0 = 0.
-		it = 1
-		cumpi_t0(it+1) = prob_age_nTT(it)
-		do it=2,TT-1
+
+		do it=1,TT-1
 			cumpi_t0(it+1) = prob_age_nTT(it) + cumpi_t0(it)
 		enddo
 		
@@ -2214,12 +2233,12 @@ module sim_hists
 		do m = 1,50
 			bn_i = 0 ! initialize, not yet born
 			it = 1
-			call random_number(rand_born)
+			call rand_num_closed(rand_born)
 			if(rand_born < hazborn_t(1)) then 
 				born_it(i,it) = 0 ! no one is "born" in the first period
 				bn_i = 1
 				!draw an age
-				call random_number(rand_age)
+				call rand_num_closed(rand_age)
 				age_it(i,it) = finder(cumpi_t0,rand_age)
 			else 
 				age_it(i,it) = 0
@@ -2227,14 +2246,14 @@ module sim_hists
 			endif
 			do it=2,Tsim
 				if(age_it(i,it-1)<TT) then
-					call random_number(rand_born)
+					call rand_num_closed(rand_born)
 					if(rand_born < hazborn_t(it) .and. bn_i == 0 ) then
 						age_it(i,it) =1
 						born_it(i,it) = 1
 						bn_i = 1
 					elseif(bn_i == 1) then
 						born_it(i,it) = 0
-						call random_number(rand_age)
+						call rand_num_closed(rand_age)
 						if(rand_age < 1- ptau(age_it(i,it-1)) .and. age_it(i,it-1) < TT ) then
 							age_it(i,it) = age_it(i,it-1)+1
 						else 
