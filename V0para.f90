@@ -63,8 +63,8 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			ndi = 1,  &!3		!Number of individual disability risk types
 			nj  = 2,  &		!Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		!Number of disability extents
-			ne  = 3, &!10		!Points on earnings grid
-			na  = 50, &!100		!Points on assets grid
+			ne  = 4, &!10		!Points on earnings grid
+			na  = 100, &!100		!Points on assets grid
 			nz  = 6,  &		!Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &!2000	!Tolerance parameter	
 			iaa_lowindow = 5,& 	!how far below to begin search
@@ -243,6 +243,8 @@ subroutine setparams()
 	! rate exit retirement (only one way to go.... down)
 	ptau(TT) = 1-((Longev-(youngD+oldN*oldD))*tlen)**(-1)
 
+
+	! BALANCED AGES:
 	!initial age structure
 	prob_age(1) = youngD/Longev
 	do i=2,TT-1
@@ -272,6 +274,10 @@ subroutine setparams()
 		hazborn_t(t) = prborn_t(t)/cumprnborn_t(t-1)
 		cumprnborn_t(t) = (1.-prborn_t(t))*cumprnborn_t(t-1)
 	enddo
+
+	!DATA AGES: 
+
+
 	
 	!Age-related disability risk
 	dtau(1) = 0.5	!Young's Risk

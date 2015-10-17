@@ -2031,7 +2031,7 @@ module sim_hists
 
 		do i=1,Nsim
 			do it=1,Tsim
-				call random_number(s_innov)
+				call rand_num_closed(s_innov)
 				status_it_innov(i,it) = s_innov
 			enddo
 		enddo
@@ -2106,7 +2106,7 @@ module sim_hists
 		enddo
 		if(success > 0.2*Nsim*Tsim)  success = success
 		if(success <= 0.2*Nsim*Tsim) success = 0
-		call mat2csv(cumpi_al,"cumpi_al.csv")
+		!call mat2csv(cumpi_al,"cumpi_al.csv")
 		deallocate(cumpi_al)
 		
 	end subroutine draw_alit
@@ -2156,19 +2156,15 @@ module sim_hists
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
 		real(8) :: z_innov
-		real(8), allocatable :: cumpi_z(:,:),cumpi_zblock(:,:)
+		real(8) :: cumpi_z(nz,nz+1),cumpi_zblock(nz/2,nz/2+1)
 
-
-		allocate(cumpi_j(nz,nz+1))
-		allocate(cumpi_jblock(nz/2,nz/2+1))
-		
 		call random_seed(size = ss)
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
 
 		cumpi_z = 0.
-		cumpi_jblock = 0.
+		cumpi_zblock = 0.
 		! for random transitions of time block
 		do iz=1,nz
 			do izp=1,nz
@@ -2180,7 +2176,7 @@ module sim_hists
 			do izp=1,nz/2
 				cumpi_zblock(iz,izp+1) = piz(iz,izp) + cumpi_zblock(iz,izp)
 			enddo
-			cumpi_zblock(i,:) = cumpi_zblock(i,:)/cumpi_zblock(i,nz/2)
+			cumpi_zblock(iz,:) = cumpi_zblock(iz,:)/cumpi_zblock(iz,nz/2)
 		enddo
 		
 		!draw on zgrid
@@ -2188,6 +2184,10 @@ module sim_hists
 		z_jt_t = (nz/2+1)/2
 		do it = 1,Tsim
 			call rand_num_closed(z_innov)
+			if(z_innov<0. .or. z_innov >1) then
+				call rand_num_closed(z_innov)
+			endif
+			
 			! use conditional probability w/in time block
 			z_jt_t = finder(cumpi_zblock(z_jt_t,:),z_innov )
 			if( dble(it)<Tblock*tlen ) then
@@ -2199,8 +2199,9 @@ module sim_hists
 			! z_jt_t = finder(cumpi_z(z_jt_t,:),z_innov )			
 		enddo
 		success = 0
-		call mat2csv(cumpi_z,"cumpi_z.csv")
-		deallocate(cumpi_z,cumpi_zblock)
+
+		!call mat2csv(cumpi_z,"cumpi_z.csv")
+
 	end subroutine draw_zjt
 	
 	subroutine draw_age_it(age_it, born_it, seed0, success)
@@ -2272,7 +2273,7 @@ module sim_hists
 			if(bn_i == 1) then !if the born draw never comes, do the whole thing again.
 				exit
 			endif
-		enddo! m=1,5.... if never gets born
+		enddo! m=1,50.... if never gets born
 
 		enddo! i=1,Nsim
 
@@ -2332,8 +2333,8 @@ module sim_hists
 			&  seed0, seed1, status, m,ss, iter_draws=5
 		integer :: bdayseed(100)
 						
-		real(8), allocatable ::	del_i(:) ! shocks to be drawn
-		integer, allocatable :: z_jt_macro(:), jshock_ij(:,:) ! shocks to be drawn
+		real(8), allocatable ::	del_i(:),jshock_ij(:,:) ! shocks to be drawn
+		integer, allocatable :: z_jt_macro(:)! shocks to be drawn
 		integer, allocatable :: del_i_int(:)  ! integer valued shocks
 		integer, allocatable :: al_it_int(:,:)! integer valued shocks
 		integer, allocatable :: born_it(:,:) ! born status, drawn randomly		
@@ -2538,12 +2539,15 @@ module sim_hists
 			it = 1
 			ii = 1
 			do i =1,Nsim
+				!for the population that is pre-existing in the first period 
 				!need to draw these from age-specific distributions for iterations > 1
 				if(iter>1 .and. age_it(i,it)  > 0 ) then
 					!drawloop: do
 						drawi = drawi_ititer(i)!iter-1
 						drawt = drawt_ititer(i)!iter-1
-						!if( minval(status_it(drawi,drawt:Tsim)) == 1 ) then !enforce that this guy works some time in the future
+						! enforce that this guy works some time in the future, but then it does not converge
+						! because status changes in each iteration
+						!if( minval(status_it(drawi,drawt:Tsim)) == 1 ) then 
 							status_it(i,it) = status_it(drawi,drawt)
 							d_it(i,it) = d_it(drawi,drawt)
 							a_it(i,it) = a_it(drawi,drawt)
@@ -2583,7 +2587,7 @@ module sim_hists
 					!set the state
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
-					if(born_it(i,it).eq. 1) then
+					if(born_it(i,it).eq. 1 .and. it> 1) then ! no one is ``born'' in the first period, but just to be sure
 						age_hr	= 1
 						d_hr	= 1
 						a_hr 	= minval(agrid)
@@ -2601,7 +2605,7 @@ module sim_hists
 							do ij = 1,nj
 								j_val_ij = V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)
 								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/amenityscale)
-								j_val_ij = j_val_ij + jshock_ij(i,ij)*amenityscale + log(jwt)
+								j_val_ij = j_val_ij + jshock_ij(i,ij)*amenityscale ! + log(jwt)
 								if(j_val< j_val_ij ) then
 									j_hr = ij
 									j_val = j_val_ij
@@ -2843,24 +2847,28 @@ module sim_hists
 		if(verbose >2) print *, "calculating occupation growth rates"		
 		it = 1
 		Nworkt = 0. !labor force in first period are the ones "born" in the first period
-		do ij=1,nj
-			occsize_jt(ij,it) = 0.
-			occgrow_jt(ij,it) = 0.
-			occshrink_jt(ij,it) = 0.
-			do i=1,Nsim
-				if(j_i(i) == ij .and. age_it(i,it) >= 1 .and. status_it(i,it)== 1) occsize_jt(ij,it) = 1.+occsize_jt(ij,it)
-				if( age_it(i,it) >= 1 ) Nworkt = 1. + Nworkt
+		occsize_jt = 0.
+		occgrow_jt = 0.
+		occshrink_jt = 0.
+		do i=1,Nsim
+			if( age_it(i,it) > 0 .and. status_it(i,it) <= 2 .and. status_it(i,it)>=1) Nworkt = 1. + Nworkt
+			do ij=1,nj
+				if(j_i(i) == ij .and. age_it(i,it) >= 1 .and. status_it(i,it) == 1) &
+					& occsize_jt(ij,it) = 1.+occsize_jt(ij,it)
 			enddo
-			occsize_jt(ij,it) = occsize_jt(ij,it) / Nworkt
 		enddo
+		occsize_jt(:,it) = occsize_jt(:,it) / Nworkt
 
+		!$omp parallel do private(it,Nworkt,i,ij)
 		do it = 2,Tsim
 			Nworkt = 0.
-			do ij =1,nj
-				occgrow_jt  (ij,it) = 0.
-				occshrink_jt(ij,it) = 0.
-				occsize_jt  (ij,it) = 0.
-				do i=1,Nsim
+			occgrow_jt  (:,it) = 0.
+			occshrink_jt(:,it) = 0.
+			occsize_jt  (:,it) = 0.
+			do i=1,Nsim
+				if(status_it(i,it) <= 2 .and. status_it(i,it)>=1 .and. age_it(i,it) > 0 ) Nworkt = 1. + Nworkt !labor force in this period
+				do ij =1,nj
+			
 					if(j_i(i) ==ij .and. born_it(i,it) == 1 ) &
 						& occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
 					if(j_i(i) ==ij .and. status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
@@ -2869,13 +2877,13 @@ module sim_hists
 						& occshrink_jt(ij,it) = 1. + occshrink_jt(ij,it)
 					if(j_i(i) ==ij .and. status_it(i,it) == 1) &
 						& occsize_jt(ij,it) = 1. + occsize_jt(ij,it)
-					if(status_it(i,it) <= 3 .and. age_it(i,it) > 0 ) Nworkt = 1. + Nworkt !labor force in this period
 				enddo
 				occgrow_jt(ij,it) = occgrow_jt(ij,it)/occsize_jt(ij,it)
 				occshrink_jt(ij,it) = occshrink_jt(ij,it)/occsize_jt(ij,it)
 			enddo
 			forall(ij=1:nj) occsize_jt(ij,it) = occsize_jt(ij,it)/Nworkt
 		enddo
+		!$omp end parallel do
 
 		
 		if(print_lev > 1)then
