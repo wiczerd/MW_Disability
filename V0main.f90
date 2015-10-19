@@ -159,7 +159,7 @@ module helper_funs
 		integer, intent(in):: idin,itin
 		real(8) :: xifun
 		!if(itin < 4) then
-			xifun = xi(idin,itin) !+ (1. - xi(idin,itin))*(xizcoef*zin)
+			xifun = 1.-(1.-xi(idin,itin))**(1./tlen) !+ (1. - xi(idin,itin))*(xizcoef*zin)
 		!else 
 		!	xifun = xi(idin,itin) + (1. - xi(idin,itin))*(xizcoef*zin + 0.124)
 		!endif
@@ -578,7 +578,7 @@ module model_data
 		obsX_vars(:,Nk) = 1.
 		moments_sim%work_coefs = 0.
 
-		if(print_lev >=2 ) call mat2csv(obsX_vars,"obsX_vars.csv")
+		if(print_lev >=3 ) call mat2csv(obsX_vars,"obsX_vars.csv")
 		!check that I don't have constants other than the constant rank < nk
 		status = 0
 		do ij=1,Nk-1
@@ -618,7 +618,7 @@ module model_data
 	
 		integer :: i, ij,id,it,ial,st,si,age_hr,status_hr
 		integer :: totage(TT),totD(TT),totW(TT),totst(Tsim),total(nal), tot3al(nal), &
-				& tot3age(TT-1)
+				& tot3age(TT-1),totage_st(TT,Tsim)
 
 		real(8) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
 				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1), &
@@ -637,6 +637,7 @@ module model_data
 		total	= 0
 		tot3al	= 0
 		tot3age	= 0
+		totage_st=0
 		
 		dD_age 		= 0.
 		dD_t 		= 0.
@@ -654,8 +655,8 @@ module model_data
 			do st = 1,Tsim
 				if(hists_sim%status_hist(si,st) >0 .and. hists_sim%age_hist(si,st) >0 ) then
 					age_hr = hists_sim%age_hist(si,st)
+					totage_st(age_hr,st) = totage_st(age_hr,st) + 1
 					! savings and disability by time
-					totst(st) = totst(st) + 1
 					a_t(st) = hists_sim%a_hist(si,st) + a_t(st)
 					status_hr = hists_sim%status_hist(si,st)
 					if(status_hr == 4) dD_t(st) = dD_t(st)+hists_sim%d_hist(si,st)
@@ -665,30 +666,29 @@ module model_data
 					! disability by age and age X shock
 					do it = 1,TT-1
 						if(age_hr == it) then
-							if(hists_sim%status_hist(si,st) == 1) totW(it) = totW(it) + 1
+							if(hists_sim%status_hist(si,st) == 1) totW(age_hr) = totW(age_hr) + 1
 							if(hists_sim%status_hist(si,st) < 3) &
-							&	workdif_age(it) = workdif_age(it) + hists_sim%work_dif_hist(si,st)
+							&	workdif_age(age_hr) = workdif_age(age_hr) + hists_sim%work_dif_hist(si,st)
 
 							if(hists_sim%status_hist(si,st) == 4) then
-								totD(it) = totD(it) + 1
-								dD_age(it) = dD_age(it)+hists_sim%d_hist(si,st)
+								totD(age_hr) = totD(age_hr) + 1
+								dD_age(age_hr) = dD_age(age_hr)+hists_sim%d_hist(si,st)
 								! associate this with its shock
 								do ial = 1,nal
 									if(  hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1.) &
 									&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1.) &
 									&	.and. hists_sim%status_hist(si,st) == 4 ) &
-									&  alD_age(ial,it) = 1. + alD_age(ial,it)
+									&  alD_age(ial,age_hr) = 1. + alD_age(ial,it)
 								enddo
 							elseif(hists_sim%status_hist(si,st) == 3) then
-								appdif_age(it) = appdif_age(it) + hists_sim%app_dif_hist(si,st)
-								tot3age(it) = tot3age(it) + 1							
+								appdif_age(it) = appdif_age(age_hr) + hists_sim%app_dif_hist(si,st)
+								tot3age(age_hr) = tot3age(age_hr) + 1							
 							endif
 						endif
 					enddo !it = 1,TT-1
 					! assets by age
 					do it=1,TT
 						if(age_hr == it) then
-							totage(it) = totage(it) + 1
 							a_age(it) = hists_sim%a_hist(si,st) +a_age(it)
 						endif
 					enddo
@@ -713,6 +713,9 @@ module model_data
 				endif !status(si,st) >0
 			enddo!st = 1,Tsim
 		enddo ! si=1,Nsim
+
+		!just for convenience
+		forall(it=1:TT) totage(it) = sum(totage_st(it,:))
 		
 		!work-dif app-dif distribution by age, shock
 		forall(it=1:TT-1) appdif_age(it) = appdif_age(it)/dble(tot3age(it))
@@ -728,7 +731,7 @@ module model_data
 		forall(it=1:TT-1) moments_sim%work_rate(it) = dble(totW(it))/dble(totage(it))
 		! asset distribution by age, time and disability status
 		forall(it=1:TT ) a_age(it) = a_age(it)/dble(totage(it))
-		forall(st=1:Tsim) a_t(st) = a_t(st)/dble(totst(st))
+		forall(st=1:Tsim) a_t(st) = a_t(st)/dble(sum(totage_st(:,st)))
 
 		forall(st=1:Tsim) status_Nt(:,st)= status_Nt(:,st)/sum(status_Nt(:,st))
 
@@ -1913,7 +1916,6 @@ module sol_val
 		! this plots work-rest and di application on the cross product of alphai and deltai and di
 		if(print_lev >1) then
 			ibi = 1
-			idi = 1
 			ij  = 1
 			wo  = 0
 
@@ -1976,13 +1978,13 @@ module sim_hists
 	contains
 
 
-	subroutine draw_deli(del_i,del_i_int, seed0, success)
+	subroutine draw_deli(del_i,del_i_rand, del_i_int, seed0, success)
 	! draws depreciation rates and indices on the delta grid (i.e at the discrete values)
 		implicit none
 
 		integer, intent(in) :: seed0
 		integer, intent(out) :: success
-		real(8), dimension(:) :: del_i
+		real(8), dimension(:) :: del_i,del_i_rand
 		integer, dimension(:) :: del_i_int
 		integer :: ss, Nsim, di_int,m,i
 		real(8) :: delgridL, delgridH,delgrid_i
@@ -1998,10 +2000,13 @@ module sim_hists
 
 		do i=1,Nsim
 			call rand_num_closed(delgrid_i) ! draw uniform on 0,1
+			del_i_rand(i) = delgrid_i
 			delgrid_i = delgrid_i*(delgridH-delgridL) + delgridL !change domain of uniform
 			di_int = finder(delgrid,delgrid_i)
 			! round up or down:
-			if( (delgrid_i - delgrid(di_int))/(delgrid(di_int+1) - delgrid(di_int)) > 0.5 ) di_int = di_int + 1
+			if(di_int < ndi) then
+				if( (delgrid_i - delgrid(di_int))/(delgrid(di_int+1) - delgrid(di_int)) > 0.5 ) di_int = di_int + 1
+			endif
 			di_int = max(min(di_int,nd),1)
 			if(del_contin .eqv. .true.) then
 				del_i(i) = delgrid_i
@@ -2190,7 +2195,7 @@ module sim_hists
 			
 			! use conditional probability w/in time block
 			z_jt_t = finder(cumpi_zblock(z_jt_t,:),z_innov )
-			if( dble(it)<Tblock*tlen ) then
+			if( dble(it)<20.*tlen ) then
 				z_jt_macro(it) = z_jt_t
 			else
 				z_jt_macro(it) = z_jt_t + nz/2
@@ -2222,6 +2227,9 @@ module sim_hists
 		!set up cumulative probabilities for t0 and conditional draws
 		!not begining with anyone from TT
 		forall(it=1:TT-1) prob_age_nTT(it) = prob_age(it)/(1-prob_age(TT))
+		!also include TT
+		!prob_age_nTT = prob_age
+		
 		cumpi_t0 = 0.
 
 		do it=1,TT-1
@@ -2303,8 +2311,8 @@ module sim_hists
 					call random_number(junk)
 					drawi = max(1,idnint(junk*Nsim))
 					call random_number(junk)
-					drawt = max(1,idnint(junk*Tsim))
-					if((age_it(drawi,drawt) .eq. age_it(i,it)) ) then
+					drawt = max(1,idnint(junk*(Tblock_sim*tlen)-1))
+					if((age_it(drawi,drawt) .eq. age_it(i,it))) then
 						exit ageloop
 					endif
 				end do ageloop
@@ -2315,14 +2323,14 @@ module sim_hists
 				drawt_ititer(i) = it
 			endif
 		enddo
-	success = 0
+		success = 0
 	end subroutine
 
 
 	subroutine sim(vfs, pfs,hst)
 		
 		implicit none
-	
+
 		type(val_struct), intent(inout), target :: vfs
 		type(pol_struct), intent(inout), target :: pfs	
 		type(hist_struct), intent(inout), target :: hst
@@ -2333,7 +2341,7 @@ module sim_hists
 			&  seed0, seed1, status, m,ss, iter_draws=5
 		integer :: bdayseed(100)
 						
-		real(8), allocatable ::	del_i(:),jshock_ij(:,:) ! shocks to be drawn
+		real(8), allocatable ::	del_i(:), del_i_rand(:),jshock_ij(:,:) ! shocks to be drawn
 		integer, allocatable :: z_jt_macro(:)! shocks to be drawn
 		integer, allocatable :: del_i_int(:)  ! integer valued shocks
 		integer, allocatable :: al_it_int(:,:)! integer valued shocks
@@ -2353,7 +2361,7 @@ module sim_hists
 		integer, pointer     :: d_it(:,:) 	! disability status
 		real(8), pointer     :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
 		real(8), pointer     :: a_it(:,:) 	! assets
-		real(8), pointer     ::	al_it(:,:)	! individual shocsk
+		real(8), pointer     ::	al_it(:,:)	! individual shocks
 
 		! read from vals
 		real(8), pointer ::	V(:,:,:,:,:,:,:)	!Participant
@@ -2368,7 +2376,8 @@ module sim_hists
 
 		logical :: ptrsuccess
 		real(8) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1),d_var(TT-1),&
-				& a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1)
+				& a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
+				& s_mean(TT-1),s_mean_liter(TT-1)
 	
 		! Other
 		real(8)	:: wage_hr,al_hr, junk,a_hr, e_hr, bet_hr,z_hr,j_val,j_val_ij,jwt,cumval,work_dif_hr, app_dif_hr,js_ij, Nworkt, ep_hr
@@ -2389,6 +2398,7 @@ module sim_hists
 		!allocate(age_it(Nsim,Tsim))
 		allocate(status_it_innov(Nsim,Tsim))
 		allocate(del_i_int(Nsim))
+		allocate(del_i_rand(Nsim))
 		allocate(al_it_int(Nsim,Tsim))
 		allocate(born_it(Nsim,Tsim))
 
@@ -2422,20 +2432,20 @@ module sim_hists
 		gwork => pfs%gwork
 		gapp => pfs%gapp
 
-		gapp_dif => pfs%gapp_dif
-		gwork_dif => pfs%gwork_dif
+		gapp_dif    => pfs%gapp_dif
+		gwork_dif   => pfs%gwork_dif
 
-		status_it => hst%status_hist
-		age_it 	=> hst%age_hist
+		status_it   => hst%status_hist
+		age_it 	    => hst%age_hist
 		work_dif_it => hst%work_dif_hist
-		app_dif_it => hst%app_dif_hist
-		d_it 	=> hst%d_hist
-		j_i  	=> hst%j_i
-		a_it 	=> hst%a_hist
-		al_it 	=> hst%al_hist
-		occgrow_jt => hst%occgrow_jt
-		occshrink_jt => hst%occshrink_jt
-		occsize_jt => hst%occsize_jt
+		app_dif_it  => hst%app_dif_hist
+		d_it        => hst%d_hist
+		j_i         => hst%j_i
+		a_it        => hst%a_hist
+		al_it       => hst%al_hist
+		occgrow_jt  => hst%occgrow_jt
+		occshrink_jt=> hst%occshrink_jt
+		occsize_jt  => hst%occsize_jt
 
 		ptrsuccess = associated(d_it,hst%d_hist)
 		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate d_it"
@@ -2467,7 +2477,7 @@ module sim_hists
 		endif
 		call draw_age_it(age_it,born_it,seed0,status)
 		seed0 = seed0 + 1
-		call draw_deli(del_i,del_i_int, seed1, status)
+		call draw_deli(del_i,del_i_rand, del_i_int, seed1, status)
 		seed1 = seed1 + 1
 		call draw_alit(al_it,al_it_int, seed0, status)
 		seed0 = seed0 + 1
@@ -2523,8 +2533,9 @@ module sim_hists
 		
 		a_mean_liter = 0.
 		d_mean_liter = 0.
-		a_var_liter = 0.
-		d_var_liter = 0.
+		s_mean_liter = 0.
+		a_var_liter  = 0.
+		d_var_liter  = 0.
 
 
 		!use only 1 value of beta
@@ -2573,10 +2584,14 @@ module sim_hists
 			!$OMP& ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
-				del_hr = del_i_int(i)
+	
 				!set a j to correspond to the probabilities.  This will get overwritten if born
 				j_hr = j_i(i)
-
+				if(del_by_occ .eqv. .true.) then
+					del_hr = j_hr
+				else
+					del_hr = del_i_int(i)
+				endif
 
 				!initialize stuff
 				it = 1
@@ -2612,6 +2627,11 @@ module sim_hists
 								endif
 							enddo
 							j_i(i) = j_hr
+							if(del_by_occ .eqv. .true.) then
+								del_hr = j_hr
+							else
+								del_hr = del_i_int(i)
+							endif
 						endif
 					else 
 						age_hr	= age_it(i,it)
@@ -2632,6 +2652,7 @@ module sim_hists
 					if((age_hr .eq. TT) ) then
 						it_old = it_old + 1
 						if(it_old >  Tret ) then
+							age_it(i,it:Tsim) = -1
 							a_it(i,it:Tsim) = 0.
 							a_it_int(i,it:Tsim) = 0
 							d_it(i,it:Tsim) = 0
@@ -2685,7 +2706,7 @@ module sim_hists
 							! eligible to apply?
 							if(age_hr > 1 .or. (age_hr ==1 .and. status_it_innov(i,min(it+1,Tsim))<eligY )) then !status_it_innov(i,it+1) is an independent draw
 								!applying, do you get it?
-								if(status_it_innov(i,it) < xi(d_hr,age_hr)) then 
+								if(status_it_innov(i,it) < xifun(d_hr,z_hr,age_hr)) then 
 									status_tmrw = 4
 								else	
 									status_tmrw = 3
@@ -2715,7 +2736,7 @@ module sim_hists
 							api_hr = aR(d_hr,ei_hr,ai_hr)
 						endif
 					! retired
-					elseif( (age_hr==TT) .and. (it_old <= Tret)) then 
+					elseif( (age_hr==TT) .and. (it_old <= Tret)) then
 						api_hr = aR( d_hr,ei_hr,ai_hr )
 						status_hr = 5
 						status_tmrw = 5
@@ -2792,21 +2813,24 @@ module sim_hists
 
 			a_mean = 0.
 			d_mean = 0.
+			s_mean = 0.
 			a_var = 0.
 			d_var = 0.
 			do age_hr = 1,TT-1
 				junk = 0.
 				do i=1,Nsim
-					do it = 1,5 ! average in the first 5 periods should be the same.  
+					do it = 1,Tsim
 						if( age_hr .eq. age_it(i,it) ) then
-							a_mean(age_hr) = a_it(i,it) + a_mean(age_hr)
-							d_mean(age_hr) = d_it(i,it) + d_mean(age_hr)
+							a_mean(age_hr) = a_it(i,it)      + a_mean(age_hr)
+							d_mean(age_hr) = d_it(i,it)      + d_mean(age_hr)
+							s_mean(age_hr) = status_it(i,it) + s_mean(age_hr)
 							junk = junk + 1.
 						endif
 					enddo
 				enddo
 				a_mean(age_hr) = a_mean(age_hr)/junk
 				d_mean(age_hr) = d_mean(age_hr)/junk
+				s_mean(age_hr) = s_mean(age_hr)/junk
 				do i=1,Nsim
 					do it = 1,Tsim
 						if( age_hr .eq. age_it(i,it) ) then
@@ -2817,14 +2841,17 @@ module sim_hists
 				enddo
 				a_var(age_hr) = a_var(age_hr)/junk
 				d_var(age_hr) = d_var(age_hr)/junk
+
 			enddo
-			if(sum((a_mean - a_mean_liter)**2) + sum((d_mean - d_mean_liter)**2)<1.e-5 ) then
+			if((sum((a_mean - a_mean_liter)**2) + sum((s_mean - s_mean_liter)**2) + sum((d_mean - d_mean_liter)**2))<1.e-5 ) then
 				if(verbose >=2 ) then
 					print *, "done simulating after convergence in", iter
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
 					! NOTE: this is not actually mean because it does not have demographic weights
 					print *, "a mean, a var",  sum(a_mean), sum(a_var)
 					print *, "dif d mean,     d var",  sum((d_mean - d_mean_liter)**2), sum((d_var - d_var_liter)**2)
+					print *, "dif status mean",  sum((s_mean - s_mean_liter)**2)
+					print *, "status mean", sum(s_mean)
 					print *,  "-------------------------------"
 				endif
 				exit
@@ -2834,11 +2861,13 @@ module sim_hists
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
 					print *, "a mean, a var",  sum(a_mean), sum(a_var)
 					print *, "dif d mean,     d var",  sum((d_mean - d_mean_liter)**2), sum((d_var - d_var_liter)**2)
+					print *, "dif status mean",  sum((s_mean - s_mean_liter)**2)
 					print *,  "-------------------------------"
 				endif
 			endif
 			a_mean_liter = a_mean
 			d_mean_liter = d_mean
+			s_mean_liter = s_mean
 			a_var_liter = a_var
 			d_var_liter = d_var
 		enddo! iter
@@ -2897,13 +2926,16 @@ module sim_hists
 				call mat2csv (occsize_jt,"occsize_jt.csv")
 				call mat2csv (occgrow_jt,"occgrow_jt.csv")
 				call mat2csv (occshrink_jt,"occshrink_jt.csv")
+				call mat2csv (hst%wage_hist,"wage_hist.csv")
+				call mat2csv (hst%app_dif_hist,"app_dif_hist.csv")
+				call mat2csv (hst%work_dif_hist,"work_dif_hist.csv")
 		endif
 	
 		deallocate(e_it)
 		deallocate(a_it_int,e_it_int)
 		deallocate(del_i,born_it)
 		deallocate(app_it,work_it)
-		deallocate(del_i_int,al_it_int,status_it_innov)
+		deallocate(del_i_int,del_i_rand,al_it_int,status_it_innov)
 		deallocate(drawi_ititer,drawt_ititer)
 
 	end subroutine sim
@@ -2944,7 +2976,9 @@ program V0main
 		type(hist_struct):: hists_sim
 		type(moments_struct):: moments_sim
 		
-		
+	! Timers
+		integer :: c1,c2,cr,cm
+		real(8) :: t1,t2
 		
 	!************************************************************************************************!
 	! Allocate phat matrices
@@ -2987,9 +3021,6 @@ program V0main
 	moments_sim%alloced = 0
 
 	narg_in = iargc()
-
-	verbose = 3
-	print_lev = 2
 
 
 	call setparams()
@@ -3058,7 +3089,21 @@ program V0main
 	endif
 
 	if(verbose >2) print *, "Solving the model"
+	if(verbose >2) then
+		call system_clock(count_rate=cr)
+		call system_clock(count_max=cm)
+		call CPU_TIME(t1)
+		call SYSTEM_CLOCK(c1)
+	endif
 	call sol(val_sol,pol_sol)
+	if(verbose > 2) then
+		call CPU_TIME(t2)
+		call SYSTEM_CLOCK(c2)
+		print *, "System Time", dble(c2-c1)/dble(cr)
+		print *, "   CPU Time", (t2-t1)
+	endif
+
+	
 	if(verbose >2) print *, "Simulating the model"	
 	call sim(val_sol, pol_sol, hists_sim)
 	if(verbose >2) print *, "Computing moments"

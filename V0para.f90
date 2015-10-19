@@ -54,21 +54,19 @@ integer, parameter ::  	   oldN = 4,&	!4!Number of old periods
 real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 		pid2	= 0.014, &  	!Probability d1->d2
 		pid0	= 0.587, &	!Probability d1->d0
-		dRiskL	= 0.5,&		!Lower bound on occupation-related extra disability risk (mult factor)
-		dRiskH	= 1.5		!Upper bound on occupation-related extra disability risk (mult factor)
+		dRiskL	= 0.75,&		!Lower bound on occupation-related extra disability risk (mult factor)
+		dRiskH	= 1.25		!Upper bound on occupation-related extra disability risk (mult factor)
 
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		!Number of indiVidual beta types
-			ndi = 1,  &!3		!Number of individual disability risk types
+			ndi = 2,  &!3		!Number of individual disability risk types
 			nj  = 2,  &		!Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		!Number of disability extents
 			ne  = 4, &!10		!Points on earnings grid
 			na  = 100, &!100		!Points on assets grid
 			nz  = 6,  &		!Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &!2000	!Tolerance parameter	
-			iaa_lowindow = 5,& 	!how far below to begin search
-			iaa_hiwindow = 5, &	!how far above to keep searching
 			Nsim = 5000, &!		!how many agents to draw
 			Ndat = 5000, & 		!size of data, for estimation
 			Tsim = int(tlen*(2010-1980)), &	!how many periods to solve for simulation
@@ -77,8 +75,10 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
 logical, parameter ::	del_contin = .false., &	!make delta draws take continuous values or stay on the grid
+			del_by_occ = .true.,& 	!delta is fully determined by occupation, right now alternative is fully random
 			al_contin = .false.,&	!make alpha draws continuous
 			j_rand = .false. 	!randomly assign j, or let choose.
+
 
 
 real(8), parameter ::   Vtol = 1e-5, & 	!Tolerance on V-dist
@@ -115,7 +115,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start)
-		nu = 0.005, &		!Psychic cost of applying for DI - proportion of potential payout	
+		nu = 0.05, &		!Psychic cost of applying for DI - proportion of potential payout	
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristance of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
@@ -126,7 +126,8 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
 		xsep = 0.015, &		!Separation probability into unemployment
 !	Agregate income risk
-		Tblock	= 20.,	&	!Expected time before structural change (years)
+		Tblock	= 2e4,	&	!Expected time before structural change (years)
+		Tblock_sim = 20,&	!The actual time before structural change (years)
 		zrho	= 0.9,	&	!Persistence of the AR process
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
@@ -170,6 +171,12 @@ subroutine setparams()
 
 	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim)
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	verbose = 3
+	print_lev = 2
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
 	!Individual- Specific Things
 	!Individual exposure to TFP shocks (beta)
 	beti(1) = 1.0
@@ -205,7 +212,7 @@ subroutine setparams()
 	!Extra disability risk (uniform distributed)
 	if(ndi>1) then
 		do i=1,ndi
-			delgrid(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
+			delgrid(i) = dRiskL +dble(ndi-i)*(dRiskH-dRiskL)/dble(ndi-1)
 		enddo
 	else
 		delgrid(1) = 0.5*(dRiskH + dRiskL)
@@ -214,7 +221,7 @@ subroutine setparams()
 	! TFP
 	zscale = 0. 
 	do j=1,nj
-		zscale(j) = zsig*(dble(j)-dble(nj-1)/2.-1.)/dble(nj-1)
+		zscale(j) = dble(j-1)/dble(nj-1)*(2*zsig) -zsig !zsig*(dble(j)-dble(nj-1)/2.-1.)/dble(nj-1)
 	enddo
 	call settfp()
 
@@ -340,12 +347,12 @@ subroutine setparams()
 	do j=1,ndi
 	do i=1,TT-1
 
-		pid(1,2,j,i) = 1.-(1.-pid1*dtau(i)*delgrid(j))&	!Partial Disability 
+		pid(1,2,j,i) = 1.-max(1.-pid1*dtau(i)*delgrid(j),0.)&	!Partial Disability 
 				& **(1./tlen)	
 		pid(1,1,j,i) = 1.-pid(1,2,j,i)			!Stay healthy
 		pid(1,3,j,i) = 0.				!Full Disability
 		pid(2,1,j,i) = 1.-(1.-pid0)**(1./tlen)		!revert
-		pid(2,3,j,i) = 1.-(1.-pid2*dtau(i)*delgrid(j))&	!Full Disability
+		pid(2,3,j,i) = 1.-max(1.-pid2*dtau(i)*delgrid(j),0.)&	!Full Disability
 					& **(1./tlen)	
 		pid(2,2,j,i) = 1.-pid(2,3,j,i)-pid(2,1,j,i)	!Stay Partial
 		pid(3,1,j,i) = 0.				!Full is absorbing State
