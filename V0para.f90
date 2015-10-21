@@ -54,8 +54,8 @@ integer, parameter ::  	   oldN = 4,&	!4!Number of old periods
 real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 		pid2	= 0.014, &  	!Probability d1->d2
 		pid0	= 0.587, &	!Probability d1->d0
-		dRiskL	= 0.75,&		!Lower bound on occupation-related extra disability risk (mult factor)
-		dRiskH	= 1.25		!Upper bound on occupation-related extra disability risk (mult factor)
+		dRiskL	= 0.95,&		!Lower bound on occupation-related extra disability risk (mult factor)
+		dRiskH	= 1.05		!Upper bound on occupation-related extra disability risk (mult factor)
 
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
