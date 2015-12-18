@@ -25,7 +25,8 @@ real(8), parameter ::	youngD = 20.0, &	!Length of initial young period
 		ageD = 0.1, &		!Coefficient on Age over 45 in Disability hazard (exponential)
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.407,&	!Fraction young who are eligable
-		R = dexp(0.03/tlen)	!People can save
+		R = dexp(0.03/tlen),&	!People can save
+		util_const = 0.		!Give life some value
 
 integer, parameter ::  	   oldN = 4,&	!4!Number of old periods
 		TT = oldN+2		!Total number of periods, oldN periods plus young and retired
@@ -59,17 +60,18 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
-			nbi = 1,  &		!Number of indiVidual beta types
-			ndi = 2,  &!3		!Number of individual disability risk types
-			nj  = 2,  &		!Number of occupations (downward TFP risk variation)
-			nd  = 3,  &		!Number of disability extents
-			ne  = 4, &!10		!Points on earnings grid
-			na  = 100, &!100		!Points on assets grid
-			nz  = 6,  &		!Number of Occ TFP Shocks (MUST BE multiple of 2)
+			nbi = 1,  &		        !Number of indiVidual beta types
+			ndi = 1,  &!3		    !Number of individual disability risk types
+			nj  = 2,  &		        !Number of occupations (downward TFP risk variation)
+			nd  = 3,  &		        !Number of disability extents
+			ne  = 2, &!10	        !Points on earnings grid
+			na  = 50, &!100	        !Points on assets grid
+			nz  = 6,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &!2000	!Tolerance parameter	
-			Nsim = 5000, &!		!how many agents to draw
-			Ndat = 5000, & 		!size of data, for estimation
+			Nsim = 5000, &          !how many agents to draw
+			Ndat = 5000, &          !size of data, for estimation
 			Tsim = int(tlen*(2010-1980)), &	!how many periods to solve for simulation
+			struc_brk = 20.,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 
 
@@ -132,7 +134,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
 !		
-		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
+		amenityscale = .1,&	!scale parameter of gumbel distribution for occ choice
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
 		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
@@ -677,4 +679,229 @@ fn_val = -log(-log(r) )
 END subroutine random_gumbel
 
 
+FUNCTION brent(ax,bx,cx,func,xmin, funcp,info,tol_in,niter)
+! inputs: 
+! 	ax,bx,cx define the domain for the optimum
+!	funcp is a vector of parameters
+! 	func is a function that takes x and funcp
+! outputs:
+!	brent is the function value at the optimum
+!	xmin is the arg min 
+! 	info is the status, 0 for sucess and 1 for max iterations
+
+	IMPLICIT NONE
+	REAL(8), INTENT(IN) :: ax,bx,cx
+	REAL(8), INTENT(IN), optional :: tol_in
+	REAL(8), INTENT(OUT) :: xmin
+	integer , intent(out) :: info
+	integer , intent(out), optional :: niter
+	REAL(8) :: brent
+	real(8), dimension(:), intent(in) :: funcp ! a vector of function parameters
+	INTERFACE
+		FUNCTION func(x, funcp)
+!		use nrtype
+!		USE mkl95_precision, ONLY: 8 => DP
+		IMPLICIT NONE
+		REAL(8), INTENT(IN) :: x
+		REAL(8), INTENT(IN), dimension(:) :: funcp
+		REAL(8) :: func
+		END FUNCTION func
+	END INTERFACE
+	INTEGER, PARAMETER :: ITMAX=100
+	real(8) :: TOL
+	REAL(8), PARAMETER :: CGOLD=0.381966011250105_8,ZEPS=1.0e-3_8*epsilon(ax)
+	INTEGER :: iter
+	REAL(8) :: a,b,d,e,etemp,fu,fv,fw,fx,p,q,r,tol1,tol2,u,v,w,x,xm
+	info = 0
+
+	if(present(tol_in) .eqv. .true.) then 
+		tol = tol_in
+	else
+		tol =sqrt(epsilon(ax))
+	endif
+
+	a=min(ax,cx)
+	b=max(ax,cx)
+	v=bx
+	w=v
+	x=v
+	e=0.0
+	!if(present(funcp)) then
+	fx=func(x, funcp)
+	!else
+	!	fx=func(x)
+	!endif
+	fv=fx
+	fw=fx
+	do iter=1,ITMAX
+		xm=0.5_8*(a+b)
+		tol1=tol*abs(x)+ZEPS
+		tol2=2.0_8*tol1
+		if (abs(x-xm) <= (tol2-0.5_8*(b-a))) then
+			xmin=x
+			brent=fx
+			if( (present(niter).eqv. .true.) ) niter = iter-1
+			RETURN
+		end if
+		if (abs(e) > tol1) then
+			r=(x-w)*(fx-fv)
+			q=(x-v)*(fx-fw)
+			p=(x-v)*q-(x-w)*r
+			q=2.0_8*(q-r)
+			if (q > 0.0) p=-p
+			q=abs(q)
+			etemp=e
+			e=d
+			if (abs(p) >= abs(0.5_8*q*etemp) .or. &
+				p <= q*(a-x) .or. p >= q*(b-x)) then
+				e=merge(a-x,b-x, x >= xm )
+				d=CGOLD*e
+			else
+				d=p/q
+				u=x+d
+				if (u-a < tol2 .or. b-u < tol2) d=sign(tol1,xm-x)
+			end if
+		else
+			e=merge(a-x,b-x, x >= xm )
+			d=CGOLD*e
+		end if
+		u=merge(x+d,x+sign(tol1,d), abs(d) >= tol1 )
+		!if(present(funcp)) then
+		fu=func(u, funcp)
+		!else
+		!	fu=func(u)
+		!endif
+		if (fu <= fx) then
+			if (u >= x) then
+				a=x
+			else
+				b=x
+			end if
+			v=w
+			fv=fw
+			w=x
+			fw=fx
+			x=u
+			fx=fu
+		else
+			if (u < x) then
+				a=u
+			else
+				b=u
+			end if
+			if (fu <= fw .or. w == x) then
+				v=w
+				fv=fw
+				w=u
+				fw=fu
+			else if (fu <= fv .or. v == x .or. v == w) then
+				v=u
+				fv=fu
+			end if
+		end if
+	end do
+	info = 1
+	brent = fx
+END FUNCTION brent
+
+
+FUNCTION zbrent(func,x1,x2,funcp,tol,flag)
+	IMPLICIT NONE
+	REAL(8), INTENT(IN) :: x1,x2,tol
+	REAL(8) :: zbrent
+	real(8), dimension(:), intent(in) :: funcp ! a vector of function parameters
+	integer , intent(out) :: flag
+	INTERFACE
+		FUNCTION func(x, funcp)
+!		use nrtype
+!		USE mkl95_precision, ONLY: 8 => DP
+		IMPLICIT NONE
+		REAL(8), INTENT(IN) :: x
+		REAL(8), INTENT(IN), dimension(:) :: funcp
+		REAL(8) :: func
+		END FUNCTION func
+	END INTERFACE
+	INTEGER, PARAMETER :: ITMAX=100
+	REAL(8), PARAMETER :: EPS=epsilon(x1)
+	INTEGER :: iter
+	REAL(8) :: a,b,c,d,e,fa,fb,fc,p,q,r,s,tol1,xm
+	a=x1
+	b=x2
+	fa=func(a, funcp)
+	fb=func(b, funcp)
+	if ((fa > 0.0 .and. fb > 0.0) .or. (fa < 0.0 .and. fb < 0.0)) then
+		if(abs(fa) < abs(fb)) then
+			zbrent = a
+		else
+			zbrent = b
+		endif
+		flag = -1
+		return
+		!STOP 'root must be bracketed for zbrent'
+	endif
+	c=b
+	fc=fb
+	do iter=1,ITMAX
+		if ((fb > 0.0 .and. fc > 0.0) .or. (fb < 0.0 .and. fc < 0.0)) then
+			c=a
+			fc=fa
+			d=b-a
+			e=d
+		end if
+		if (abs(fc) < abs(fb)) then
+			a=b
+			b=c
+			c=a
+			fa=fb
+			fb=fc
+			fc=fa
+		end if
+		tol1=2.0_8*EPS*abs(b)+0.5_8*tol
+		xm=0.5_8*(c-b)
+		if (abs(xm) <= tol1 .or. fb == 0.0) then
+			zbrent=b
+			flag = 0
+			RETURN
+		end if
+		if (abs(e) >= tol1 .and. abs(fa) > abs(fb)) then
+			s=fb/fa
+			if (a == c) then
+				p=2.0_8*xm*s
+				q=1.0_8-s
+			else
+				q=fa/fc
+				r=fb/fc
+				p=s*(2.0_8*xm*q*(q-r)-(b-a)*(r-1.0_8))
+				q=(q-1.0_8)*(r-1.0_8)*(s-1.0_8)
+			end if
+			if (p > 0.0) q=-q
+			p=abs(p)
+			if (2.0_8*p  <  min(3.0_8*xm*q-abs(tol1*q),abs(e*q))) then
+				e=d
+				d=p/q
+			else
+				d=xm
+				e=d
+			end if
+		else
+			d=xm
+			e=d
+		end if
+		a=b
+		fa=fb
+		b=b+merge(d,sign(tol1,xm), abs(d) > tol1 )
+		fb=func(b, funcp)
+	end do
+	!STOP 'zbrent: exceeded maximum iterations'
+	zbrent = b
+	flag = -2
+	zbrent=b
+END FUNCTION zbrent
+
+
+
+
 end module V0para
+
+
+

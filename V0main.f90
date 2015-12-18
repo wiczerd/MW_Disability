@@ -82,16 +82,19 @@ module helper_funs
 	type hist_struct
 		real(8), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
 		real(8), allocatable :: wage_hist(:,:) !realized wages
-		real(8), allocatable :: a_hist(:,:), al_hist(:,:)
-		integer, allocatable :: status_hist(:,:) !status: W,U,N,D,R (1:5)
+		real(8), allocatable :: a_hist(:,:), al_hist(:,:), del_i(:)
+
 		! a bunch of explanitory variables to be stacked on each other
-		integer, allocatable :: age_hist(:,:)
+		integer, allocatable :: status_hist(:,:) !status: W,U,N,D,R (1:5)
+
+		integer, allocatable :: age_hist(:,:), born_hist(:,:), del_i_int(:)
 		real(8), allocatable :: occgrow_jt(:,:)
 		real(8), allocatable :: occshrink_jt(:,:)
 		real(8), allocatable :: occsize_jt(:,:)
-		integer, allocatable :: j_i(:)
-		integer, allocatable :: d_hist(:,:)
+		integer, allocatable :: j_i(:),z_jt_macro(:)
+		integer, allocatable :: d_hist(:,:),al_int_hist(:,:)
 		integer :: alloced
+		integer :: drawn
 	end type
 	
 	contains
@@ -179,17 +182,18 @@ module helper_funs
 		
 		if ((win .gt. 1) .or. (din .gt. 1)) then
 			if(gam> 1+1e-5 .or. gam < 1-1e-5) then
-				util = ((cin*dexp(theta*dble(din-1)+eta*dble(win-1)))**(1.-gam))/(1.-gam)
+				util = ((cin*dexp(theta*dble(din-1)+eta*dble(win-1)))**(1.-gam) -1.)/(1.-gam)
 			else 
 				util = dlog(cin*dexp(theta*dble(din-1)+eta*dble(win-1)))
 			endif
 		else 
 			if(gam> 1+1e-5 .or. gam < 1-1e-5) then
-				util = (cin**(1.-gam))/(1.-gam)
+				util = (cin**(1.-gam)-1.)/(1.-gam)
 			else
 				util = dlog(cin)
 			endif
 		end if
+		util = util + util_const
 
 	end function
 
@@ -483,6 +487,80 @@ module helper_funs
 	
 	end subroutine OLS
 
+
+
+	subroutine alloc_econ(val_sol, pol_sol,hists_sim)
+
+	! Structure to communicate everything
+		type(val_struct) :: val_sol
+		type(pol_struct) :: pol_sol
+		type(hist_struct):: hists_sim
+
+		!************************************************************************************************!
+		! Allocate phat matrices
+		!************************************************************************************************!
+		! (disability extent, earn hist, assets)
+		allocate(val_sol%VR(nd,ne,na), stat=val_sol%alloced)
+		allocate(pol_sol%aR(nd,ne,na), stat=pol_sol%alloced)
+
+		! (disability extent, earn hist, assets, age)
+		allocate(val_sol%VD(nd,ne,na,TT), stat=val_sol%alloced)
+		allocate(pol_sol%aD(nd,ne,na,TT-1), stat=pol_sol%alloced)
+
+		! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
+		allocate(val_sol%VN(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
+		allocate(val_sol%VU(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
+		allocate(val_sol%VW(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
+		allocate(val_sol%V(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
+		allocate(pol_sol%aN(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+		allocate(pol_sol%aW(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+		allocate(pol_sol%aU(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+		allocate(pol_sol%gwork(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+		allocate(pol_sol%gapp(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
+
+		allocate(pol_sol%gapp_dif(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=pol_sol%alloced)
+		allocate(pol_sol%gwork_dif(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=pol_sol%alloced)
+
+		allocate(hists_sim%wage_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%work_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%app_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%age_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%born_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%status_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%al_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%al_int_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%d_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%a_hist(Nsim,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%j_i(Nsim), stat=hists_sim%alloced)
+		allocate(hists_sim%z_jt_macro(Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%del_i_int(Nsim), stat=hists_sim%alloced)
+		allocate(hists_sim%del_i(Nsim), stat=hists_sim%alloced)
+		allocate(hists_sim%occgrow_jt(nj,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%occshrink_jt(nj,Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%occsize_jt(nj,Tsim), stat=hists_sim%alloced)
+
+	end subroutine
+
+	subroutine dealloc_econ(val_sol,pol_sol,hists_sim)
+
+	! Structure to communicate everything
+		type(val_struct) :: val_sol
+		type(pol_struct) :: pol_sol
+		type(hist_struct):: hists_sim
+
+		deallocate(pol_sol%aR,pol_sol%aD,pol_sol%aN, pol_sol%aU, pol_sol%aW,pol_sol%gwork, pol_sol%gapp)
+		deallocate(pol_sol%gwork_dif,pol_sol%gapp_dif)
+		deallocate(val_sol%VR,val_sol%VD,val_sol%VN,val_sol%VU,val_sol%VW,val_sol%V)
+		deallocate(hists_sim%wage_hist,hists_sim%work_dif_hist)
+		deallocate(hists_sim%app_dif_hist,hists_sim%status_hist,hists_sim%born_hist)
+		deallocate(hists_sim%age_hist, hists_sim%al_hist, hists_sim%d_hist)
+		deallocate(hists_sim%a_hist,hists_sim%j_i,hists_sim%del_i_int,hists_sim%del_i)
+		deallocate(hists_sim%z_jt_macro,hists_sim%al_int_hist)
+		deallocate(hists_sim%occgrow_jt, hists_sim%occshrink_jt )
+		deallocate(hists_sim%occsize_jt)
+		hists_sim%alloced = 0
+	end subroutine
+
 end module helper_funs
 
 module model_data
@@ -678,7 +756,7 @@ module model_data
 									if(  hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1.) &
 									&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1.) &
 									&	.and. hists_sim%status_hist(si,st) == 4 ) &
-									&  alD_age(ial,age_hr) = 1. + alD_age(ial,it)
+									&	alD_age(ial,age_hr) = 1. + alD_age(ial,it)
 								enddo
 							elseif(hists_sim%status_hist(si,st) == 3) then
 								appdif_age(it) = appdif_age(age_hr) + hists_sim%app_dif_hist(si,st)
@@ -756,6 +834,11 @@ module model_data
 
 end module model_data
 
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!						Solve the model						       !
+!**************************************************************************************************************!
+!**************************************************************************************************************!
 
 module sol_val
 
@@ -1968,6 +2051,12 @@ module sol_val
 	end subroutine sol 
 end module sol_val
 
+
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!						Simulate from solution					       !
+!**************************************************************************************************************!
+!**************************************************************************************************************!
 module sim_hists
 	use V0para
 	use helper_funs
@@ -1978,13 +2067,13 @@ module sim_hists
 	contains
 
 
-	subroutine draw_deli(del_i,del_i_rand, del_i_int, seed0, success)
+	subroutine draw_deli(del_i, del_i_int, seed0, success)
 	! draws depreciation rates and indices on the delta grid (i.e at the discrete values)
 		implicit none
 
 		integer, intent(in) :: seed0
 		integer, intent(out) :: success
-		real(8), dimension(:) :: del_i,del_i_rand
+		real(8), dimension(:) :: del_i
 		integer, dimension(:) :: del_i_int
 		integer :: ss, Nsim, di_int,m,i
 		real(8) :: delgridL, delgridH,delgrid_i
@@ -2000,7 +2089,6 @@ module sim_hists
 
 		do i=1,Nsim
 			call rand_num_closed(delgrid_i) ! draw uniform on 0,1
-			del_i_rand(i) = delgrid_i
 			delgrid_i = delgrid_i*(delgridH-delgridL) + delgridL !change domain of uniform
 			di_int = finder(delgrid,delgrid_i)
 			! round up or down:
@@ -2016,7 +2104,6 @@ module sim_hists
 			del_i_int(i) = di_int
 		enddo
 		success = 0
-		
 	end subroutine draw_deli
 	
 	subroutine draw_status_innov(status_it_innov, seed0, success)
@@ -2195,7 +2282,7 @@ module sim_hists
 			
 			! use conditional probability w/in time block
 			z_jt_t = finder(cumpi_zblock(z_jt_t,:),z_innov )
-			if( dble(it)<20.*tlen ) then
+			if( dble(it)<struc_brk*tlen ) then
 				z_jt_macro(it) = z_jt_t
 			else
 				z_jt_macro(it) = z_jt_t + nz/2
@@ -2327,6 +2414,31 @@ module sim_hists
 	end subroutine
 
 
+	subroutine draw_shocks(hst)
+
+		implicit none
+		type(hist_struct) :: hst
+		integer :: seed0,seed1, status 
+
+		seed0 = 941987
+		seed1 = 12281951
+
+		call draw_age_it(hst%age_hist,hst%born_hist,seed0,status)
+		seed0 = seed0 + 1
+		call draw_deli(hst%del_i, hst%del_i_int, seed1, status)
+		seed1 = seed1 + 1
+		call draw_alit(hst%al_hist,hst%al_int_hist, seed0, status)
+		seed0 = seed0 + 1
+		call draw_ji(hst%j_i,seed1, status)
+		seed1 = seed1 + 1
+		call draw_zjt(hst%z_jt_macro, seed0, status)
+		seed0 = seed0 + 1
+
+		hst%drawn = 1
+
+	end subroutine draw_shocks
+
+	
 	subroutine sim(vfs, pfs,hst)
 		
 		implicit none
@@ -2341,11 +2453,8 @@ module sim_hists
 			&  seed0, seed1, status, m,ss, iter_draws=5
 		integer :: bdayseed(100)
 						
-		real(8), allocatable ::	del_i(:), del_i_rand(:),jshock_ij(:,:) ! shocks to be drawn
-		integer, allocatable :: z_jt_macro(:)! shocks to be drawn
-		integer, allocatable :: del_i_int(:)  ! integer valued shocks
-		integer, allocatable :: al_it_int(:,:)! integer valued shocks
-		integer, allocatable :: born_it(:,:) ! born status, drawn randomly		
+		real(8), allocatable ::	del_i(:), jshock_ij(:,:) ! shocks to be drawn
+		
 		real(8), allocatable :: status_it_innov(:,:) !innovations to d, drawn randomly
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
@@ -2355,10 +2464,14 @@ module sim_hists
 		
 		! write to hst
 		real(8), pointer     :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
+		integer, pointer     :: born_it(:,:) ! born status, drawn randomly		
+		integer, pointer     :: del_i_int(:)  ! integer valued shocks
 		integer, pointer     :: status_it(:,:)	!track W,U,N,D,R : 1,2,3,4,5
 		integer, pointer     :: age_it(:,:)	! ages, drawn randomly
 		integer, pointer     :: j_i(:)		! occupation, maybe random
 		integer, pointer     :: d_it(:,:) 	! disability status
+		integer, pointer     :: z_jt_macro(:)! shocks to be drawn
+		integer, pointer     :: al_it_int(:,:)! integer valued shocks
 		real(8), pointer     :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
 		real(8), pointer     :: a_it(:,:) 	! assets
 		real(8), pointer     ::	al_it(:,:)	! individual shocks
@@ -2390,33 +2503,20 @@ module sim_hists
 
 		iter_draws = maxiter !globally set variable
 		
-		allocate(z_jt_macro(Tsim))
 		allocate(jshock_ij(Nsim,nj))
 		allocate(del_i(Nsim))
-		!allocate(al_it(Nsim,Tsim))
-		!allocate(j_i(Nsim))
-		!allocate(age_it(Nsim,Tsim))
 		allocate(status_it_innov(Nsim,Tsim))
-		allocate(del_i_int(Nsim))
-		allocate(del_i_rand(Nsim))
-		allocate(al_it_int(Nsim,Tsim))
-		allocate(born_it(Nsim,Tsim))
-
-		!allocate(a_it(Nsim,Tsim))
+		
 		allocate(a_it_int(Nsim,Tsim))		
 		allocate(e_it(Nsim,Tsim))
 		allocate(e_it_int(Nsim,Tsim))		
-		!allocate(d_it(Nsim,Tsim))
 		allocate(work_it(Nsim,Tsim))
-		!allocate(work_dif_it(Nsim,Tsim))
 		allocate(app_it(Nsim,Tsim))
-		!allocate(app_dif_it(Nsim,Tsim))
-		!allocate(status_it(Nsim,Tsim))
+
 		!this must be big enough that we are sure it's big enough that can always find a worker
 		allocate(drawi_ititer(Nsim*10)) 
 		allocate(drawt_ititer(Nsim*10))
-		!allocate(occgrow_jt(nj,Tsim))
-		!allocate(occshrink_jt(nj,Tsim))
+
 
 		!************************************************************************************************!
 		! Pointers
@@ -2437,12 +2537,17 @@ module sim_hists
 
 		status_it   => hst%status_hist
 		age_it 	    => hst%age_hist
+		born_it	    => hst%born_hist
 		work_dif_it => hst%work_dif_hist
 		app_dif_it  => hst%app_dif_hist
 		d_it        => hst%d_hist
+		del_i_int   => hst%del_i_int
 		j_i         => hst%j_i
+		z_jt_macro  => hst%z_jt_macro
 		a_it        => hst%a_hist
 		al_it       => hst%al_hist
+		al_it_int	=> hst%al_int_hist
+		
 		occgrow_jt  => hst%occgrow_jt
 		occshrink_jt=> hst%occshrink_jt
 		occsize_jt  => hst%occsize_jt
@@ -2475,16 +2580,21 @@ module sim_hists
 				enddo
 			enddo
 		endif
-		call draw_age_it(age_it,born_it,seed0,status)
-		seed0 = seed0 + 1
-		call draw_deli(del_i,del_i_rand, del_i_int, seed1, status)
-		seed1 = seed1 + 1
-		call draw_alit(al_it,al_it_int, seed0, status)
-		seed0 = seed0 + 1
-		call draw_ji(j_i,seed1, status)
-		seed1 = seed1 + 1
-		call draw_zjt(z_jt_macro, seed0, status)
-		seed0 = seed0 + 1
+		call draw_shocks(hst)
+		
+		if(hst%drawn /= 1 )then
+			call draw_age_it(age_it,born_it,seed0,status)
+			seed0 = seed0 + 1
+			call draw_deli(del_i, del_i_int, seed1, status)
+			seed1 = seed1 + 1
+			call draw_alit(al_it,al_it_int, seed0, status)
+			seed0 = seed0 + 1
+			call draw_ji(j_i,seed1, status)
+			seed1 = seed1 + 1
+			call draw_zjt(z_jt_macro, seed0, status)
+			seed0 = seed0 + 1
+		endif
+		
 		call draw_status_innov(status_it_innov,seed1,status)
 		seed1 = seed1 + 1
 		call draw_draw(drawi_ititer, drawt_ititer, age_it, seed0, status)
@@ -2587,11 +2697,9 @@ module sim_hists
 	
 				!set a j to correspond to the probabilities.  This will get overwritten if born
 				j_hr = j_i(i)
-				if(del_by_occ .eqv. .true.) then
-					del_hr = j_hr
-				else
-					del_hr = del_i_int(i)
-				endif
+				if(del_by_occ .eqv. .true.) &
+					del_i_int(i) = j_hr
+				del_hr = del_i_int(i) 
 
 				!initialize stuff
 				it = 1
@@ -2614,10 +2722,12 @@ module sim_hists
 							j_val  = -1.e6
 							cumval = 0.
 							do ij = 1,nj
+								if(del_by_occ .eqv. .true.) del_hr = ij
 								cumval = dexp(V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)/amenityscale ) + cumval
 							enddo
 							j_hr = 1 !initial value
 							do ij = 1,nj
+								if(del_by_occ .eqv. .true.) del_hr = ij
 								j_val_ij = V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)
 								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/amenityscale)
 								j_val_ij = j_val_ij + jshock_ij(i,ij)*amenityscale ! + log(jwt)
@@ -2627,11 +2737,9 @@ module sim_hists
 								endif
 							enddo
 							j_i(i) = j_hr
-							if(del_by_occ .eqv. .true.) then
-								del_hr = j_hr
-							else
-								del_hr = del_i_int(i)
-							endif
+							if(del_by_occ .eqv. .true.) &
+								del_i_int(i) = j_hr	
+							del_hr = del_i_int(i)
 						endif
 					else 
 						age_hr	= age_it(i,it)
@@ -2721,8 +2829,6 @@ module sim_hists
 							work_dif_it(i,it) = 0.
 
 						endif
-
-						
 						!evaluate the asset policy			
 						if(status_hr .eq. 1) then
 							api_hr = aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
@@ -2743,7 +2849,6 @@ module sim_hists
 						if(it<Tsim) &
 						&	status_it(i,it+1) = status_hr
 					endif
-
 
 					!push forward the state:
 					if(it<Tsim) then
@@ -2897,7 +3002,6 @@ module sim_hists
 			do i=1,Nsim
 				if(status_it(i,it) <= 2 .and. status_it(i,it)>=1 .and. age_it(i,it) > 0 ) Nworkt = 1. + Nworkt !labor force in this period
 				do ij =1,nj
-			
 					if(j_i(i) ==ij .and. born_it(i,it) == 1 ) &
 						& occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
 					if(j_i(i) ==ij .and. status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
@@ -2933,18 +3037,239 @@ module sim_hists
 	
 		deallocate(e_it)
 		deallocate(a_it_int,e_it_int)
-		deallocate(del_i,born_it)
+		deallocate(del_i)
 		deallocate(app_it,work_it)
-		deallocate(del_i_int,del_i_rand,al_it_int,status_it_innov)
+		deallocate(status_it_innov)
 		deallocate(drawi_ititer,drawt_ititer)
 
 	end subroutine sim
 
 end module sim_hists
 
+
+
 !**************************************************************************************************************!
 !**************************************************************************************************************!
-!						MAIN PROGRAM						       !
+!						Searches for parameters						       !
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+module find_params
+
+	use V0para
+	use helper_funs
+	use sol_val
+	use sim_hists
+	use model_data
+
+	implicit none
+
+	real(8), allocatable :: mod_prob_hist_tgt(:,:)
+
+	integer :: mod_ij_obj, mod_it
+	integer :: mod_z_jt_macro_it
+	type(val_struct), pointer :: mod_val_sol
+	type(hist_struct), pointer :: mod_hists_sim
+	real(8) :: mod_prob_target
+
+	contains
+
+	function obj_zj(zj_here,val_sol,hists_sim,z_jt_macro_it,prob_target,ij_obj,it0) result(resid)
+
+		! for each j in each t, this solves the implied z_j
+		integer, intent(in) :: ij_obj, it0
+		integer, intent(in) :: z_jt_macro_it
+		type(val_struct),  intent(in) :: val_sol
+		type(hist_struct), intent(in):: hists_sim
+		real(8), intent(in) :: prob_target,zj_here
+		real(8) :: resid
+		real(8) :: j_val_ij,cumval,j_val,zjwt,prob_here,e_hr
+		integer :: age_hr,d_hr,ai_hr,ali_hr,del_hr,ei_hr,i, it, ij,beti
+		integer :: zj_hi,zj_lo, simT
+		real(8) :: j_val_hi,j_val_lo,nborn
+
+
+		simT = size(hists_sim%born_hist,2)
+		beti = 1
+		prob_here = 0.
+		nborn = 0.
+		do it = it0,simT
+			do i = 1,Nsim
+				if(del_by_occ .eqv. .false.) then
+					del_hr = hists_sim%del_i_int(i)
+				endif
+				if(hists_sim%born_hist(i,it).eq. 1 ) then !they've been born this period
+					nborn = 1. + nborn
+					!set the state
+					ali_hr 	= hists_sim%al_int_hist(i,it)
+					age_hr 	= 1
+					d_hr 	= 1
+					ai_hr	= 1
+					ei_hr	= 1
+					e_hr 	= 0.
+					ai_hr 	= 1
+
+					ij = ij_obj
+					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here)
+					zj_lo	  = max(zj_lo,nz/2+1)
+					zj_hi	  = min(zj_lo +1,nz)
+					zjwt 	  = (zgrid(zj_hi,ij) - zj_here)/(zgrid(zj_hi,ij) - zgrid(zj_lo,ij))
+					j_val_lo  = val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_lo,age_hr)
+					j_val_hi  = val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_hi,age_hr)
+
+					cumval  = 0.
+					do ij = 1,nj
+						if(del_by_occ .eqv. .true.) del_hr = ij
+						if(ij /= ij_obj) then
+							cumval = (val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
+										& hists_sim%z_jt_macro(it),age_hr)/amenityscale ) + cumval
+						else
+							cumval = ( (zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale ) + cumval
+						endif
+					enddo
+
+					ij = ij_obj
+					if(del_by_occ .eqv. .true.) del_hr = ij
+
+					prob_here = ((zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale)/cumval + prob_here
+					
+				endif
+			enddo
+		enddo
+		prob_here = prob_here/nborn
+		resid = prob_target - prob_here
+		
+	end function obj_zj
+
+	function obj_zj_wrap(zj_here, dummy_params) result(resid)
+		real(8), intent(in) :: zj_here
+		real(8), intent(in) :: dummy_params(:)
+		real(8) :: resid
+
+		resid = obj_zj(zj_here,mod_val_sol,mod_hists_sim,mod_z_jt_macro_it,mod_prob_target,mod_ij_obj,mod_it)
+
+	end function obj_zj_wrap
+
+
+	subroutine iter_zproc(val_sol, hists_sim, prob_hist_target)
+
+		integer :: it, ij
+		type(val_struct), target :: val_sol
+		type(hist_struct), target:: hists_sim
+
+		real(8), intent(in) :: prob_hist_target(:,:)
+		real(8) :: zj_here, logzj_mean,logzj_mean1
+		real(8) :: dummy_params(3)
+		!integer :: del_i_int(:)
+		integer :: flag,z_jt_macro_it
+		real(8) :: resid_hi, resid_lo, z_hi,z_lo,zj_opt, tol=1.e-4
+		real(8), allocatable :: zj_hist_1(:,:),zj_hist_0(:,:)
+		dummy_params = 0.
+		allocate(zj_hist_1(Tsim,nj))
+		allocate(zj_hist_0(Tsim,nj))
+		mod_val_sol => val_sol
+		mod_hists_sim => hists_sim
+
+		!even as iterate, do not let the mean drift
+		logzj_mean = 0.
+		do it=1,Tsim
+			do ij=1,nj
+				logzj_mean = log(zgrid(hists_sim%z_jt_macro(it),ij))+ logzj_mean
+				zj_hist_0(it,ij) = zgrid(hists_sim%z_jt_macro(it),ij)
+			enddo
+		enddo
+
+		do ij=1,nj
+			mod_ij_obj = ij
+			it = struc_brk*nint(tlen)
+			mod_it = it
+			z_jt_macro_it = hists_sim%z_jt_macro(it)
+			mod_z_jt_macro_it = z_jt_macro_it
+			mod_prob_target = 0.5
+
+
+			resid_lo = obj_zj_wrap(zgrid(nz/2+1,ij),dummy_params)
+			resid_hi = obj_zj_wrap(zgrid(nz    ,ij),dummy_params)
+		enddo
+
+!		do it=2,Tsim
+!			z_jt_macro_it = hists_sim%z_jt_macro(it)
+!			do ij=1,nj
+!				! module-level variables
+!				mod_ij_obj = ij
+!				mod_it = it
+!				mod_z_jt_macro_it = z_jt_macro_it
+!				mod_prob_target = prob_hist_target(it,ij)
+!				resid_lo = obj_zj_wrap(zgrid(nz/2+1,ij),dummy_params)
+!				resid_hi = obj_zj_wrap(zgrid(nz    ,ij),dummy_params)
+!				if(resid_hi*resid_lo < 0.) then
+!					z_hi = zgrid(nz    ,ij)
+!					z_lo = zgrid(nz/2+1,ij)
+!					zj_opt = zbrent(obj_zj_wrap,z_lo,z_hi,&
+!						& dummy_params ,tol,flag)
+!				elseif( dabs(resid_hi)<dabs(resid_lo) ) then
+!					zj_opt = zgrid(nz    ,ij)
+!				else
+!					zj_opt = zgrid(nz/2+1,ij)
+!				endif
+!				zj_hist_1(it,ij) = zj_opt
+!			enddo
+!		enddo !1,Tsim
+
+
+		logzj_mean1 = 0.
+		do it=1,Tsim
+			do ij=1,nj
+				logzj_mean1 = log(zj_hist_1(it,ij)) + logzj_mean1
+			enddo
+		enddo
+		forall(it=1:Tsim,ij=1:nj) zj_hist_1(it,ij) = zj_hist_1(it,ij)*dexp( logzj_mean )* dexp(-logzj_mean1)
+
+		deallocate(zj_hist_1)
+	end subroutine iter_zproc
+	
+
+	subroutine cal_dist(paramvec, errvec)
+
+		real(8) :: paramvec(:), errvec(:)
+
+		type(val_struct) :: val_sol
+		type(pol_struct) :: pol_sol
+		type(hist_struct):: hists_sim
+		type(moments_struct):: moments_sim
+
+		call alloc_econ(val_sol,pol_sol,hists_sim)
+
+		! set up economy and solve it
+		if(verbose >2) print *, "Solving the model"	
+		call sol(val_sol,pol_sol)
+		if(verbose >2) print *, "Solving for z process"
+		call draw_shocks(hists_sim)
+		call iter_zproc(val_sol,hists_sim,mod_prob_hist_tgt)
+		
+		if(verbose >2) print *, "Simulating the model"	
+		call sim(val_sol, pol_sol, hists_sim)
+		if(verbose >2) print *, "Computing moments"
+		call moments_compute(hists_sim,moments_sim)
+
+		call dealloc_econ(val_sol,pol_sol,hists_sim)
+
+	end subroutine cal_dist
+
+	subroutine  dfovec(Nin,Nout,paramvec,errvec)
+		integer :: Nin, Nout
+		real(8) :: paramvec(:), errvec(:)
+
+		call cal_dist(paramvec,errvec)
+		
+	end subroutine dfovec
+
+end module find_params
+
+
+
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!						MAIN DRIVER PROGRAM						       !
 !**************************************************************************************************************!
 !**************************************************************************************************************!
 
@@ -2955,6 +3280,7 @@ program V0main
 	use sol_val
 	use sim_hists
 	use model_data
+	use find_params
 
 	implicit none
 
@@ -2963,12 +3289,13 @@ program V0main
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: id, it, ij, ibi, ial, iz, narg_in, wo
+		integer  :: id, it, ij, ibi, ial, iz, narg_in, wo, status
 
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(8)	:: wagehere,utilhere
+		real(8)	:: wagehere,utilhere, junk, param0(2),err0(2)
+		integer, allocatable :: iz_jt_in(:)
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct) :: val_sol
@@ -2983,40 +3310,8 @@ program V0main
 	!************************************************************************************************!
 	! Allocate phat matrices
 	!************************************************************************************************!
-	! (disability extent, earn hist, assets)
-	allocate(val_sol%VR(nd,ne,na), stat=val_sol%alloced)
-	allocate(pol_sol%aR(nd,ne,na), stat=pol_sol%alloced)
-
-	! (disability extent, earn hist, assets, age)
-	allocate(val_sol%VD(nd,ne,na,TT), stat=val_sol%alloced)
-	allocate(pol_sol%aD(nd,ne,na,TT-1), stat=pol_sol%alloced)
-
-	! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
-	allocate(val_sol%VN(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(val_sol%VU(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(val_sol%VW(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(val_sol%V(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=val_sol%alloced)
-	allocate(pol_sol%aN(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(pol_sol%aW(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(pol_sol%aU(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(pol_sol%gwork(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-	allocate(pol_sol%gapp(nj*nbi,ndi*nal,nd,ne,na,nz,TT-1), stat=pol_sol%alloced)
-
-	allocate(pol_sol%gapp_dif(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=pol_sol%alloced)
-	allocate(pol_sol%gwork_dif(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=pol_sol%alloced)
-
-	allocate(hists_sim%wage_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%work_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%app_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%age_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%status_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%al_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%d_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%a_hist(Nsim,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%j_i(Nsim), stat=hists_sim%alloced)
-	allocate(hists_sim%occgrow_jt(nj,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%occshrink_jt(nj,Tsim), stat=hists_sim%alloced)
-	allocate(hists_sim%occsize_jt(nj,Tsim), stat=hists_sim%alloced)
+	call alloc_econ(val_sol,pol_sol,hists_sim)
+	
 
 	moments_sim%alloced = 0
 
@@ -3084,9 +3379,27 @@ program V0main
 			write(1,*) " "! trailing space
 		enddo	
 		close(1)
-		
-		
 	endif
+
+	! draw the initial set of targets for z
+	allocate(mod_prob_hist_tgt(Tsim,nj))
+	allocate(iz_jt_in(Tsim))
+	
+	mod_prob_hist_tgt = 0.
+
+	call draw_zjt(iz_jt_in, 12092015, status)
+	
+	do it=1,Tsim
+		junk = 0.
+		do ij=1,nj
+			junk = zgrid( iz_jt_in(it) , ij )/(dble(nj)) + junk
+		enddo
+		do ij=1,nj!test probabilities are deviations from uniform 
+			mod_prob_hist_tgt(it,ij) = (zgrid( iz_jt_in(it) , ij ) -junk) + (1./dble(nj) )
+		enddo
+	enddo
+	call cal_dist(param0,err0)
+	
 
 	if(verbose >2) print *, "Solving the model"
 	if(verbose >2) then
@@ -3118,15 +3431,9 @@ program V0main
 	!****************************************************************************!
 	! IF you love something.... 
 	!****************************************************************************!
-	deallocate(pol_sol%aR,pol_sol%aD,pol_sol%aN, pol_sol%aU, pol_sol%aW,pol_sol%gwork, pol_sol%gapp)
-	deallocate(pol_sol%gwork_dif,pol_sol%gapp_dif)
-	deallocate(val_sol%VR,val_sol%VD,val_sol%VN,val_sol%VU,val_sol%VW,val_sol%V)
-	deallocate(hists_sim%wage_hist,hists_sim%work_dif_hist)
-	deallocate(hists_sim%app_dif_hist,hists_sim%status_hist)
-	deallocate(hists_sim%age_hist, hists_sim%al_hist, hists_sim%d_hist)
-	deallocate(hists_sim%a_hist,hists_sim%j_i )
-	deallocate(hists_sim%occgrow_jt, hists_sim%occshrink_jt )
-	deallocate(hists_sim%occsize_jt)
+	call dealloc_econ(val_sol,pol_sol,hists_sim)
+	deallocate(mod_prob_hist_tgt)
+	deallocate(iz_jt_in)
 End PROGRAM
 
 
