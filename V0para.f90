@@ -19,16 +19,16 @@ character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 real(8), parameter ::	youngD = 20.0, &	!Length of initial young period
 		oldD = 5.0, &		!Length of each old period
 		tlen =12., &		!Number of periods per year (monthly)	
-		Longev = 78.- 25., &		!Median longevity	
+		Longev = 78.- 25.,&	!Median longevity	
 		ageW = 0.0373076, &	!Coefficient on Age in Mincer,
-		ageW2 = -0.0007414, &	!Coefficient on Age^2 in Mincer
+		ageW2 = -.0007414,&	!Coefficient on Age^2 in Mincer
 		ageD = 0.1, &		!Coefficient on Age over 45 in Disability hazard (exponential)
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.407,&	!Fraction young who are eligable
-		R = dexp(0.03/tlen),&	!People can save
-		util_const = 0.		!Give life some value
+		R =dexp(.03/tlen),&	!People can save
+		upd_zscl = 0.1		! rate at which to update zscale
 
-integer, parameter ::  	   oldN = 4,&	!4!Number of old periods
+integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2		!Total number of periods, oldN periods plus young and retired
 
 !----------------------------------------------------------------------------!
@@ -117,7 +117,8 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start)
-		nu = 0.05, &		!Psychic cost of applying for DI - proportion of potential payout	
+		nu = 0.05, &		!Psychic cost of applying for DI - proportion of potential payout
+		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristance of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
@@ -134,7 +135,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
 !		
-		amenityscale = .1,&	!scale parameter of gumbel distribution for occ choice
+		amenityscale = 100.,&	!scale parameter of gumbel distribution for occ choice
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
 		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
@@ -222,9 +223,9 @@ subroutine setparams()
 
 	! TFP
 	zscale = 0. 
-	do j=1,nj
-		zscale(j) = dble(j-1)/dble(nj-1)*(2*zsig) -zsig !zsig*(dble(j)-dble(nj-1)/2.-1.)/dble(nj-1)
-	enddo
+	!do j=1,nj
+	!	zscale(j) = dble(j-1)/dble(nj-1)*(2*zsig) -zsig !zsig*(dble(j)-dble(nj-1)/2.-1.)/dble(nj-1)
+	!enddo
 	call settfp()
 
 	

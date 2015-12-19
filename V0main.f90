@@ -182,13 +182,13 @@ module helper_funs
 		
 		if ((win .gt. 1) .or. (din .gt. 1)) then
 			if(gam> 1+1e-5 .or. gam < 1-1e-5) then
-				util = ((cin*dexp(theta*dble(din-1)+eta*dble(win-1)))**(1.-gam) -1.)/(1.-gam)
+				util = ((cin*dexp(theta*dble(din-1)+eta*dble(win-1)))**(1.-gam) )/(1.-gam)
 			else 
 				util = dlog(cin*dexp(theta*dble(din-1)+eta*dble(win-1)))
 			endif
 		else 
 			if(gam> 1+1e-5 .or. gam < 1-1e-5) then
-				util = (cin**(1.-gam)-1.)/(1.-gam)
+				util = (cin**(1.-gam))/(1.-gam)
 			else
 				util = dlog(cin)
 			endif
@@ -3073,20 +3073,25 @@ module find_params
 
 	contains
 
-	function obj_zj(zj_here,val_sol,hists_sim,z_jt_macro_it,prob_target,ij_obj,it0) result(resid)
-
+	function obj_zj(zj_in,val_sol,hists_sim,z_jt_macro_it,prob_target,ij_obj,it0) result(resid)
+		
 		! for each j in each t, this solves the implied z_j
+		! where z_j scales the rest of the markov chain
+		
 		integer, intent(in) :: ij_obj, it0
 		integer, intent(in) :: z_jt_macro_it
 		type(val_struct),  intent(in) :: val_sol
 		type(hist_struct), intent(in):: hists_sim
-		real(8), intent(in) :: prob_target,zj_here
-		real(8) :: resid
+		real(8), intent(in) :: prob_target,zj_in
+		real(8) :: resid, zj_here
 		real(8) :: j_val_ij,cumval,j_val,zjwt,prob_here,e_hr
 		integer :: age_hr,d_hr,ai_hr,ali_hr,del_hr,ei_hr,i, it, ij,beti
 		integer :: zj_hi,zj_lo, simT
 		real(8) :: j_val_hi,j_val_lo,nborn
 
+		print *, val_sol%alloced
+		print *, hists_sim%alloced
+		
 
 		simT = size(hists_sim%born_hist,2)
 		beti = 1
@@ -3109,10 +3114,13 @@ module find_params
 					ai_hr 	= 1
 
 					ij = ij_obj
+					! choose by scaling zgrid using the pre-transition values, 1:nz/2
+					zj_here   = zgrid(mod(hists_sim%z_jt_macro(it),nz/2)  ,ij) + zj_in
 					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here)
 					zj_lo	  = max(zj_lo,nz/2+1)
 					zj_hi	  = min(zj_lo +1,nz)
 					zjwt 	  = (zgrid(zj_hi,ij) - zj_here)/(zgrid(zj_hi,ij) - zgrid(zj_lo,ij))
+					zjwt 	  = max(min(zjwt,1.),0.)
 					j_val_lo  = val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_lo,age_hr)
 					j_val_hi  = val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_hi,age_hr)
 
@@ -3120,17 +3128,21 @@ module find_params
 					do ij = 1,nj
 						if(del_by_occ .eqv. .true.) del_hr = ij
 						if(ij /= ij_obj) then
-							cumval = (val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
-										& hists_sim%z_jt_macro(it),age_hr)/amenityscale ) + cumval
+							j_val_ij = val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
+										& hists_sim%z_jt_macro(it),age_hr)
+							cumval = dexp(j_val_ij/amenityscale ) + cumval
 						else
-							cumval = ( (zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale ) + cumval
+							cumval = dexp( (zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale ) + cumval
 						endif
+						print*, cumval
 					enddo
 
 					ij = ij_obj
 					if(del_by_occ .eqv. .true.) del_hr = ij
 
-					prob_here = ((zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale)/cumval + prob_here
+					prob_here = dexp((zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale)/cumval + prob_here
+
+					print*, prob_here
 					
 				endif
 			enddo
@@ -3157,73 +3169,85 @@ module find_params
 		type(hist_struct), target:: hists_sim
 
 		real(8), intent(in) :: prob_hist_target(:,:)
-		real(8) :: zj_here, logzj_mean,logzj_mean1
+		real(8) :: zj_here, zscale_mean,zscale_mean1
 		real(8) :: dummy_params(3)
 		!integer :: del_i_int(:)
 		integer :: flag,z_jt_macro_it
-		real(8) :: resid_hi, resid_lo, z_hi,z_lo,zj_opt, tol=1.e-4
+		real(8) :: resid_hi, resid_lo, z_hi,z_lo,zj_opt,zscale_dist, zscale_tol=1.e-4
 		real(8), allocatable :: zj_hist_1(:,:),zj_hist_0(:,:)
+		real(8), allocatable :: zscale1(:),zscale0(:)
 		dummy_params = 0.
 		allocate(zj_hist_1(Tsim,nj))
 		allocate(zj_hist_0(Tsim,nj))
+		allocate(zscale1(nj)
+		allocate(zscale0(nj))
 		mod_val_sol => val_sol
 		mod_hists_sim => hists_sim
 
-		!even as iterate, do not let the mean drift
-		logzj_mean = 0.
-		do it=1,Tsim
-			do ij=1,nj
-				logzj_mean = log(zgrid(hists_sim%z_jt_macro(it),ij))+ logzj_mean
-				zj_hist_0(it,ij) = zgrid(hists_sim%z_jt_macro(it),ij)
-			enddo
-		enddo
+		zscale1 = 0.
 
 		do ij=1,nj
-			mod_ij_obj = ij
-			it = struc_brk*nint(tlen)
-			mod_it = it
-			z_jt_macro_it = hists_sim%z_jt_macro(it)
-			mod_z_jt_macro_it = z_jt_macro_it
-			mod_prob_target = 0.5
-
-
-			resid_lo = obj_zj_wrap(zgrid(nz/2+1,ij),dummy_params)
-			resid_hi = obj_zj_wrap(zgrid(nz    ,ij),dummy_params)
+			zscale0(ij) = zscale(ij)
+			zscale_mean = zscale(ij)/dble(nj) + zscale_mean
 		enddo
 
-!		do it=2,Tsim
-!			z_jt_macro_it = hists_sim%z_jt_macro(it)
-!			do ij=1,nj
-!				! module-level variables
-!				mod_ij_obj = ij
-!				mod_it = it
-!				mod_z_jt_macro_it = z_jt_macro_it
-!				mod_prob_target = prob_hist_target(it,ij)
-!				resid_lo = obj_zj_wrap(zgrid(nz/2+1,ij),dummy_params)
-!				resid_hi = obj_zj_wrap(zgrid(nz    ,ij),dummy_params)
-!				if(resid_hi*resid_lo < 0.) then
-!					z_hi = zgrid(nz    ,ij)
-!					z_lo = zgrid(nz/2+1,ij)
-!					zj_opt = zbrent(obj_zj_wrap,z_lo,z_hi,&
-!						& dummy_params ,tol,flag)
-!				elseif( dabs(resid_hi)<dabs(resid_lo) ) then
-!					zj_opt = zgrid(nz    ,ij)
-!				else
-!					zj_opt = zgrid(nz/2+1,ij)
-!				endif
-!				zj_hist_1(it,ij) = zj_opt
-!			enddo
-!		enddo !1,Tsim
-
-
-		logzj_mean1 = 0.
-		do it=1,Tsim
+		do ziter = 1,maxiter
 			do ij=1,nj
-				logzj_mean1 = log(zj_hist_1(it,ij)) + logzj_mean1
-			enddo
-		enddo
-		forall(it=1:Tsim,ij=1:nj) zj_hist_1(it,ij) = zj_hist_1(it,ij)*dexp( logzj_mean )* dexp(-logzj_mean1)
+				mod_ij_obj = ij
+				it = struc_brk*nint(tlen)
+				mod_it = it
+				z_jt_macro_it = hists_sim%z_jt_macro(it)
+				mod_z_jt_macro_it = z_jt_macro_it
+				mod_prob_target = 0.5
 
+				z_hi = zgrid(nz,ij) - zgrid(nz/2+1,ij)
+				z_lo = zgrid(nz/2+1,ij) - zgrid(nz,ij)
+					
+				! this adjusts it to be the bottom point for all grid points
+				resid_lo = obj_zj_wrap(z_lo,dummy_params)
+				! be at the top point for all grid points
+				resid_hi = obj_zj_wrap(z_hi,dummy_params)
+
+				if(resid_hi*resid_lo < 0.) then
+					zj_opt = zbrent(obj_zj_wrap,z_lo,z_hi,&
+						& dummy_params ,tol,flag)
+				elseif( dabs(resid_hi)<dabs(resid_lo) ) then
+					zj_opt = z_hi
+				else
+					zj_opt = z_lo
+				endif
+				zscale1(ij) = zj_opt
+				
+			enddo
+			do ij=1,nj
+				! hold the mean fixed: prevent drifting
+				zscale_mean1 = 0.
+				zscale_mean1 = zscale1(ij)/dble(nj) + zscale_mean1
+			enddo
+			zscale_dist =0.
+			do ij=1,nj
+				zscale1(ij) = zscale1(ij) -zscale_mean1 + zscale_mean
+				zscale_dist = (zscale1-zscale)**2 + zscale_dist
+			enddo
+			do ij=1,nj
+				zscale(ij) = upd_zscl*zscale1(ij) + (1.-upd_zscl)*zscale(ij)
+				! hold the mean fixed: prevent drifting
+				zscale_mean1 = 0.
+				zscale_mean1 = zscale(ij)/dble(nj) + zscale_mean1
+				zscale(ij) = zscale(ij) -zscale_mean1 + zscale_mean
+			enddo
+
+			! this will reassign the grid using zscale
+			call settfp()
+
+			if (zscale_dist .lt. zscale_tol) then
+				break
+			endif
+			
+		enddo
+
+		
+		deallocate(zscale0,zscale1)
 		deallocate(zj_hist_1)
 	end subroutine iter_zproc
 	
@@ -3358,6 +3382,7 @@ program V0main
 		enddo	
 		close(1)
 		open(1, file="util_dist.csv")
+		junk =0.
 		ibi =1
 		iz  =2
 		do it = 1,TT-1
@@ -3366,20 +3391,26 @@ program V0main
 					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz,ij),it)
 					utilhere = util(wagehere,id,1)
 					write(1, "(G20.12)", advance='no') utilhere
+					junk = utilhere + junk
 					utilhere = util(wagehere,id,2)
 					write(1, "(G20.12)", advance='no') utilhere
+					junk = utilhere + junk
 					
 				enddo
 				id = nd
 				utilhere = util(wagehere,id,1)
 				write(1, "(G20.12)", advance='no') utilhere
+				junk = utilhere + junk
 				utilhere = util(wagehere,id,2)
 				write(1, "(G20.12)", advance='yes') utilhere
+				junk = utilhere + junk
 			enddo
 			write(1,*) " "! trailing space
 		enddo	
 		close(1)
 	endif
+	junk = junk/dble(2*nd*nal*(TT-1))
+	util_const = - junk - util_const
 
 	! draw the initial set of targets for z
 	allocate(mod_prob_hist_tgt(Tsim,nj))
