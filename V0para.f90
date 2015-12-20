@@ -72,12 +72,13 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = int(tlen*(2010-1980)), &	!how many periods to solve for simulation
 			struc_brk = 20.,&	    ! when does the structural break happen
-			Nk   = TT+(nd-1)*2+2	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
+			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
+			fread = 9
 
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
 logical, parameter ::	del_contin = .false., &	!make delta draws take continuous values or stay on the grid
-			del_by_occ = .true.,& 	!delta is fully determined by occupation, right now alternative is fully random
+			del_by_occ = .false.,& 	!delta is fully determined by occupation, right now alternative is fully random
 			al_contin = .false.,&	!make alpha draws continuous
 			j_rand = .false. 	!randomly assign j, or let choose.
 
@@ -99,6 +100,9 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		ptau(TT), &		!Probability of aging
 		dtau(TT-1), &		!Proportional age-related disability risk
 		delgrid(ndi), &		!Individual specific disability risk
+		delwt(ndi,nj),&		!The occupation-specific probability of getting a particular delta
+		delcumwt(ndi+1,nj),&	!cumulative dist
+		occdel(nj),&		!The occupation,specific mean delta
 		zscale(nj),&		!scales occupation TFP in second period.  
 		zgrid(nz,nj), &		!TFP shock grid
 		xi(nd,TT-1), &		!DI acceptance probability
@@ -135,7 +139,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
 !		
-		amenityscale = 100.,&	!scale parameter of gumbel distribution for occ choice
+		amenityscale = 10.,&	!scale parameter of gumbel distribution for occ choice
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
 		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
@@ -212,7 +216,7 @@ subroutine setparams()
 
 	forall(i=1:nd) dgrid(i) = i
 
-	!Extra disability risk (uniform distributed)
+	!Extra disability risk (uniformly spaced)
 	if(ndi>1) then
 		do i=1,ndi
 			delgrid(i) = dRiskL +dble(ndi-i)*(dRiskH-dRiskL)/dble(ndi-1)
@@ -220,6 +224,12 @@ subroutine setparams()
 	else
 		delgrid(1) = 0.5*(dRiskH + dRiskL)
 	endif
+	!Read in the means by occuaption
+	open(unit= fread, file="occupation_del.csv")
+	do j=1,nj
+		read(fread, *,iostat=k) occdel(j)
+	enddo
+
 
 	! TFP
 	zscale = 0. 

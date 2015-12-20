@@ -2075,8 +2075,9 @@ module sim_hists
 		integer, intent(out) :: success
 		real(8), dimension(:) :: del_i
 		integer, dimension(:) :: del_i_int
-		integer :: ss, Nsim, di_int,m,i
+		integer :: ss, Nsim, di_int,m,i,ij
 		real(8) :: delgridL, delgridH,delgrid_i
+		real(8) :: delwtH,delwtL
 		integer, dimension(100) :: bdayseed
 
 		call random_seed(size = ss)
@@ -2084,13 +2085,45 @@ module sim_hists
 		call random_seed(put = bdayseed(1:ss) )
 
 		Nsim = size(del_i)
+
+		delwt	 = 1./dble(ndi) ! initialize with equal weight
+		if(del_by_occ .eqv. .true.) then ! give weight according to mean delta by occ
+			delgridL = 0.
+			do i=1,ndi/2
+				delgridL = delgrid(i)/dble(ndi/2) + delgridL
+			enddo
+			delgridH = 0.
+			do i= 1+ndi/2,ndi
+				delgridH = delgrid(i)/dble(ndi-ndi/2) + delgridL
+			enddo
+			do ij=1,nj
+				! choose the mean to match the target mean by occupation
+				delwtH = (occdel(ij)-delgridL)/(delgridH-delgridL)
+				delwtL = 1.- delwtH
+				do i=1,ndi/2
+					delwt(i,ij) = delwtL/dble(ndi/2)
+				enddo
+				do i=1+ndi/2,ndi
+					delwt(i,ij) = delwtL/dble(ndi-ndi/2)
+				enddo
+			enddo
+			!setup delcumwt
+			delcumwt = 0.
+			do ij=1,nj
+				do idi=1,ndi
+					delcumwt(idi+1,ij) = delwt(idi,ij) + delcumwt(idi,ij)
+				enddo
+			enddo
+
+		endif
+
 		delgridL = minval(delgrid)
 		delgridH = maxval(delgrid)
-
 		do i=1,Nsim
 			call rand_num_closed(delgrid_i) ! draw uniform on 0,1
 			delgrid_i = delgrid_i*(delgridH-delgridL) + delgridL !change domain of uniform
 			di_int = finder(delgrid,delgrid_i)
+			
 			! round up or down:
 			if(di_int < ndi) then
 				if( (delgrid_i - delgrid(di_int))/(delgrid(di_int+1) - delgrid(di_int)) > 0.5 ) di_int = di_int + 1
@@ -2452,7 +2485,7 @@ module sim_hists
 		integer :: i, ii, iter, it, it_old, ij, idi, id, Tret, &
 			&  seed0, seed1, status, m,ss, iter_draws=5
 		integer :: bdayseed(100)
-						
+
 		real(8), allocatable ::	del_i(:), jshock_ij(:,:) ! shocks to be drawn
 		
 		real(8), allocatable :: status_it_innov(:,:) !innovations to d, drawn randomly
@@ -2697,8 +2730,7 @@ module sim_hists
 	
 				!set a j to correspond to the probabilities.  This will get overwritten if born
 				j_hr = j_i(i)
-				if(del_by_occ .eqv. .true.) &
-					del_i_int(i) = j_hr
+
 				del_hr = del_i_int(i) 
 
 				!initialize stuff
@@ -2727,7 +2759,14 @@ module sim_hists
 							enddo
 							j_hr = 1 !initial value
 							do ij = 1,nj
-								if(del_by_occ .eqv. .true.) del_hr = ij
+								if(del_by_occ .eqv. .true.) then
+									do ii=ndi,1,-1
+										if( del_i(i)< delcumwt(ii,ij)  ) then
+											del_hr = ii
+											exit
+										endif
+									enddo
+								endif
 								j_val_ij = V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)
 								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/amenityscale)
 								j_val_ij = j_val_ij + jshock_ij(i,ij)*amenityscale ! + log(jwt)
@@ -2737,9 +2776,16 @@ module sim_hists
 								endif
 							enddo
 							j_i(i) = j_hr
-							if(del_by_occ .eqv. .true.) &
-								del_i_int(i) = j_hr	
-							del_hr = del_i_int(i)
+							if(del_by_occ .eqv. .true.) then
+								do ii=ndi,1,-1
+									if( del_i(i)< delcumwt(ii,ij)  ) then
+										del_hr = ii
+										exit
+									endif
+								enddo
+							endif
+
+							del_i_int(i) = del_hr
 						endif
 					else 
 						age_hr	= age_it(i,it)
@@ -3085,23 +3131,30 @@ module find_params
 		real(8), intent(in) :: prob_target,zj_in
 		real(8) :: resid, zj_here
 		real(8) :: j_val_ij,cumval,j_val,zjwt,prob_here,e_hr
-		integer :: age_hr,d_hr,ai_hr,ali_hr,del_hr,ei_hr,i, it, ij,beti
+		integer :: age_hr,d_hr,ai_hr,ali_hr,del_hr,ei_hr,i,ii, it, ij,beti
 		integer :: zj_hi,zj_lo, simT
 		real(8) :: j_val_hi,j_val_lo,nborn
 
-		print *, val_sol%alloced
-		print *, hists_sim%alloced
 		
-
 		simT = size(hists_sim%born_hist,2)
 		beti = 1
 		prob_here = 0.
 		nborn = 0.
 		do it = it0,simT
 			do i = 1,Nsim
-				if(del_by_occ .eqv. .false.) then
+
+				if(del_by_occ .eqv. .true.) then
+					do ii=ndi,1,-1
+						if( del_i(i)< delcumwt(ii,ij)  ) then
+							del_hr = ii
+							exit
+						endif
+					enddo
+				else
 					del_hr = hists_sim%del_i_int(i)
 				endif
+
+
 				if(hists_sim%born_hist(i,it).eq. 1 ) then !they've been born this period
 					nborn = 1. + nborn
 					!set the state
@@ -3114,6 +3167,16 @@ module find_params
 					ai_hr 	= 1
 
 					ij = ij_obj
+										ij = ij_obj
+					if(del_by_occ .eqv. .true.) then
+						do ii=ndi,1,-1
+							if( del_i(i)< delcumwt(ii,ij)  ) then
+								del_hr = ii
+								exit
+							endif
+						enddo
+					endif
+
 					! choose by scaling zgrid using the pre-transition values, 1:nz/2
 					zj_here   = zgrid(mod(hists_sim%z_jt_macro(it),nz/2)  ,ij) + zj_in
 					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here)
@@ -3126,7 +3189,14 @@ module find_params
 
 					cumval  = 0.
 					do ij = 1,nj
-						if(del_by_occ .eqv. .true.) del_hr = ij
+						if(del_by_occ .eqv. .true.) then
+							do ii=ndi,1,-1
+								if( del_i(i)< delcumwt(ii,ij)  ) then
+									del_hr = ii
+									exit
+								endif
+							enddo
+						endif
 						if(ij /= ij_obj) then
 							j_val_ij = val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
 										& hists_sim%z_jt_macro(it),age_hr)
@@ -3134,15 +3204,10 @@ module find_params
 						else
 							cumval = dexp( (zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale ) + cumval
 						endif
-						print*, cumval
+					!	print*, cumval
 					enddo
 
-					ij = ij_obj
-					if(del_by_occ .eqv. .true.) del_hr = ij
-
 					prob_here = dexp((zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale)/cumval + prob_here
-
-					print*, prob_here
 					
 				endif
 			enddo
@@ -3164,7 +3229,7 @@ module find_params
 
 	subroutine iter_zproc(val_sol, hists_sim, prob_hist_target)
 
-		integer :: it, ij
+		integer :: it, ij, ziter
 		type(val_struct), target :: val_sol
 		type(hist_struct), target:: hists_sim
 
@@ -3174,17 +3239,15 @@ module find_params
 		!integer :: del_i_int(:)
 		integer :: flag,z_jt_macro_it
 		real(8) :: resid_hi, resid_lo, z_hi,z_lo,zj_opt,zscale_dist, zscale_tol=1.e-4
-		real(8), allocatable :: zj_hist_1(:,:),zj_hist_0(:,:)
 		real(8), allocatable :: zscale1(:),zscale0(:)
 		dummy_params = 0.
-		allocate(zj_hist_1(Tsim,nj))
-		allocate(zj_hist_0(Tsim,nj))
-		allocate(zscale1(nj)
+
+		allocate(zscale1(nj))
 		allocate(zscale0(nj))
 		mod_val_sol => val_sol
 		mod_hists_sim => hists_sim
-
 		zscale1 = 0.
+		zscale_mean = 0.
 
 		do ij=1,nj
 			zscale0(ij) = zscale(ij)
@@ -3198,7 +3261,7 @@ module find_params
 				mod_it = it
 				z_jt_macro_it = hists_sim%z_jt_macro(it)
 				mod_z_jt_macro_it = z_jt_macro_it
-				mod_prob_target = 0.5
+				mod_prob_target = 0.5 ! i havd to replace this
 
 				z_hi = zgrid(nz,ij) - zgrid(nz/2+1,ij)
 				z_lo = zgrid(nz/2+1,ij) - zgrid(nz,ij)
@@ -3210,7 +3273,7 @@ module find_params
 
 				if(resid_hi*resid_lo < 0.) then
 					zj_opt = zbrent(obj_zj_wrap,z_lo,z_hi,&
-						& dummy_params ,tol,flag)
+						& dummy_params ,zscale_tol/100.,flag)
 				elseif( dabs(resid_hi)<dabs(resid_lo) ) then
 					zj_opt = z_hi
 				else
@@ -3227,7 +3290,7 @@ module find_params
 			zscale_dist =0.
 			do ij=1,nj
 				zscale1(ij) = zscale1(ij) -zscale_mean1 + zscale_mean
-				zscale_dist = (zscale1-zscale)**2 + zscale_dist
+				zscale_dist = (zscale1(ij)-zscale(ij))**2 + zscale_dist
 			enddo
 			do ij=1,nj
 				zscale(ij) = upd_zscl*zscale1(ij) + (1.-upd_zscl)*zscale(ij)
@@ -3241,14 +3304,14 @@ module find_params
 			call settfp()
 
 			if (zscale_dist .lt. zscale_tol) then
-				break
+				exit
 			endif
 			
 		enddo
 
 		
 		deallocate(zscale0,zscale1)
-		deallocate(zj_hist_1)
+		
 	end subroutine iter_zproc
 	
 
