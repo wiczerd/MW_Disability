@@ -2075,7 +2075,7 @@ module sim_hists
 		integer, intent(out) :: success
 		real(8), dimension(:) :: del_i
 		integer, dimension(:) :: del_i_int
-		integer :: ss, Nsim, di_int,m,i,ij
+		integer :: ss, Nsim, di_int,m,i,ij,idi
 		real(8) :: delgridL, delgridH,delgrid_i
 		real(8) :: delwtH,delwtL
 		integer, dimension(100) :: bdayseed
@@ -2107,33 +2107,31 @@ module sim_hists
 					delwt(i,ij) = delwtL/dble(ndi-ndi/2)
 				enddo
 			enddo
-			!setup delcumwt
-			delcumwt = 0.
+		else
 			do ij=1,nj
-				do idi=1,ndi
-					delcumwt(idi+1,ij) = delwt(idi,ij) + delcumwt(idi,ij)
-				enddo
+				delwt(:,ij) = 1./dble(idi)
 			enddo
-
 		endif
-
+		!setup delcumwt
+		delcumwt = 0.
+		do ij=1,nj
+			do idi=1,ndi
+				delcumwt(idi+1,ij) = delwt(idi,ij) + delcumwt(idi,ij)
+			enddo
+		enddo
+		
 		delgridL = minval(delgrid)
 		delgridH = maxval(delgrid)
 		do i=1,Nsim
 			call rand_num_closed(delgrid_i) ! draw uniform on 0,1
 			delgrid_i = delgrid_i*(delgridH-delgridL) + delgridL !change domain of uniform
 			di_int = finder(delgrid,delgrid_i)
-			
 			! round up or down:
 			if(di_int < ndi) then
 				if( (delgrid_i - delgrid(di_int))/(delgrid(di_int+1) - delgrid(di_int)) > 0.5 ) di_int = di_int + 1
 			endif
 			di_int = max(min(di_int,nd),1)
-			if(del_contin .eqv. .true.) then
-				del_i(i) = delgrid_i
-			else
-				del_i(i) = delgrid(di_int)
-			endif
+			del_i(i) = delgrid_i
 			del_i_int(i) = di_int
 		enddo
 		success = 0
@@ -2754,20 +2752,19 @@ module sim_hists
 							j_val  = -1.e6
 							cumval = 0.
 							do ij = 1,nj
-								if(del_by_occ .eqv. .true.) del_hr = ij
-								cumval = dexp(V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)/amenityscale ) + cumval
+								j_val_ij = 0.
+								do idi=1,ndi
+									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij) &
+													&+ j_val_ij
+								enddo
+								cumval = dexp(j_val_ij/amenityscale ) + cumval
 							enddo
 							j_hr = 1 !initial value
 							do ij = 1,nj
-								if(del_by_occ .eqv. .true.) then
-									do ii=ndi,1,-1
-										if( del_i(i)< delcumwt(ii,ij)  ) then
-											del_hr = ii
-											exit
-										endif
-									enddo
-								endif
-								j_val_ij = V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)
+								j_val_ij = 0.
+								do idi = 1,ndi
+									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij)+j_val_ij
+								enddo
 								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/amenityscale)
 								j_val_ij = j_val_ij + jshock_ij(i,ij)*amenityscale ! + log(jwt)
 								if(j_val< j_val_ij ) then
@@ -2777,8 +2774,8 @@ module sim_hists
 							enddo
 							j_i(i) = j_hr
 							if(del_by_occ .eqv. .true.) then
-								do ii=ndi,1,-1
-									if( del_i(i)< delcumwt(ii,ij)  ) then
+								do ii=1,ndi
+									if( del_i(i)< delcumwt(ii+1,j_hr)  ) then
 										del_hr = ii
 										exit
 									endif
@@ -3131,7 +3128,7 @@ module find_params
 		real(8), intent(in) :: prob_target,zj_in
 		real(8) :: resid, zj_here
 		real(8) :: j_val_ij,cumval,j_val,zjwt,prob_here,e_hr
-		integer :: age_hr,d_hr,ai_hr,ali_hr,del_hr,ei_hr,i,ii, it, ij,beti
+		integer :: age_hr,d_hr,ai_hr,ali_hr,del_hr,ei_hr,i,ii,idi, it, ij,beti
 		integer :: zj_hi,zj_lo, simT
 		real(8) :: j_val_hi,j_val_lo,nborn
 
@@ -3142,18 +3139,6 @@ module find_params
 		nborn = 0.
 		do it = it0,simT
 			do i = 1,Nsim
-
-				if(del_by_occ .eqv. .true.) then
-					do ii=ndi,1,-1
-						if( del_i(i)< delcumwt(ii,ij)  ) then
-							del_hr = ii
-							exit
-						endif
-					enddo
-				else
-					del_hr = hists_sim%del_i_int(i)
-				endif
-
 
 				if(hists_sim%born_hist(i,it).eq. 1 ) then !they've been born this period
 					nborn = 1. + nborn
@@ -3167,15 +3152,6 @@ module find_params
 					ai_hr 	= 1
 
 					ij = ij_obj
-										ij = ij_obj
-					if(del_by_occ .eqv. .true.) then
-						do ii=ndi,1,-1
-							if( del_i(i)< delcumwt(ii,ij)  ) then
-								del_hr = ii
-								exit
-							endif
-						enddo
-					endif
 
 					! choose by scaling zgrid using the pre-transition values, 1:nz/2
 					zj_here   = zgrid(mod(hists_sim%z_jt_macro(it),nz/2)  ,ij) + zj_in
@@ -3184,22 +3160,31 @@ module find_params
 					zj_hi	  = min(zj_lo +1,nz)
 					zjwt 	  = (zgrid(zj_hi,ij) - zj_here)/(zgrid(zj_hi,ij) - zgrid(zj_lo,ij))
 					zjwt 	  = max(min(zjwt,1.),0.)
-					j_val_lo  = val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_lo,age_hr)
-					j_val_hi  = val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_hi,age_hr)
+					j_val_lo  = 0.
+					j_val_hi  = 0.
+					do idi = 1,ndi ! expectation over delta
+						j_val_lo  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_lo,age_hr)&
+											& * delwt(idi,ij) + j_val_lo
+						j_val_hi  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_hi,age_hr)*
+											& * delwt(idi,ij) + j_val_hi
+					enddo
 
 					cumval  = 0.
 					do ij = 1,nj
 						if(del_by_occ .eqv. .true.) then
-							do ii=ndi,1,-1
-								if( del_i(i)< delcumwt(ii,ij)  ) then
+							do ii=1,ndi
+								if( hists_sim%del_i(i)< delcumwt(ii+1,ij)  ) then
 									del_hr = ii
 									exit
 								endif
 							enddo
 						endif
 						if(ij /= ij_obj) then
-							j_val_ij = val_sol%V((ij-1)*nbi+beti,(del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
-										& hists_sim%z_jt_macro(it),age_hr)
+							j_val_ij = 0.
+							do idi = 1,ndi ! expectation over delta
+								j_val_ij = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
+											& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij
+							enddo
 							cumval = dexp(j_val_ij/amenityscale ) + cumval
 						else
 							cumval = dexp( (zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale ) + cumval
