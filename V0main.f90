@@ -875,8 +875,8 @@ module sol_val
 				if(Vtest2 > Vtest1  .or. iaa .eq. iaa0 ) then !always replace on the first loop
 					Vtest1 = Vtest2
 					apol = iaa
-				!elseif(iaa > apol+iaa_hiwindow) then ! gone some steps w/o new max (weak way of using concavity)
-				!	exit
+				elseif( simp_concav .eqv. .true. ) then ! imposing concavity
+					exit
 				endif
 			else!saved too much and negative consumtion
 				exit
@@ -910,8 +910,8 @@ module sol_val
 				if(Vtest2>Vtest1) then
 					Vtest1 = Vtest2
 					apol = iaa
-				!elseif(iaa>apol+iaa_hiwindow) then
-				!	exit
+				elseif(simp_concav .eqv. .true.) then
+					exit
 				endif
 			else
 				exit
@@ -950,8 +950,8 @@ module sol_val
 				if(Vtest2>Vtest1 .or. iaa .eq. iaa0) then !first value or optimal
 					apol = iaa! set the policy
 					Vtest1 = Vtest2
-				!elseif(iaa > apol+iaa_hiwindow) then
-				!	exit
+				elseif( simp_concav .eqv. .true. ) then
+					exit
 				endif
 			else
 				exit
@@ -996,6 +996,8 @@ module sol_val
 				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then	
 					apol = iaa
 					Vtest1 = Vtest2
+				elseif(simp_concav .eqv. .true.) then
+					exit
 				endif
 			!elseif(iaa<= iaa0 .and. Vtest1 <= -1e5 .and. apol == iaa0) then
 			!	iaa = 1 !started too much saving, go back towards zero
@@ -1040,7 +1042,9 @@ module sol_val
 				
 				if( Vtest2 > Vtest1 .or. iaa .eq. iaa0) then
 					apol = iaa 
-					Vtest1 = Vtest2 
+					Vtest1 = Vtest2
+				elseif(simp_concav .eqv. .true.) then
+					exit
 				endif
 			!elseif(iaa .eq. iaa0 .and. Vtest1 <= -1e5 .and. apol .eq. iaa0) then
 			!	iaa = 1 !started too much saving, go back towards zero
@@ -1120,11 +1124,10 @@ module sol_val
 				if (Vtest2>Vtest1 .or. iaa .eq. iaa0 ) then  !always replace on the first, or best
 					Vtest1 = Vtest2
 					apol = iaa
+				elseif (simp_concav .eqv. .true.) then
+					! if we are imposing concavity
+					exit
 				endif
-			!elseif(iaa == iaa1 .and. Vtest1<=-5e4 .and. apol == iaa1 ) then
-				!back it up because started with unfeasible savings / negative consumption
-			!	iaa = 1
-			!	iaa1 =1
 			else 
 				exit
 			endif
@@ -1240,7 +1243,7 @@ module sol_val
 
 		ptrsucces = associated(VR,val_funs%VR)
 		
-
+		simp_concav = .false.
 		!************************************************************************************************!
 		! Caculate things that are independent of occupation/person type
 		!	1) Value of Retired:  VR(d,e,a)
@@ -1267,6 +1270,7 @@ module sol_val
 			call vec2csv(VR0(i,i,:),"VR0.csv",0)
 		endif		
 		iter = 1
+		simp_concav = .true. ! use simple concavity here
 		do while (iter<=maxiter)
 			summer = 0
 			id =1
@@ -1382,6 +1386,7 @@ module sol_val
 		!a inR+	      	   :asset holdings
 		!t in[1,2...TT-1]  :age
 
+		simp_concav = .true.
 		npara = nd*ne
 		!Work backwards from TT
 		do it = TT-1,1,-1
@@ -1583,13 +1588,17 @@ module sol_val
 				maxer = 0.
 				summer = 0.	!Use to calc |V-V0|<eps
 				! lots f printing every 100 iterations (mod 1 because Fortran is designed by idiots using base-1 indexing)
-
+				!if(mod(iter,3) .eq. 0) then
+					simp_concav = .false.
+				!else
+				!	simp_concav = .true.
+				!endif
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!
-			summer = 0.
-			wo = 0
-			npara = nal*nd*ne*nz
+				summer = 0.
+				wo = 0
+				npara = nal*nd*ne*nz
 			!$OMP  parallel do reduction(+:summer)&
 			!$OMP& private(ial,id,ie,iz,iw,apol,iaa0,iaaA,ia,ipara,Vtest1,aa_m,V_m,aa_l,aa_u,iaa_k,iaN,ia_o)
 				do ipara = 1,npara
@@ -1700,10 +1709,10 @@ module sol_val
 			!------------------------------------------------!
 			!Solve VN given guesses on VW, VN, and implied V
 			!------------------------------------------------! 
-			summer = 0.
-			wo = 0
-			aa_u = 0
-			npara = nal*nd*ne*nz
+				summer = 0.
+				wo = 0
+				aa_u = 0
+				npara = nal*nd*ne*nz
 			!$OMP  parallel do reduction(+:summer)&
 			!$OMP& private(ipara,ial,id,ie,iz,apol,ga,gadif,ia,iaa0,iaaA,iaa_k,aa_l,aa_u,aa_m,V_m,Vtest1,iaN,ia_o) 
 				do ipara = 1,npara
@@ -1823,9 +1832,9 @@ module sol_val
 				!------------------------------------------------!
 				!Solve VW given guesses on VW, VN, and implied V
 				!------------------------------------------------!
-			summer = 0.
-			wo = 0
-			npara = nal*nd*ne*nz
+				summer = 0.
+				wo = 0
+				npara = nal*nd*ne*nz
 			!$OMP   parallel do reduction(+:summer) &
 			!$OMP & private(ipara,ial,id,ie,iz,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa0,iaaA,aa_l,aa_u,iaa_k,ia_o,iaN,Vtest1,VWhere,gwdif,gw) 
 				do ipara = 1,npara
@@ -3128,7 +3137,7 @@ module find_params
 		real(8), intent(in) :: prob_target,zj_in
 		real(8) :: resid, zj_here
 		real(8) :: j_val_ij,cumval,j_val,zjwt,prob_here,e_hr
-		integer :: age_hr,d_hr,ai_hr,ali_hr,del_hr,ei_hr,i,ii,idi, it, ij,beti
+		integer :: age_hr,d_hr,ai_hr,ali_hr,ei_hr,i,ii,idi, it, ij,beti
 		integer :: zj_hi,zj_lo, simT
 		real(8) :: j_val_hi,j_val_lo,nborn
 
@@ -3165,20 +3174,12 @@ module find_params
 					do idi = 1,ndi ! expectation over delta
 						j_val_lo  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_lo,age_hr)&
 											& * delwt(idi,ij) + j_val_lo
-						j_val_hi  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_hi,age_hr)*
+						j_val_hi  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_hi,age_hr)&
 											& * delwt(idi,ij) + j_val_hi
 					enddo
 
 					cumval  = 0.
 					do ij = 1,nj
-						if(del_by_occ .eqv. .true.) then
-							do ii=1,ndi
-								if( hists_sim%del_i(i)< delcumwt(ii+1,ij)  ) then
-									del_hr = ii
-									exit
-								endif
-							enddo
-						endif
 						if(ij /= ij_obj) then
 							j_val_ij = 0.
 							do idi = 1,ndi ! expectation over delta
@@ -3265,7 +3266,6 @@ module find_params
 					zj_opt = z_lo
 				endif
 				zscale1(ij) = zj_opt
-				
 			enddo
 			do ij=1,nj
 				! hold the mean fixed: prevent drifting

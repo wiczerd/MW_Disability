@@ -61,11 +61,11 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
-			ndi = 1,  &!3		    !Number of individual disability risk types
+			ndi = 2,  &!3		    !Number of individual disability risk types
 			nj  = 2,  &		        !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 2, &!10	        !Points on earnings grid
-			na  = 50, &!100	        !Points on assets grid
+			na  = 40, &!100	        !Points on assets grid
 			nz  = 6,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &!2000	!Tolerance parameter	
 			Nsim = 5000, &          !how many agents to draw
@@ -77,9 +77,8 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
-logical, parameter ::	del_contin = .false., &	!make delta draws take continuous values or stay on the grid
-			del_by_occ = .false.,& 	!delta is fully determined by occupation, right now alternative is fully random
-			al_contin = .false.,&	!make alpha draws continuous
+logical, parameter ::	del_by_occ = .true.,& 	!delta is fully determined by occupation, right now alternative is fully random
+			al_contin = .false.,&	!make alpha draws continuous or stay on the grid
 			j_rand = .false. 	!randomly assign j, or let choose.
 
 
@@ -135,11 +134,11 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 !	Agregate income risk
 		Tblock	= 2e4,	&	!Expected time before structural change (years)
 		Tblock_sim = 20,&	!The actual time before structural change (years)
-		zrho	= 0.9,	&	!Persistence of the AR process
+		zrho	= 0.95,	&	!Persistence of the AR process
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
 !		
-		amenityscale = 10.,&	!scale parameter of gumbel distribution for occ choice
+		amenityscale = 5.,&	!scale parameter of gumbel distribution for occ choice
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
 		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
@@ -164,6 +163,7 @@ real(8) :: 	gam	= 1.5, &	!IES
 		theta 	= -0.448		!Util cost of disability	
 
 integer :: print_lev, verbose
+logical :: simp_concav
 		
 contains
 subroutine setparams()
