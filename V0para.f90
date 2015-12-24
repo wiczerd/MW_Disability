@@ -15,9 +15,11 @@ save
 !***Unit number***********************************!
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 
+integer, parameter:: dp=kind(0.d0) ! double precision
+
 !**Environmental Parameters**********************************************************************!
-real(8), parameter ::	youngD = 20.0, &	!Length of initial young period
-		oldD = 5.0, &		!Length of each old period
+real(8), parameter ::	youngD = 20., &	!Length of initial young period
+		oldD = 5., &		!Length of each old period
 		tlen =12., &		!Number of periods per year (monthly)	
 		Longev = 78.- 25.,&	!Median longevity	
 		ageW = 0.0373076, &	!Coefficient on Age in Mincer,
@@ -632,10 +634,10 @@ subroutine random_normal(fn_val)
 !  The algorithm uses the ratio of uniforms method of A.J. Kinderman
 !  and J.F. Monahan augmented with quadratic bounding curves.
 
-	REAL(8),intent(out) :: fn_val
+	real(8),intent(out) :: fn_val
 
 	!     Local variables
-	REAL(8)     :: s = 0.449871, t = -0.386595, a = 0.19600, b = 0.25472,           &
+	real(8)     :: s = 0.449871, t = -0.386595, a = 0.19600, b = 0.25472,           &
 		    r1 = 0.27597, r2 = 0.27846, u, v, x, y, q, half = 0.5
 
 	!     Generate P = (u,v) uniform in rectangle enclosing acceptance region
@@ -674,10 +676,10 @@ subroutine random_gumbel(fn_val)
 ! A NEGATIVE EXPONENTIAL DlSTRIBUTION WlTH DENSITY PROPORTIONAL
 ! TO EXP(-random_exponential), USING INVERSION.
 
-REAL(8),intent(out)  :: fn_val
+real(8),intent(out)  :: fn_val
 
 !     Local variable
-REAL(8)  :: r
+real(8)  :: r
 
 do
   call random_number(r)
@@ -701,28 +703,28 @@ FUNCTION brent(ax,bx,cx,func,xmin, funcp,info,tol_in,niter)
 ! 	info is the status, 0 for sucess and 1 for max iterations
 
 	IMPLICIT NONE
-	REAL(8), INTENT(IN) :: ax,bx,cx
-	REAL(8), INTENT(IN), optional :: tol_in
-	REAL(8), INTENT(OUT) :: xmin
+	real(8), INTENT(IN) :: ax,bx,cx
+	real(8), INTENT(IN), optional :: tol_in
+	real(8), INTENT(OUT) :: xmin
 	integer , intent(out) :: info
 	integer , intent(out), optional :: niter
-	REAL(8) :: brent
+	real(8) :: brent
 	real(8), dimension(:), intent(in) :: funcp ! a vector of function parameters
 	INTERFACE
 		FUNCTION func(x, funcp)
 !		use nrtype
 !		USE mkl95_precision, ONLY: 8 => DP
 		IMPLICIT NONE
-		REAL(8), INTENT(IN) :: x
-		REAL(8), INTENT(IN), dimension(:) :: funcp
-		REAL(8) :: func
+		real(8), INTENT(IN) :: x
+		real(8), INTENT(IN), dimension(:) :: funcp
+		real(8) :: func
 		END FUNCTION func
 	END INTERFACE
 	INTEGER, PARAMETER :: ITMAX=100
 	real(8) :: TOL
-	REAL(8), PARAMETER :: CGOLD=0.381966011250105_8,ZEPS=1.0e-3_8*epsilon(ax)
+	real(8), PARAMETER :: CGOLD=0.381966011250105_8,ZEPS=1.0e-3_8*epsilon(ax)
 	INTEGER :: iter
-	REAL(8) :: a,b,d,e,etemp,fu,fv,fw,fx,p,q,r,tol1,tol2,u,v,w,x,xm
+	real(8) :: a,b,d,e,etemp,fu,fv,fw,fx,p,q,r,tol1,tol2,u,v,w,x,xm
 	info = 0
 
 	if(present(tol_in) .eqv. .true.) then 
@@ -818,8 +820,8 @@ END FUNCTION brent
 
 FUNCTION zbrent(func,x1,x2,funcp,tol,flag)
 	IMPLICIT NONE
-	REAL(8), INTENT(IN) :: x1,x2,tol
-	REAL(8) :: zbrent
+	real(8), INTENT(IN) :: x1,x2,tol
+	real(8) :: zbrent
 	real(8), dimension(:), intent(in) :: funcp ! a vector of function parameters
 	integer , intent(out) :: flag
 	INTERFACE
@@ -827,15 +829,15 @@ FUNCTION zbrent(func,x1,x2,funcp,tol,flag)
 !		use nrtype
 !		USE mkl95_precision, ONLY: 8 => DP
 		IMPLICIT NONE
-		REAL(8), INTENT(IN) :: x
-		REAL(8), INTENT(IN), dimension(:) :: funcp
-		REAL(8) :: func
+		real(8), INTENT(IN) :: x
+		real(8), INTENT(IN), dimension(:) :: funcp
+		real(8) :: func
 		END FUNCTION func
 	END INTERFACE
 	INTEGER, PARAMETER :: ITMAX=100
-	REAL(8), PARAMETER :: EPS=epsilon(x1)
+	real(8), PARAMETER :: EPS=epsilon(x1)
 	INTEGER :: iter
-	REAL(8) :: a,b,c,d,e,fa,fb,fc,p,q,r,s,tol1,xm
+	real(8) :: a,b,c,d,e,fa,fb,fc,p,q,r,s,tol1,xm
 	a=x1
 	b=x2
 	fa=func(a, funcp)

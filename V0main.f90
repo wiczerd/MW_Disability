@@ -47,7 +47,7 @@ module helper_funs
 	! a) val_struct: VR, VD, VN, VW, VU, V
 	!------------------------------------------------------------------
 	type val_struct
-		real(8), allocatable:: 	VR(:,:,:), &		!Retirement
+		real(dp), allocatable:: 	VR(:,:,:), &		!Retirement
 					VD(:,:,:,:), &		!Disabled
 					VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
 					VW(:,:,:,:,:,:,:), &	!Working
@@ -61,7 +61,7 @@ module helper_funs
 	!------------------------------------------------------------------
 	type pol_struct
 		
-		real(8), allocatable ::	gapp_dif(:,:,:,:,:,:,:), &
+		real(dp), allocatable ::	gapp_dif(:,:,:,:,:,:,:), &
 					gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
 		integer, allocatable ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
 					aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
@@ -72,25 +72,25 @@ module helper_funs
 	end type
 
 	type moments_struct
-		real(8) :: work_coefs(Nk), di_coefs(Nk),ts_emp_coefs(nj+2)
-		real(8) :: di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
+		real(dp) :: work_coefs(Nk), di_coefs(Nk),ts_emp_coefs(nj+2)
+		real(dp) :: di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
 		integer :: alloced
-		real(8) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+2,nj+2)
+		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+2,nj+2)
 
 	end type 
 
 	type hist_struct
-		real(8), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
-		real(8), allocatable :: wage_hist(:,:) !realized wages
-		real(8), allocatable :: a_hist(:,:), al_hist(:,:), del_i(:)
+		real(dp), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
+		real(dp), allocatable :: wage_hist(:,:) !realized wages
+		real(dp), allocatable :: a_hist(:,:), al_hist(:,:), del_i(:)
 
 		! a bunch of explanitory variables to be stacked on each other
 		integer, allocatable :: status_hist(:,:) !status: W,U,N,D,R (1:5)
 
 		integer, allocatable :: age_hist(:,:), born_hist(:,:), del_i_int(:)
-		real(8), allocatable :: occgrow_jt(:,:)
-		real(8), allocatable :: occshrink_jt(:,:)
-		real(8), allocatable :: occsize_jt(:,:)
+		real(dp), allocatable :: occgrow_jt(:,:)
+		real(dp), allocatable :: occshrink_jt(:,:)
+		real(dp), allocatable :: occsize_jt(:,:)
 		integer, allocatable :: j_i(:),z_jt_macro(:)
 		integer, allocatable :: d_hist(:,:),al_int_hist(:,:)
 		integer :: alloced
@@ -105,8 +105,8 @@ module helper_funs
 	function UI(ein)
 	!----------------
 	
-		real(8), intent(in)	:: ein 
-		real(8) 		:: UI
+		real(dp), intent(in)	:: ein 
+		real(dp) 		:: UI
 		!I'm using a replacement rate of UIrr % for now, can be fancier
 		UI = ein*UIrr
 
@@ -118,8 +118,8 @@ module helper_funs
 	!---------------------
 	 
 	
-		real(8), intent(in)	:: ein
-		real(8) 		:: SSDI
+		real(dp), intent(in)	:: ein
+		real(dp) 		:: SSDI
 		!Follows Pistafferi & Low '12
 		IF (ein<DItest1) then
 			SSDI = 0.9*ein
@@ -138,8 +138,8 @@ module helper_funs
 	function SSI(ein)
 	!--------------------
 	 
-		real(8), intent(in)	:: ein
-		real(8)			:: SSI
+		real(dp), intent(in)	:: ein
+		real(dp)			:: SSI
 		
 		!Follows Pistafferi & Low '15
 		IF (ein<DItest1) then
@@ -158,13 +158,13 @@ module helper_funs
 	!--------------------
 	function xifun(idin,zin,itin)
 
-		real(8), intent(in):: zin
+		real(dp), intent(in):: zin
 		integer, intent(in):: idin,itin
-		real(8) :: xifun
+		real(dp) :: xifun
 		!if(itin < 4) then
-			xifun = 1.-(1.-xi(idin,itin))**(1./tlen) !+ (1. - xi(idin,itin))*(xizcoef*zin)
+			xifun = 1._dp-(1._dp-xi(idin,itin))**(1._dp/tlen) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
 		!else 
-		!	xifun = xi(idin,itin) + (1. - xi(idin,itin))*(xizcoef*zin + 0.124)
+		!	xifun = xi(idin,itin) + (1._dp - xi(idin,itin))*(xizcoef*zin + 0.124)
 		!endif
 		
 	end function
@@ -175,20 +175,20 @@ module helper_funs
 	function util(cin,din,win)
 	!--------------------
 	 
-		real(8), intent(in)	:: cin
+		real(dp), intent(in)	:: cin
 		integer, intent(in)	:: din, win
-		real(8)			:: util
+		real(dp)			:: util
 		
 		
 		if ((win .gt. 1) .or. (din .gt. 1)) then
-			if(gam> 1+1e-5 .or. gam < 1-1e-5) then
-				util = ((cin*dexp(theta*dble(din-1)+eta*dble(win-1)))**(1.-gam) )/(1.-gam)
+			if(gam> 1+1e-5_dp .or. gam < 1-1e-5_dp) then
+				util = ((cin*dexp(theta*dble(din-1)+eta*dble(win-1)))**(1._dp-gam) )/(1._dp-gam)
 			else 
 				util = dlog(cin*dexp(theta*dble(din-1)+eta*dble(win-1)))
 			endif
 		else 
-			if(gam> 1+1e-5 .or. gam < 1-1e-5) then
-				util = (cin**(1.-gam))/(1.-gam)
+			if(gam> 1._dp+1e-5_dp .or. gam < 1_dp-1e-5_dp) then
+				util = (cin**(1._dp-gam))/(1._dp-gam)
 			else
 				util = dlog(cin)
 			endif
@@ -203,12 +203,12 @@ module helper_funs
 	function Hearn(tin,ein,win)
 	!--------------------
 	
-		real(8), intent(in)	:: win
+		real(dp), intent(in)	:: win
 		integer, intent(in)	:: ein, tin
-		real(8)			:: Hearn
+		real(dp)			:: Hearn
 
 
-		Hearn = win/(tlen*dble(agegrid(tin))) + egrid(ein)*(1.-1./(tlen*dble(agegrid(tin))))
+		Hearn = win/(tlen*dble(agegrid(tin))) + egrid(ein)*(1._dp-1._dp/(tlen*dble(agegrid(tin))))
 		!if (tin .EQ. 1) THEN
 		!		weight new obsv by 1/ half of time expected in this stage
 		!	Hearn = (egrid(ein)*tlen*youngD/2+win)/(tlen*(youngD + oldD*oldN))
@@ -223,9 +223,9 @@ module helper_funs
 	function wage(biin,aiin,din,zin,tin)
 	!--------------------
 	
-		real(8), intent(in)	:: biin, aiin, zin
+		real(dp), intent(in)	:: biin, aiin, zin
 		integer, intent(in)	:: din, tin
-		real(8)			:: wage
+		real(dp)			:: wage
 
 		wage = dexp( biin*zin + aiin+wd(din)+wtau(tin) ) 
 
@@ -237,8 +237,8 @@ module helper_funs
 	function finder(xx,x)
 	!--------------------
 
-		real(8), dimension(:), intent(IN) :: xx
-		real(8), intent(IN) :: x
+		real(dp), dimension(:), intent(IN) :: xx
+		real(dp), intent(IN) :: x
 		integer :: locate,finder
 		integer :: nf,il,im,iu
 		
@@ -275,7 +275,7 @@ module helper_funs
 	! fname: name of file, should end in ".csv"
 	! append: a 1 or 0.  1 if matrx should add to end of existing file, 0, to overwrite.
 	
-	real(8), dimension(:,:), intent(in) :: A
+	real(dp), dimension(:,:), intent(in) :: A
 	character(LEN=*), intent(in) :: fname
 	integer, intent(in), optional :: append
 	CHARACTER(LEN=*), PARAMETER  :: FMT = "(G20.12)"
@@ -346,7 +346,7 @@ module helper_funs
 	subroutine vec2csv(A,fname,append)
 	!--------------------
 
-	real(8), dimension(:), intent(in) :: A
+	real(dp), dimension(:), intent(in) :: A
 	character(len=*), intent(in) :: fname
 	integer, intent(in), optional :: append
 	integer :: r,ri
@@ -400,9 +400,9 @@ module helper_funs
 	
 	
 	subroutine invmat(A, invA)
-		real(8), dimension(:,:), intent(in) :: A
-		real(8), dimension(size(A,1),size(A,2)), intent(out) :: invA
-		real(8), dimension(size(A,1)*size(A,1)) :: wk
+		real(dp), dimension(:,:), intent(in) :: A
+		real(dp), dimension(size(A,1),size(A,2)), intent(out) :: invA
+		real(dp), dimension(size(A,1)*size(A,1)) :: wk
 		integer, dimension(size(A,1) + 1) :: ipiv
 		integer :: n, info
 		external DGETRF
@@ -426,15 +426,15 @@ module helper_funs
 	! 12) Run an OLS regression
 	!------------------------------------------------------------------------
 	subroutine OLS(XX,Y,coefs,cov_coef, status)
-		real(8), dimension(:,:), intent(in) :: XX
-		real(8), dimension(:), intent(in) :: Y
-		real(8), dimension(:), intent(out) :: coefs
-		real(8), dimension(:,:), intent(out) :: cov_coef
+		real(dp), dimension(:,:), intent(in) :: XX
+		real(dp), dimension(:), intent(in) :: Y
+		real(dp), dimension(:), intent(out) :: coefs
+		real(dp), dimension(:,:), intent(out) :: cov_coef
 		integer, intent(out) :: status
 		integer :: nX, nY, nK, r,c
-		real(8), dimension(:,:), allocatable :: XpX,XpX_fac,XpX_inv
-		real(8), dimension(:), allocatable :: fitted,resids
-		real(8) :: s2
+		real(dp), dimension(:,:), allocatable :: XpX,XpX_fac,XpX_inv
+		real(dp), dimension(:), allocatable :: fitted,resids
+		real(dp) :: s2
 		integer :: i
 		
 		external dgemm,dgemv
@@ -458,12 +458,12 @@ module helper_funs
 			status = 1
 		else 
 			XpX = 0.
-			call dgemm('T', 'N', nK, nK, nX, 1., XX, nX, XX, nX, 0., XpX, nK)
+			call dgemm('T', 'N', nK, nK, nX, 1._dp, XX, nX, XX, nX, 0., XpX, nK)
 			XpX_fac = XpX
 			call dpotrf('U',Nk,XpX_fac,Nk,status)
 			if(status == 0) then
 				! 3/ Multiply LHS of regression and solve it
-				call dgemv('T', nX, nK, 1., XX, nX, Y, 1, 0., coefs, 1)
+				call dgemv('T', nX, nK, 1._dp, XX, nX, Y, 1, 0., coefs, 1)
 				call dpotrs('U',nK,1,XpX_fac,nK,coefs,Nk,status)
 			else 
 				if(verbose >0 ) print *, "cannot factor XX"
@@ -474,7 +474,7 @@ module helper_funs
 			XpX_inv = XpX_fac
 			call dpotri('U',nK,XpX_inv,nK,status)
 			fitted = 0.
-			call dgemv('N', nX, nK, 1., XX, nX, coefs, 1, 0., fitted, 1)
+			call dgemv('N', nX, nK, 1._dp, XX, nX, coefs, 1, 0., fitted, 1)
 			resids = Y - fitted
 			s2 = 0.
 			do i=1,nY
@@ -577,7 +577,7 @@ module model_data
 		type(moments_struct)	:: moments_sim
 		type(hist_struct)	:: hists_sim
 
-		real(8), allocatable :: emp_lagtimeconst(:,:), emp_t(:) ! will be a fraction of labor force in each occupation
+		real(dp), allocatable :: emp_lagtimeconst(:,:), emp_t(:) ! will be a fraction of labor force in each occupation
 		integer ij,it,nobs,yr, status
 
 		allocate(emp_t((Tsim-1)*nj))
@@ -588,7 +588,7 @@ module model_data
 				emp_t((ij-1)*(Tsim-1) + it-1) = hists_sim%occsize_jt(ij,it)
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1) = hists_sim%occsize_jt(ij,it-1)
 				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1+ij) = dble(it-1)/tlen
-				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,2+nj) = 1.
+				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,2+nj) = 1._dp
 			enddo
 		enddo
 
@@ -605,9 +605,9 @@ module model_data
 		type(moments_struct)	:: moments_sim
 		type(hist_struct)	:: hists_sim
 
-		real(8), allocatable :: obsX_vars(:,:), work_dif_long(:)
+		real(dp), allocatable :: obsX_vars(:,:), work_dif_long(:)
 		integer :: i, ij,it,age_hr,id, status, nobs, yr_stride
-		real(8) :: colmean, colvar
+		real(dp) :: colmean, colvar
 		logical :: badcoef(Nk) = .false.
 
 		allocate(obsX_vars(Tsim*Nsim,Nk))
@@ -625,15 +625,15 @@ module model_data
 			do it=1,Tsim
 				if( hists_sim%age_hist(i,it) <= TT-1 ) then
 					Nobs = Nobs + 1
-					work_dif_long( Nobs ) = dexp(hists_sim%work_dif_hist(i,it)*smthELPM )/(1. + dexp(hists_sim%work_dif_hist(i,it)*smthELPM) )
+					work_dif_long( Nobs ) = dexp(hists_sim%work_dif_hist(i,it)*smthELPM )/(1._dp + dexp(hists_sim%work_dif_hist(i,it)*smthELPM) )
 					do age_hr=1,TT-1
-						if(hists_sim%age_hist(i,it) .eq. age_hr ) obsX_vars( Nobs, age_hr) = 1.
+						if(hists_sim%age_hist(i,it) .eq. age_hr ) obsX_vars( Nobs, age_hr) = 1._dp
 					enddo
 					do id = 1,nd-1
-						if(hists_sim%d_hist(i,it) .eq. id ) obsX_vars(Nobs, (TT-1)+id) = 1.
+						if(hists_sim%d_hist(i,it) .eq. id ) obsX_vars(Nobs, (TT-1)+id) = 1._dp
 						! lead 1 period health status
 						if(it <= Tsim - yr_stride) then
-							if(hists_sim%d_hist(i,it+yr_stride) .eq. id ) obsX_vars(Nobs, (TT-1)+nd-1+id) = 1.
+							if(hists_sim%d_hist(i,it+yr_stride) .eq. id ) obsX_vars(Nobs, (TT-1)+nd-1+id) = 1._dp
 						endif
 					enddo
 					do ij = 1,nj
@@ -653,7 +653,7 @@ module model_data
 			enddo
 		enddo
 		! the constant
-		obsX_vars(:,Nk) = 1.
+		obsX_vars(:,Nk) = 1._dp
 		moments_sim%work_coefs = 0.
 
 		if(print_lev >=3 ) call mat2csv(obsX_vars,"obsX_vars.csv")
@@ -698,7 +698,7 @@ module model_data
 		integer :: totage(TT),totD(TT),totW(TT),totst(Tsim),total(nal), tot3al(nal), &
 				& tot3age(TT-1),totage_st(TT,Tsim)
 
-		real(8) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
+		real(dp) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
 				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1), &
 				& status_Nt(5,Tsim)
 
@@ -739,7 +739,7 @@ module model_data
 					status_hr = hists_sim%status_hist(si,st)
 					if(status_hr == 4) dD_t(st) = dD_t(st)+hists_sim%d_hist(si,st)
 					
-					status_Nt(status_hr,st) = 1. + status_Nt(status_hr,st)
+					status_Nt(status_hr,st) = 1._dp + status_Nt(status_hr,st)
 
 					! disability by age and age X shock
 					do it = 1,TT-1
@@ -753,10 +753,10 @@ module model_data
 								dD_age(age_hr) = dD_age(age_hr)+hists_sim%d_hist(si,st)
 								! associate this with its shock
 								do ial = 1,nal
-									if(  hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1.) &
-									&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1.) &
+									if(  hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp) &
+									&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp) &
 									&	.and. hists_sim%status_hist(si,st) == 4 ) &
-									&	alD_age(ial,age_hr) = 1. + alD_age(ial,it)
+									&	alD_age(ial,age_hr) = 1._dp + alD_age(ial,it)
 								enddo
 							elseif(hists_sim%status_hist(si,st) == 3) then
 								appdif_age(it) = appdif_age(age_hr) + hists_sim%app_dif_hist(si,st)
@@ -773,8 +773,8 @@ module model_data
 					
 					! disability and app choice by shock level
 					do ial = 1,nal
-						if( hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1.) &
-						&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1.)) then
+						if( hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp) &
+						&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp)) then
 							if(hists_sim%status_hist(si,st) <3) then
 								!work choice:
 								alworkdif(ial) = alworkdif(ial) + hists_sim%work_dif_hist(si,st)
@@ -785,7 +785,7 @@ module model_data
 								tot3al(ial) = tot3al(ial) + 1
 							endif
 							if(hists_sim%status_hist(si,st) == 4) &
-								& alD(ial) = 1. + alD(ial)
+								& alD(ial) = 1._dp + alD(ial)
 						endif
 					enddo
 				endif !status(si,st) >0
@@ -856,9 +856,9 @@ module sol_val
 		integer, intent(in) :: id,ie,ia
 		integer, intent(in) :: iaa0, iaaA 
 		integer, intent(out) :: apol
-		real(8), intent(out) :: Vout
-		real(8), intent(in) :: VR0(:,:,:)
-		real(8) :: Vtest1,Vtest2,chere, Vc1
+		real(dp), intent(out) :: Vout
+		real(dp), intent(in) :: VR0(:,:,:)
+		real(dp) :: Vtest1,Vtest2,chere, Vc1
 		integer :: iaa, iw
 		
 
@@ -889,9 +889,9 @@ module sol_val
 		integer, intent(in) :: id,ie,ia,it
 		integer, intent(in) :: iaa0, iaaA 
 		integer, intent(out) :: apol
-		real(8), intent(out) :: Vout
-		real(8), intent(in) :: VD0(:,:,:,:)
-		real(8) :: Vc1,chere,Vtest1,Vtest2
+		real(dp), intent(out) :: Vout
+		real(dp), intent(in) :: VD0(:,:,:,:)
+		real(dp) :: Vc1,chere,Vtest1,Vtest2
 		integer :: iw, iaa
 
 		iw = 1 ! don't work
@@ -924,9 +924,9 @@ module sol_val
 		integer, intent(in) :: ij,ibi,idi,ial,id,ie,ia,iz,it
 		integer, intent(in) :: iaa0, iaaA 
 		integer, intent(out) :: apol
-		real(8), intent(out) :: Vout
-		real(8), intent(in) :: VN0(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
-		real(8) :: Vc1,chere,Vtest1,Vtest2
+		real(dp), intent(out) :: Vout
+		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
+		real(dp) :: Vc1,chere,Vtest1,Vtest2
 		integer :: iw, iaa,iaai,izz
 
 		iw = 1 ! don't work
@@ -939,7 +939,7 @@ module sol_val
 				Vtest2 = 0. !Continuation value if don't go on disability
 				do izz = 1,nz	 !Loop over z'
 				do iaai = 1,nal !Loop over alpha_i'
-					Vc1 = (1.-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
+					Vc1 = (1._dp-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
 						& 	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) )  !Age and might go LTU
 					Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) & 
 						&	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
@@ -964,10 +964,10 @@ module sol_val
 		integer, intent(in) :: ij,ibi,idi,ial,id,ie,ia,iz,it
 		integer, intent(in) :: iaa0, iaaA 
 		integer, intent(out) :: apol,gapp_pol
-		real(8), intent(out) :: gapp_dif
-		real(8), intent(out) :: Vout
-		real(8), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:)
-		real(8) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, maxVNV0
+		real(dp), intent(out) :: gapp_dif
+		real(dp), intent(out) :: Vout
+		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:)
+		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, maxVNV0
 		integer :: iw, iaa,iaai,izz,aapp,aNapp
 
 		iw = 1 ! not working
@@ -1066,7 +1066,7 @@ module sol_val
 		!smthV = dexp(smthV0param*Vnapp)/( dexp(smthV0param*Vnapp) +dexp(smthV0param*Vapp) )
 		!if( smthV .lt. 1e-5 .or. smthV .gt. 0.999999 .or. isnan(smthV)) then
 			if( Vapp > Vnapp ) smthV =0.
-			if(Vnapp > Vapp  ) smthV =1.
+			if(Vnapp > Vapp  ) smthV =1._dp
 		!endif
 		if (Vapp > Vnapp) then
 			apol = aapp
@@ -1079,9 +1079,9 @@ module sol_val
 		gapp_dif = Vapp - Vnapp
 		if(verbose .gt. 4) print *, Vapp - Vnapp
 		if(it>1) then
-			Vout = smthV*Vnapp + (1. - smthV)*Vapp
+			Vout = smthV*Vnapp + (1._dp - smthV)*Vapp
 		else
-			Vout = smthV*Vnapp + (1. - smthV)*(eligY*Vapp + (1.- eligY)*Vnapp)
+			Vout = smthV*Vnapp + (1._dp - smthV)*(eligY*Vapp + (1._dp- eligY)*Vnapp)
 		endif
 
 	end subroutine maxVN
@@ -1089,16 +1089,16 @@ module sol_val
 	subroutine maxVW(ij,ibi,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt,iaa0,iaaA,apol,gwork_pol,gwork_dif,Vout ,VWout )
 		integer, intent(in) :: ij,ibi,idi,ial,id,ie,ia,iz,it
 		integer, intent(in) :: iaa0, iaaA,iee1,iee2
-		real(8), intent(in) :: iee1wt,wagehere
+		real(dp), intent(in) :: iee1wt,wagehere
 		integer, intent(out) :: apol,gwork_pol
-		real(8), intent(out) :: gwork_dif
-		real(8), intent(out) :: Vout, VWout
-		real(8), intent(in) :: VU(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
-		real(8) :: Vc1,utilhere,chere,Vtest1,Vtest2,VWhere,VUhere,smthV, yL, yH
+		real(dp), intent(out) :: gwork_dif
+		real(dp), intent(out) :: Vout, VWout
+		real(dp), intent(in) :: VU(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
+		real(dp) :: Vc1,utilhere,chere,Vtest1,Vtest2,VWhere,VUhere,smthV, yL, yH
 		integer :: iw, iaa,iaai,izz
 
 		iw = 2 ! working
-		Vtest1= -1.e6 ! just to initialize, does not matter
+		Vtest1= -1.e6_dp ! just to initialize, does not matter
 		apol = iaa0
 		!Find saving Policy
 		do iaa=iaa0,iaaA
@@ -1114,7 +1114,7 @@ module sol_val
 					yH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it+1) & 
 						& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it)
 					Vc1 = piz(iz,izz)*pialf(ial,iaai) &
-						& * (yH*(1. - iee1wt) + yL*iee1wt )&
+						& * (yH*(1._dp - iee1wt) + yL*iee1wt )&
 						& + Vc1
 				enddo
 				enddo
@@ -1148,10 +1148,10 @@ module sol_val
 		!smthV = dexp( smthV0param *VWhere  ) &
 		!	& /( dexp(smthV0param * VWhere) + dexp(smthV0param * VUhere ) )
 		!if (smthV <1e-5 .or. smthV>.999999 .or. isnan(smthV) ) then
-			if(VWhere > VUhere)	smthV = 1. 
+			if(VWhere > VUhere)	smthV = 1._dp 
 			if(VWhere < VUhere)	smthV = 0. 							
 		!endif
-		Vout = smthV*VWhere + (1.-smthV)*VUhere
+		Vout = smthV*VWhere + (1._dp-smthV)*VUhere
 		
 		gwork_dif = VWhere - VUhere
 		VWout = VWhere
@@ -1179,24 +1179,24 @@ module sol_val
 		!************************************************************************************************!
 		! Value Functions- Stack z-risk j and indiv. exposure beta_i
 		!************************************************************************************************!
-		real(8)  	  	:: Vtest1, maxer_v, smthV,smthV0param, wagehere, iee1wt, gadif,gwdif
+		real(dp)  	  	:: Vtest1, maxer_v, smthV,smthV0param, wagehere, iee1wt, gadif,gwdif
 		
-		real(8), allocatable	:: maxer(:,:,:,:,:)
-		real(8), allocatable :: VR0(:,:,:), &			!Retirement
+		real(dp), allocatable	:: maxer(:,:,:,:,:)
+		real(dp), allocatable :: VR0(:,:,:), &			!Retirement
 					VD0(:,:,:,:), &			!Disabled
 					VN0(:,:,:,:,:,:,:), &	!Long-term Unemployed
 					VW0(:,:,:,:,:,:,:), &	!Working
 					VU0(:,:,:,:,:,:,:), &	!Unemployed
 					V0(:,:,:,:,:,:,:)	!Participant
 				
-		real(8), pointer ::	VR(:,:,:), &			!Retirement
+		real(dp), pointer ::	VR(:,:,:), &			!Retirement
 					VD(:,:,:,:), &			!Disabled
 					VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
 					VW(:,:,:,:,:,:,:), &	!Working
 					VU(:,:,:,:,:,:,:), &	!Unemployed
 					V(:,:,:,:,:,:,:)	!Participant
 	
-		real(8), pointer ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
+		real(dp), pointer ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
 	
 		integer, pointer ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
 					aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
@@ -1206,7 +1206,7 @@ module sol_val
 		!************************************************************************************************!
 		! Other
 		!************************************************************************************************!
-			real(8)	:: junk,summer, eprime, emin, emax, VWhere, V_m(na)
+			real(dp)	:: junk,summer, eprime, emin, emax, VWhere, V_m(na)
 		!************************************************************************************************!
 		
 		!************************************************************************************************!
@@ -1261,7 +1261,7 @@ module sol_val
 		do id=1,nd
 		do ie=1,ne
 		do ia=1,na
-			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,iw)* (1./(1.-beta*ptau(TT)))
+			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,iw)* (1._dp/(1._dp-beta*ptau(TT)))
 		enddo
 		enddo
 		enddo
@@ -1583,7 +1583,7 @@ module sol_val
 			!***********************************************************************************************************
 			!Loop over V=max(VU,VW)	
 			iter=1
-			smthV0param  =1. ! will tighten this down
+			smthV0param  =1._dp ! will tighten this down
 			do while (iter<=maxiter)
 				maxer = 0.
 				summer = 0.	!Use to calc |V-V0|<eps
@@ -1855,7 +1855,7 @@ module sol_val
 						iee2 = min(ne,iee1+1)
 						iee1wt = (egrid(iee2)-eprime)/(egrid(iee2)-egrid(iee1))
 					elseif( eprime <= emin  ) then 
-						iee1wt = 1.
+						iee1wt = 1._dp
 						iee1 = 1
 						iee2 = 1
 					else 
@@ -1995,7 +1995,7 @@ module sol_val
 				endif
 
 				iter=iter+1
-				smthV0param = smthV0param*1.5 !tighten up the discrete choice
+				smthV0param = smthV0param*1.5_dp !tighten up the discrete choice
 			enddo	!iter: V-iter loop
 	!WRITE(*,*) ij, ibi, idi, it
 		enddo	!t loop, going backwards
@@ -2082,11 +2082,11 @@ module sim_hists
 
 		integer, intent(in) :: seed0
 		integer, intent(out) :: success
-		real(8), dimension(:) :: del_i
+		real(dp), dimension(:) :: del_i
 		integer, dimension(:) :: del_i_int
 		integer :: ss, Nsim, di_int,m,i,ij,idi
-		real(8) :: delgridL, delgridH,delgrid_i
-		real(8) :: delwtH,delwtL
+		real(dp) :: delgridL, delgridH,delgrid_i
+		real(dp) :: delwtH,delwtL
 		integer, dimension(100) :: bdayseed
 
 		call random_seed(size = ss)
@@ -2095,7 +2095,7 @@ module sim_hists
 
 		Nsim = size(del_i)
 
-		delwt	 = 1./dble(ndi) ! initialize with equal weight
+		delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
 		if(del_by_occ .eqv. .true.) then ! give weight according to mean delta by occ
 			delgridL = 0.
 			do i=1,ndi/2
@@ -2108,7 +2108,7 @@ module sim_hists
 			do ij=1,nj
 				! choose the mean to match the target mean by occupation
 				delwtH = (occdel(ij)-delgridL)/(delgridH-delgridL)
-				delwtL = 1.- delwtH
+				delwtL = 1._dp- delwtH
 				do i=1,ndi/2
 					delwt(i,ij) = delwtL/dble(ndi/2)
 				enddo
@@ -2118,7 +2118,7 @@ module sim_hists
 			enddo
 		else
 			do ij=1,nj
-				delwt(:,ij) = 1./dble(idi)
+				delwt(:,ij) = 1._dp/dble(idi)
 			enddo
 		endif
 		!setup delcumwt
@@ -2152,9 +2152,9 @@ module sim_hists
 
 		integer, intent(in) :: seed0
 		integer, intent(out) :: success
-		real(8), dimension(:,:) :: status_it_innov
+		real(dp), dimension(:,:) :: status_it_innov
 		integer :: ss, m,i,it
-		real(8) :: s_innov
+		real(dp) :: s_innov
 		integer, dimension(100) :: bdayseed
 
 		call random_seed(size = ss)
@@ -2176,12 +2176,12 @@ module sim_hists
 
 		integer, intent(in) :: seed0
 		integer, intent(out),optional :: success
-		real(8), dimension(:,:) :: al_it
+		real(dp), dimension(:,:) :: al_it
 		integer, dimension(:,:) :: al_it_int
 		integer :: ss, Nsim, alfgrid_int, t,m,i,k
-		real(8) :: alfgridL, alfgridH,alf_innov,alfgrid_i
+		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i
 		integer, dimension(100) :: bdayseed
-		real(8), allocatable :: cumpi_al(:,:)
+		real(dp), allocatable :: cumpi_al(:,:)
 
 		allocate(cumpi_al(nal,nal+1))
 
@@ -2246,13 +2246,13 @@ module sim_hists
 	subroutine draw_ji(j_i,seed0, success)
 		implicit none
 		integer	:: j_i(:)
-		real(8) :: jwt
+		real(dp) :: jwt
 		integer	:: i,m,ss
 		integer,intent(in)  :: seed0
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
-		real(8)	:: Njcumdist(nj+1)
-		real(8) :: draw_i
+		real(dp)	:: Njcumdist(nj+1)
+		real(dp) :: draw_i
 
 		Njcumdist = 0
 		if(nj>1) then
@@ -2287,8 +2287,8 @@ module sim_hists
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
-		real(8) :: z_innov
-		real(8) :: cumpi_z(nz,nz+1),cumpi_zblock(nz/2,nz/2+1)
+		real(dp) :: z_innov
+		real(dp) :: cumpi_z(nz,nz+1),cumpi_zblock(nz/2,nz/2+1)
 
 		call random_seed(size = ss)
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
@@ -2343,9 +2343,9 @@ module sim_hists
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
-		real(8), dimension(TT) :: cumpi_t0
-		real(8), dimension(TT-1) :: prob_age_nTT
-		real(8) :: rand_age,rand_born
+		real(dp), dimension(TT) :: cumpi_t0
+		real(dp), dimension(TT-1) :: prob_age_nTT
+		real(dp) :: rand_age,rand_born
 		
 		call random_seed(size = ss)
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
@@ -2423,7 +2423,7 @@ module sim_hists
 		integer, dimension(100) :: bdayseed
 		integer,intent(out) :: drawi_ititer(:),drawt_ititer(:)
 		integer :: i,it,ii,m,ss,drawt,drawi,ndraw
-		real(8) :: junk
+		real(dp) :: junk
 
 		call random_seed(size = ss)
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
@@ -2493,17 +2493,17 @@ module sim_hists
 			&  seed0, seed1, status, m,ss, iter_draws=5
 		integer :: bdayseed(100)
 
-		real(8), allocatable ::	del_i(:), jshock_ij(:,:) ! shocks to be drawn
+		real(dp), allocatable ::	del_i(:), jshock_ij(:,:) ! shocks to be drawn
 		
-		real(8), allocatable :: status_it_innov(:,:) !innovations to d, drawn randomly
+		real(dp), allocatable :: status_it_innov(:,:) !innovations to d, drawn randomly
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
-		real(8), allocatable :: e_it(:,:)
+		real(dp), allocatable :: e_it(:,:)
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
 		integer, allocatable :: drawi_ititer(:),drawt_ititer(:)
 		
 		! write to hst
-		real(8), pointer     :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
+		real(dp), pointer     :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
 		integer, pointer     :: born_it(:,:) ! born status, drawn randomly		
 		integer, pointer     :: del_i_int(:)  ! integer valued shocks
 		integer, pointer     :: status_it(:,:)	!track W,U,N,D,R : 1,2,3,4,5
@@ -2512,15 +2512,15 @@ module sim_hists
 		integer, pointer     :: d_it(:,:) 	! disability status
 		integer, pointer     :: z_jt_macro(:)! shocks to be drawn
 		integer, pointer     :: al_it_int(:,:)! integer valued shocks
-		real(8), pointer     :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
-		real(8), pointer     :: a_it(:,:) 	! assets
-		real(8), pointer     ::	al_it(:,:)	! individual shocks
+		real(dp), pointer     :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
+		real(dp), pointer     :: a_it(:,:) 	! assets
+		real(dp), pointer     ::	al_it(:,:)	! individual shocks
 
 		! read from vals
-		real(8), pointer ::	V(:,:,:,:,:,:,:)	!Participant
+		real(dp), pointer ::	V(:,:,:,:,:,:,:)	!Participant
 
 		! read from pols
-		real(8), pointer ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
+		real(dp), pointer ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
 	
 		integer, pointer ::	aR(:,:,:), aD(:,:,:,:), aU(:,:,:,:,:,:,:), &
 					aN(:,:,:,:,:,:,:), aW(:,:,:,:,:,:,:)
@@ -2528,12 +2528,12 @@ module sim_hists
 					gwork(:,:,:,:,:,:,:)
 
 		logical :: ptrsuccess
-		real(8) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1),d_var(TT-1),&
+		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1),d_var(TT-1),&
 				& a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
 				& s_mean(TT-1),s_mean_liter(TT-1)
 	
 		! Other
-		real(8)	:: wage_hr,al_hr, junk,a_hr, e_hr, bet_hr,z_hr,j_val,j_val_ij,jwt,cumval,work_dif_hr, app_dif_hr,js_ij, Nworkt, ep_hr
+		real(dp)	:: wage_hr,al_hr, junk,a_hr, e_hr, bet_hr,z_hr,j_val,j_val_ij,jwt,cumval,work_dif_hr, app_dif_hr,js_ij, Nworkt, ep_hr
 
 		integer :: ali_hr,d_hr,age_hr,del_hr, zi_hr, j_hr, ai_hr,api_hr,ei_hr, &
 			& beti, status_hr,status_tmrw,drawi,drawt
@@ -2690,7 +2690,7 @@ module sim_hists
 
 		!use only 1 value of beta
 		beti = 1
-		bet_hr = 1.
+		bet_hr = 1._dp
 		
 		if(verbose >2) print *, "Simulating"
 		
@@ -2758,7 +2758,7 @@ module sim_hists
 						e_hr 	= 0.
 						ai_hr 	= 1
 						if(j_rand .eqv. .false. ) then !choose occupation
-							j_val  = -1.e6
+							j_val  = -1.e6_dp
 							cumval = 0.
 							do ij = 1,nj
 								j_val_ij = 0.
@@ -2981,7 +2981,7 @@ module sim_hists
 							a_mean(age_hr) = a_it(i,it)      + a_mean(age_hr)
 							d_mean(age_hr) = d_it(i,it)      + d_mean(age_hr)
 							s_mean(age_hr) = status_it(i,it) + s_mean(age_hr)
-							junk = junk + 1.
+							junk = junk + 1._dp
 						endif
 					enddo
 				enddo
@@ -3000,7 +3000,7 @@ module sim_hists
 				d_var(age_hr) = d_var(age_hr)/junk
 
 			enddo
-			if((sum((a_mean - a_mean_liter)**2) + sum((s_mean - s_mean_liter)**2) + sum((d_mean - d_mean_liter)**2))<1.e-5 ) then
+			if((sum((a_mean - a_mean_liter)**2) + sum((s_mean - s_mean_liter)**2) + sum((d_mean - d_mean_liter)**2))<1.e-5_dp ) then
 				if(verbose >=2 ) then
 					print *, "done simulating after convergence in", iter
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
@@ -3037,10 +3037,10 @@ module sim_hists
 		occgrow_jt = 0.
 		occshrink_jt = 0.
 		do i=1,Nsim
-			if( age_it(i,it) > 0 .and. status_it(i,it) <= 2 .and. status_it(i,it)>=1) Nworkt = 1. + Nworkt
+			if( age_it(i,it) > 0 .and. status_it(i,it) <= 2 .and. status_it(i,it)>=1) Nworkt = 1._dp + Nworkt
 			do ij=1,nj
 				if(j_i(i) == ij .and. age_it(i,it) >= 1 .and. status_it(i,it) == 1) &
-					& occsize_jt(ij,it) = 1.+occsize_jt(ij,it)
+					& occsize_jt(ij,it) = 1._dp+occsize_jt(ij,it)
 			enddo
 		enddo
 		occsize_jt(:,it) = occsize_jt(:,it) / Nworkt
@@ -3052,16 +3052,16 @@ module sim_hists
 			occshrink_jt(:,it) = 0.
 			occsize_jt  (:,it) = 0.
 			do i=1,Nsim
-				if(status_it(i,it) <= 2 .and. status_it(i,it)>=1 .and. age_it(i,it) > 0 ) Nworkt = 1. + Nworkt !labor force in this period
+				if(status_it(i,it) <= 2 .and. status_it(i,it)>=1 .and. age_it(i,it) > 0 ) Nworkt = 1._dp + Nworkt !labor force in this period
 				do ij =1,nj
 					if(j_i(i) ==ij .and. born_it(i,it) == 1 ) &
-						& occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it)
+						& occgrow_jt(ij,it) = 1._dp + occgrow_jt(ij,it)
 					if(j_i(i) ==ij .and. status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
-						& occgrow_jt(ij,it) = 1. + occgrow_jt(ij,it) !wasn't working last period
+						& occgrow_jt(ij,it) = 1._dp + occgrow_jt(ij,it) !wasn't working last period
 					if(j_i(i) ==ij .and. status_it(i,it-1) == 1 .and. status_it(i,it) > 1) &
-						& occshrink_jt(ij,it) = 1. + occshrink_jt(ij,it)
+						& occshrink_jt(ij,it) = 1._dp + occshrink_jt(ij,it)
 					if(j_i(i) ==ij .and. status_it(i,it) == 1) &
-						& occsize_jt(ij,it) = 1. + occsize_jt(ij,it)
+						& occsize_jt(ij,it) = 1._dp + occsize_jt(ij,it)
 				enddo
 				occgrow_jt(ij,it) = occgrow_jt(ij,it)/occsize_jt(ij,it)
 				occshrink_jt(ij,it) = occshrink_jt(ij,it)/occsize_jt(ij,it)
@@ -3115,13 +3115,13 @@ module find_params
 
 	implicit none
 
-	real(8), allocatable :: mod_prob_hist_tgt(:,:)
+	real(dp), allocatable :: mod_prob_hist_tgt(:,:)
 
 	integer :: mod_ij_obj, mod_it
 	integer :: mod_z_jt_macro_it
 	type(val_struct), pointer :: mod_val_sol
 	type(hist_struct), pointer :: mod_hists_sim
-	real(8) :: mod_prob_target
+	real(dp) :: mod_prob_target
 
 	contains
 
@@ -3134,12 +3134,12 @@ module find_params
 		integer, intent(in) :: z_jt_macro_it
 		type(val_struct),  intent(in) :: val_sol
 		type(hist_struct), intent(in):: hists_sim
-		real(8), intent(in) :: prob_target,zj_in
-		real(8) :: resid, zj_here
-		real(8) :: j_val_ij,cumval,j_val,zjwt,prob_here,e_hr
+		real(dp), intent(in) :: prob_target,zj_in
+		real(dp) :: resid, zj_here
+		real(dp) :: j_val_ij,cumval,j_val,zjwt,prob_here,e_hr
 		integer :: age_hr,d_hr,ai_hr,ali_hr,ei_hr,i,ii,idi, it, ij,beti
 		integer :: zj_hi,zj_lo, simT
-		real(8) :: j_val_hi,j_val_lo,nborn
+		real(dp) :: j_val_hi,j_val_lo,j_val_here,nborn
 
 		
 		simT = size(hists_sim%born_hist,2)
@@ -3150,7 +3150,7 @@ module find_params
 			do i = 1,Nsim
 
 				if(hists_sim%born_hist(i,it).eq. 1 ) then !they've been born this period
-					nborn = 1. + nborn
+					nborn = 1._dp + nborn
 					!set the state
 					ali_hr 	= hists_sim%al_int_hist(i,it)
 					age_hr 	= 1
@@ -3164,18 +3164,16 @@ module find_params
 
 					! choose by scaling zgrid using the pre-transition values, 1:nz/2
 					zj_here   = zgrid(mod(hists_sim%z_jt_macro(it),nz/2)  ,ij) + zj_in
-					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here)
+					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here) + nz/2
 					zj_lo	  = max(zj_lo,nz/2+1)
 					zj_hi	  = min(zj_lo +1,nz)
 					zjwt 	  = (zgrid(zj_hi,ij) - zj_here)/(zgrid(zj_hi,ij) - zgrid(zj_lo,ij))
-					zjwt 	  = max(min(zjwt,1.),0.)
-					j_val_lo  = 0.
-					j_val_hi  = 0.
+					zjwt 	  = max(min(zjwt,1._dp),0.)
+					j_val_here= 0._dp
 					do idi = 1,ndi ! expectation over delta
-						j_val_lo  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_lo,age_hr)&
-											& * delwt(idi,ij) + j_val_lo
-						j_val_hi  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_hi,age_hr)&
-											& * delwt(idi,ij) + j_val_hi
+						j_val_lo  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_lo,age_hr)
+						j_val_hi  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_hi,age_hr)
+						j_val_here = (zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi)*delwt(idi,ij) + j_val_here
 					enddo
 
 					cumval  = 0.
@@ -3188,12 +3186,12 @@ module find_params
 							enddo
 							cumval = dexp(j_val_ij/amenityscale ) + cumval
 						else
-							cumval = dexp( (zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale ) + cumval
+							cumval = dexp( j_val_here/amenityscale ) + cumval
 						endif
 					!	print*, cumval
 					enddo
 
-					prob_here = dexp((zjwt*j_val_lo + (1.-zjwt)*j_val_hi)/amenityscale)/cumval + prob_here
+					prob_here = dexp((zjwt*j_val_lo + (1._dp-zjwt)*j_val_hi)/amenityscale)/cumval + prob_here
 					
 				endif
 			enddo
@@ -3204,14 +3202,73 @@ module find_params
 	end function obj_zj
 
 	function obj_zj_wrap(zj_here, dummy_params) result(resid)
-		real(8), intent(in) :: zj_here
-		real(8), intent(in) :: dummy_params(:)
-		real(8) :: resid
+		real(dp), intent(in) :: zj_here
+		real(dp), intent(in) :: dummy_params(:)
+		real(dp) :: resid
 
 		resid = obj_zj(zj_here,mod_val_sol,mod_hists_sim,mod_z_jt_macro_it,mod_prob_target,mod_ij_obj,mod_it)
 
 	end function obj_zj_wrap
 
+
+	subroutine newtfpgrid(zgrid_in, zscale_in, zgrid_out,val_sol)
+		real(dp), intent(in)	:: zgrid_in(:,:)
+		real(dp), intent(out):: zgrid_out(:,:)
+		real(dp), intent(in)	:: zscale_in(:)
+		type(val_struct)	:: val_sol
+
+		integer :: iz,i,ij,beti,idi,ial,id,ie,ia,it
+		real(dp) :: z_min,z_max,zjwt, zj_here
+		real(dp) :: j_val_lo,j_val_hi
+		integer :: zj_lo, zj_hi
+
+		zgrid_out = zgrid_in 
+		do ij=1,nj
+			z_max = maxval(zgrid_in(nz/2+1:nz,ij))
+			z_min = minval(zgrid_in(nz/2+1:nz,ij))
+			do iz=nz/2+1,nz
+				zgrid_out(iz,ij) = zgrid_in(iz,ij) + zscale(ij)
+				zgrid_out(iz,ij) = max(min(zgrid_out(iz,ij),z_max),z_min) ! don't try to extrapolate
+			enddo
+		enddo
+
+		
+
+		! interpolate V
+		beti = 1
+		do ij=1,nj
+		do idi=1,ndi
+		do ial = 1,nal
+		do id = 1,nd
+		do ie = 1,ne
+		do ia=1,na
+		do it = 1,TT-1
+
+		!interpolate the value function
+		do iz=1,nz
+			zj_here = zgrid_out(iz,ij)
+			zj_lo	  = finder(zgrid_in(nz/2+1:nz,ij),zj_here) + nz/2
+			zj_lo	  = max(zj_lo,nz/2+1)
+			zj_hi	  = min(zj_lo +1,nz)
+			zjwt 	  = (zgrid_in(zj_hi,ij) - zj_here)/(zgrid_in(zj_hi,ij) - zgrid_in(zj_lo,ij))
+			zjwt 	  = max(min(zjwt,1._dp),0.)
+			j_val_lo  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			j_val_hi  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it) =  &
+				& zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi
+			
+		enddo
+
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+
+		
+	end subroutine newtfpgrid
 
 	subroutine iter_zproc(val_sol, hists_sim, prob_hist_target)
 
@@ -3219,22 +3276,23 @@ module find_params
 		type(val_struct), target :: val_sol
 		type(hist_struct), target:: hists_sim
 
-		real(8), intent(in) :: prob_hist_target(:,:)
-		real(8) :: zj_here, zscale_mean,zscale_mean1
-		real(8) :: dummy_params(3)
+		real(dp), intent(in) :: prob_hist_target(:,:)
+		real(dp) :: zj_here, zscale_mean,zscale_mean1
+		real(dp) :: dummy_params(3)
 		!integer :: del_i_int(:)
 		integer :: flag,z_jt_macro_it
-		real(8) :: resid_hi, resid_lo, z_hi,z_lo,zj_opt,zscale_dist, zscale_tol=1.e-4
-		real(8), allocatable :: zscale1(:),zscale0(:)
+		real(dp) :: resid_hi, resid_lo, z_hi,z_lo,zj_opt,zscale_dist, zscale_tol=1.e-4_dp
+		real(dp), allocatable :: zscale1(:),zscale0(:),zgrid0(:,:)
 		dummy_params = 0.
 
 		allocate(zscale1(nj))
 		allocate(zscale0(nj))
+		allocate(zgrid0(nz,nj))
 		mod_val_sol => val_sol
 		mod_hists_sim => hists_sim
 		zscale1 = 0.
 		zscale_mean = 0.
-
+		zgrid0 = zgrid
 		do ij=1,nj
 			zscale0(ij) = zscale(ij)
 			zscale_mean = zscale(ij)/dble(nj) + zscale_mean
@@ -3249,8 +3307,9 @@ module find_params
 				mod_z_jt_macro_it = z_jt_macro_it
 				mod_prob_target = 0.5 ! i havd to replace this
 
-				z_hi = zgrid(nz,ij) - zgrid(nz/2+1,ij)
-				z_lo = zgrid(nz/2+1,ij) - zgrid(nz,ij)
+				! bounds on the area in which actually solved the problem
+				z_hi = zgrid0(nz,ij) - zgrid0(nz/2+1,ij)
+				z_lo = zgrid0(nz/2+1,ij) - zgrid0(nz,ij)
 					
 				! this adjusts it to be the bottom point for all grid points
 				resid_lo = obj_zj_wrap(z_lo,dummy_params)
@@ -3274,19 +3333,18 @@ module find_params
 			enddo
 			zscale_dist =0.
 			do ij=1,nj
-				zscale1(ij) = zscale1(ij) -zscale_mean1 + zscale_mean
+			!	zscale1(ij) = zscale1(ij) -zscale_mean1 + zscale_mean
 				zscale_dist = (zscale1(ij)-zscale(ij))**2 + zscale_dist
 			enddo
 			do ij=1,nj
-				zscale(ij) = upd_zscl*zscale1(ij) + (1.-upd_zscl)*zscale(ij)
-				! hold the mean fixed: prevent drifting
+				zscale(ij) = upd_zscl*zscale1(ij) + (1._dp-upd_zscl)*zscale(ij)
 				zscale_mean1 = 0.
 				zscale_mean1 = zscale(ij)/dble(nj) + zscale_mean1
-				zscale(ij) = zscale(ij) -zscale_mean1 + zscale_mean
+			!	zscale(ij) = zscale(ij) -zscale_mean1 + zscale_mean ! hold the mean fixed: prevent drifting
 			enddo
 
 			! this will reassign the grid using zscale
-			call settfp()
+			! call settfp()
 
 			if (zscale_dist .lt. zscale_tol) then
 				exit
@@ -3295,14 +3353,14 @@ module find_params
 		enddo
 
 		
-		deallocate(zscale0,zscale1)
+		deallocate(zscale0,zscale1,zgrid0)
 		
 	end subroutine iter_zproc
 	
 
 	subroutine cal_dist(paramvec, errvec)
 
-		real(8) :: paramvec(:), errvec(:)
+		real(dp) :: paramvec(:), errvec(:)
 
 		type(val_struct) :: val_sol
 		type(pol_struct) :: pol_sol
@@ -3329,7 +3387,7 @@ module find_params
 
 	subroutine  dfovec(Nin,Nout,paramvec,errvec)
 		integer :: Nin, Nout
-		real(8) :: paramvec(:), errvec(:)
+		real(dp) :: paramvec(:), errvec(:)
 
 		call cal_dist(paramvec,errvec)
 		
@@ -3366,7 +3424,7 @@ program V0main
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(8)	:: wagehere,utilhere, junk, param0(2),err0(2)
+		real(dp)	:: wagehere,utilhere, junk, param0(2),err0(2)
 		integer, allocatable :: iz_jt_in(:)
 	!************************************************************************************************!
 	! Structure to communicate everything
@@ -3377,7 +3435,7 @@ program V0main
 		
 	! Timers
 		integer :: c1,c2,cr,cm
-		real(8) :: t1,t2
+		real(dp) :: t1,t2
 		
 	!************************************************************************************************!
 	! Allocate phat matrices
@@ -3474,7 +3532,7 @@ program V0main
 			junk = zgrid( iz_jt_in(it) , ij )/(dble(nj)) + junk
 		enddo
 		do ij=1,nj!test probabilities are deviations from uniform 
-			mod_prob_hist_tgt(it,ij) = (zgrid( iz_jt_in(it) , ij ) -junk) + (1./dble(nj) )
+			mod_prob_hist_tgt(it,ij) = (zgrid( iz_jt_in(it) , ij ) -junk) + (1._dp/dble(nj) )
 		enddo
 	enddo
 	call cal_dist(param0,err0)
