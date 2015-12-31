@@ -140,7 +140,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
 !		
-		amenityscale = 5.,&	!scale parameter of gumbel distribution for occ choice
+		amenityscale = .5,&	!scale parameter of gumbel distribution for occ choice
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
 		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
@@ -221,7 +221,7 @@ subroutine setparams()
 	!Extra disability risk (uniformly spaced)
 	if(ndi>1) then
 		do i=1,ndi
-			delgrid(i) = dRiskL +dble(ndi-i)*(dRiskH-dRiskL)/dble(ndi-1)
+			delgrid(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
 		enddo
 	else
 		delgrid(1) = 0.5*(dRiskH + dRiskL)

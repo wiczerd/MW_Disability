@@ -1095,7 +1095,7 @@ module sol_val
 		real(dp), intent(out) :: Vout, VWout
 		real(dp), intent(in) :: VU(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
 		real(dp) :: Vc1,utilhere,chere,Vtest1,Vtest2,VWhere,VUhere,smthV, yL, yH
-		integer :: iw, iaa,iaai,izz
+		integer :: iw, iaa,iaai,izz,idd
 
 		iw = 2 ! working
 		Vtest1= -1.e6_dp ! just to initialize, does not matter
@@ -1106,16 +1106,18 @@ module sol_val
 			chere = wagehere+R*agrid(ia)-agrid(iaa)
 			if (chere >0.) then
 				Vc1 = 0.
-				do izz = 1,nz	 !Loop over z'
-				do iaai = 1,nal !Loop over alpha_i'
+				do izz  = 1,nz	 !Loop over z'
+				do iaai = 1,nal  !Loop over alpha_i'
+				do idd  = 1,nd	 !Loop over d'
 					!Linearly interpolating on e'
-					yL = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee1,iaa,izz,it+1) & 
-						& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee1,iaa,izz,it)
-					yH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it+1) & 
-						& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,iee2,iaa,izz,it)
-					Vc1 = piz(iz,izz)*pialf(ial,iaai) &
+					yL = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee1,iaa,izz,it+1) & 
+						& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee1,iaa,izz,it)
+					yH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee2,iaa,izz,it+1) & 
+						& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee2,iaa,izz,it)
+					Vc1 = piz(iz,izz)*pialf(ial,iaai)*pid(id,idd,idi,it) &
 						& * (yH*(1._dp - iee1wt) + yL*iee1wt )&
 						& + Vc1
+				enddo
 				enddo
 				enddo
 				utilhere = util(chere,id,iw)
@@ -1954,7 +1956,7 @@ module sol_val
 				do iz=1,nz	!Loop over TFP
 				do ia =1,na
 					VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
-					V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+					V0 ((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) =  V((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
 				enddo !ia		  	
 				enddo !ial
 				enddo !id
@@ -2029,6 +2031,8 @@ module sol_val
 			do iz=1,nz	!Loop over TFP
 				do it = TT-1,1,-1
 					! matrix in disability and assets
+					call mat2csv(V((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"V.csv",wo)
+
 					call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VW.csv",wo)
 					call mati2csv(aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aW.csv",wo)
 
@@ -2103,17 +2107,17 @@ module sim_hists
 			enddo
 			delgridH = 0.
 			do i= 1+ndi/2,ndi
-				delgridH = delgrid(i)/dble(ndi-ndi/2) + delgridL
+				delgridH = delgrid(i)/dble(ndi-ndi/2) + delgridH
 			enddo
 			do ij=1,nj
 				! choose the mean to match the target mean by occupation
 				delwtH = (occdel(ij)-delgridL)/(delgridH-delgridL)
-				delwtL = 1._dp- delwtH
+				delwtL = 1._dp - delwtH
 				do i=1,ndi/2
 					delwt(i,ij) = delwtL/dble(ndi/2)
 				enddo
 				do i=1+ndi/2,ndi
-					delwt(i,ij) = delwtL/dble(ndi-ndi/2)
+					delwt(i,ij) = delwtH/dble(ndi-ndi/2)
 				enddo
 			enddo
 		else
@@ -3118,34 +3122,39 @@ module find_params
 	real(dp), allocatable :: mod_prob_hist_tgt(:,:)
 
 	integer :: mod_ij_obj, mod_it
-	integer :: mod_z_jt_macro_it
 	type(val_struct), pointer :: mod_val_sol
 	type(hist_struct), pointer :: mod_hists_sim
 	real(dp) :: mod_prob_target
 
 	contains
 
-	function obj_zj(zj_in,val_sol,hists_sim,z_jt_macro_it,prob_target,ij_obj,it0) result(resid)
+	function obj_zj(zj_in,val_sol,hists_sim,prob_target,ij_obj,it0) result(resid)
 		
 		! for each j in each t, this solves the implied z_j
 		! where z_j scales the rest of the markov chain
 		
 		integer, intent(in) :: ij_obj, it0
-		integer, intent(in) :: z_jt_macro_it
 		type(val_struct),  intent(in) :: val_sol
 		type(hist_struct), intent(in):: hists_sim
 		real(dp), intent(in) :: prob_target,zj_in
-		real(dp) :: resid, zj_here
-		real(dp) :: j_val_ij,cumval,j_val,zjwt,prob_here,e_hr
+		real(dp) :: resid, zj_here,nborn,j_val_hi,j_val_lo,j_scale
+		real(dp) :: cumval,j_val,zjwt,prob_here,e_hr
 		integer :: age_hr,d_hr,ai_hr,ali_hr,ei_hr,i,ii,idi, it, ij,beti
 		integer :: zj_hi,zj_lo, simT
-		real(dp) :: j_val_hi,j_val_lo,j_val_here,nborn
+		real(dp), allocatable :: j_val_ij(:,:),j_val_here(:)
+		real(dp) :: zgrid_min, zgrid_max
+
+		allocate(j_val_ij(Nsim,nj))
+		allocate(j_val_here(Nsim))
+
+		j_val_ij = -1.e10_dp
+		j_val_here = -1.e10_dp
 
 		
 		simT = size(hists_sim%born_hist,2)
 		beti = 1
-		prob_here = 0.
-		nborn = 0.
+		prob_here = 0._dp
+		nborn = 0._dp
 		do it = it0,simT
 			do i = 1,Nsim
 
@@ -3157,48 +3166,66 @@ module find_params
 					d_hr 	= 1
 					ai_hr	= 1
 					ei_hr	= 1
-					e_hr 	= 0.
+					e_hr 	= 0._dp
 					ai_hr 	= 1
 
 					ij = ij_obj
-
+					zgrid_min = minval(zgrid(nz/2+1:nz,ij))
+					zgrid_max = maxval(zgrid(nz/2+1:nz,ij))
 					! choose by scaling zgrid using the pre-transition values, 1:nz/2
 					zj_here   = zgrid(mod(hists_sim%z_jt_macro(it),nz/2)  ,ij) + zj_in
+					zj_here	  = max(min(zj_here,zgrid_max),zgrid_min)
 					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here) + nz/2
 					zj_lo	  = max(zj_lo,nz/2+1)
 					zj_hi	  = min(zj_lo +1,nz)
 					zjwt 	  = (zgrid(zj_hi,ij) - zj_here)/(zgrid(zj_hi,ij) - zgrid(zj_lo,ij))
-					zjwt 	  = max(min(zjwt,1._dp),0.)
-					j_val_here= 0._dp
+					zjwt 	  = max(min(zjwt,1._dp),0._dp)
+					j_val_here(i) = 0._dp
 					do idi = 1,ndi ! expectation over delta
 						j_val_lo  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_lo,age_hr)
 						j_val_hi  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_hi,age_hr)
-						j_val_here = (zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi)*delwt(idi,ij) + j_val_here
+						j_val_here(i) = (zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi)*delwt(idi,ij) + j_val_here(i)
 					enddo
 
-					cumval  = 0.
 					do ij = 1,nj
 						if(ij /= ij_obj) then
-							j_val_ij = 0.
+							j_val_ij(i,ij) = 0.
 							do idi = 1,ndi ! expectation over delta
-								j_val_ij = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
-											& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij
+								j_val_ij(i,ij) = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
+											& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
 							enddo
-							cumval = dexp(j_val_ij/amenityscale ) + cumval
 						else
-							cumval = dexp( j_val_here/amenityscale ) + cumval
+								j_val_ij(i,ij) = j_val_here(i)
 						endif
-					!	print*, cumval
 					enddo
-
-					prob_here = dexp((zjwt*j_val_lo + (1._dp-zjwt)*j_val_hi)/amenityscale)/cumval + prob_here
-					
 				endif
 			enddo
 		enddo
+
+		j_scale = 0.		
+		do i = 1,Nsim
+			if(j_val_here(i) > -1.e9_dp) then !these guys were actually born
+				j_scale = j_val_here(i) + j_scale
+			endif
+		enddo
+		j_scale = j_scale/nborn
+
+		prob_here = 0.
+		do i = 1,Nsim
+			if(j_val_here(i) > -1.e9_dp) then !these guys were actually born
+				cumval = 0.
+				do ij=1,nj
+					cumval = dexp(j_val_ij(i,ij)/(j_scale*amenityscale))+cumval
+				enddo
+				prob_here = dexp(j_val_here(i)/(j_scale*amenityscale))/cumval + prob_here
+			endif
+		enddo
+		
 		prob_here = prob_here/nborn
 		resid = prob_target - prob_here
-		
+
+
+		deallocate(j_val_ij,j_val_here)
 	end function obj_zj
 
 	function obj_zj_wrap(zj_here, dummy_params) result(resid)
@@ -3206,7 +3233,7 @@ module find_params
 		real(dp), intent(in) :: dummy_params(:)
 		real(dp) :: resid
 
-		resid = obj_zj(zj_here,mod_val_sol,mod_hists_sim,mod_z_jt_macro_it,mod_prob_target,mod_ij_obj,mod_it)
+		resid = obj_zj(zj_here,mod_val_sol,mod_hists_sim,mod_prob_target,mod_ij_obj,mod_it)
 
 	end function obj_zj_wrap
 
@@ -3222,7 +3249,8 @@ module find_params
 		real(dp) :: j_val_lo,j_val_hi
 		integer :: zj_lo, zj_hi
 
-		zgrid_out = zgrid_in 
+		zgrid_out = zgrid_in
+		! apply scaling
 		do ij=1,nj
 			z_max = maxval(zgrid_in(nz/2+1:nz,ij))
 			z_min = minval(zgrid_in(nz/2+1:nz,ij))
@@ -3244,9 +3272,10 @@ module find_params
 		do ia=1,na
 		do it = 1,TT-1
 
-		!interpolate the value function
+		!interpolate the value function on z grid
+		!and will extrapolate for the top and bottom points (problematic?)
 		do iz=1,nz
-			zj_here = zgrid_out(iz,ij)
+			zj_here   = zgrid_out(iz,ij)
 			zj_lo	  = finder(zgrid_in(nz/2+1:nz,ij),zj_here) + nz/2
 			zj_lo	  = max(zj_lo,nz/2+1)
 			zj_hi	  = min(zj_lo +1,nz)
@@ -3254,7 +3283,7 @@ module find_params
 			zjwt 	  = max(min(zjwt,1._dp),0.)
 			j_val_lo  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
 			j_val_hi  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it) =  &
+			val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,iz,it) =  &
 				& zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi
 			
 		enddo
@@ -3280,14 +3309,15 @@ module find_params
 		real(dp) :: zj_here, zscale_mean,zscale_mean1
 		real(dp) :: dummy_params(3)
 		!integer :: del_i_int(:)
-		integer :: flag,z_jt_macro_it
+		integer :: flag
 		real(dp) :: resid_hi, resid_lo, z_hi,z_lo,zj_opt,zscale_dist, zscale_tol=1.e-4_dp
-		real(dp), allocatable :: zscale1(:),zscale0(:),zgrid0(:,:)
+		real(dp), allocatable :: zscale1(:),zscale0(:),zgrid1(:,:),zgrid0(:,:)
 		dummy_params = 0.
 
 		allocate(zscale1(nj))
 		allocate(zscale0(nj))
 		allocate(zgrid0(nz,nj))
+		allocate(zgrid1(nz,nj))
 		mod_val_sol => val_sol
 		mod_hists_sim => hists_sim
 		zscale1 = 0.
@@ -3298,13 +3328,13 @@ module find_params
 			zscale_mean = zscale(ij)/dble(nj) + zscale_mean
 		enddo
 
+		call mat2csv(zgrid0,"zgrid0.csv")
 		do ziter = 1,maxiter
 			do ij=1,nj
 				mod_ij_obj = ij
 				it = struc_brk*nint(tlen)
 				mod_it = it
-				z_jt_macro_it = hists_sim%z_jt_macro(it)
-				mod_z_jt_macro_it = z_jt_macro_it
+				
 				mod_prob_target = 0.5 ! i havd to replace this
 
 				! bounds on the area in which actually solved the problem
@@ -3344,8 +3374,9 @@ module find_params
 			enddo
 
 			! this will reassign the grid using zscale
-			! call settfp()
-
+			call newtfpgrid(zgrid,zscale,zgrid1, val_sol)
+			call mat2csv(zgrid1,"zgrid1.csv")
+			zgrid = zgrid1
 			if (zscale_dist .lt. zscale_tol) then
 				exit
 			endif
@@ -3353,7 +3384,7 @@ module find_params
 		enddo
 
 		
-		deallocate(zscale0,zscale1,zgrid0)
+		deallocate(zscale0,zscale1,zgrid0,zgrid1)
 		
 	end subroutine iter_zproc
 	
