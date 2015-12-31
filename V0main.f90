@@ -2537,7 +2537,7 @@ module sim_hists
 				& s_mean(TT-1),s_mean_liter(TT-1)
 	
 		! Other
-		real(dp)	:: wage_hr,al_hr, junk,a_hr, e_hr, bet_hr,z_hr,j_val,j_val_ij,jwt,cumval,work_dif_hr, app_dif_hr,js_ij, Nworkt, ep_hr
+		real(dp)	:: wage_hr,al_hr, junk,a_hr, e_hr, bet_hr,z_hr,j_val,j_val_ij,jwt, vscale,cumval,work_dif_hr, app_dif_hr,js_ij, Nworkt, ep_hr
 
 		integer :: ali_hr,d_hr,age_hr,del_hr, zi_hr, j_hr, ai_hr,api_hr,ei_hr, &
 			& beti, status_hr,status_tmrw,drawi,drawt
@@ -2703,35 +2703,50 @@ module sim_hists
 		if(verbose >3) print *, "iter: ", iter
 			it = 1
 			ii = 1
+			vscale = 0.
+			junk =0.
 			do i =1,Nsim
 				!for the population that is pre-existing in the first period 
 				!need to draw these from age-specific distributions for iterations > 1
 				if(iter>1 .and. age_it(i,it)  > 0 ) then
-					!drawloop: do
-						drawi = drawi_ititer(i)!iter-1
-						drawt = drawt_ititer(i)!iter-1
-						! enforce that this guy works some time in the future, but then it does not converge
-						! because status changes in each iteration
-						!if( minval(status_it(drawi,drawt:Tsim)) == 1 ) then 
-							status_it(i,it) = status_it(drawi,drawt)
-							d_it(i,it) = d_it(drawi,drawt)
-							a_it(i,it) = a_it(drawi,drawt)
-							e_it(i,it) = e_it(drawi,drawt)
-							e_it_int(i,it) = e_it_int(drawi,drawt)
-							a_it_int(i,it) = a_it_int(drawi,drawt)
-							ii =ii +1
-						!	exit drawloop
-						!else 
-						!	ii=ii+1
-						!endif
+					drawi = drawi_ititer(i)!iter-1
+					drawt = drawt_ititer(i)!iter-1
+					status_it(i,it) = status_it(drawi,drawt)
+					d_it(i,it) = d_it(drawi,drawt)
+					a_it(i,it) = a_it(drawi,drawt)
+					e_it(i,it) = e_it(drawi,drawt)
+					e_it_int(i,it) = e_it_int(drawi,drawt)
+					a_it_int(i,it) = a_it_int(drawi,drawt)
+					ii =ii +1
 
-						if(ii> size(drawi_ititer) ) then
-							if(verbose >2) print *, "Make drawi_ititer larger, ran out of workers"
-							ii = 1 !should never happen
-						endif
-					!enddo drawloop
+					if(ii> size(drawi_ititer) ) then
+						if(verbose >2) print *, "Make drawi_ititer larger, ran out of workers"
+						ii = 1 !should never happen
+					endif
 				endif
+				! get straight the scale of jval shocks (for use with amenityscale)
+				if(born_it(i,it).eq. 1 .and. it> 1) then ! no one is ``born'' in the first period, but just to be sure
+					junk    = junk+1
+					age_hr	= 1
+					d_hr	= 1
+					a_hr 	= minval(agrid)
+					ai_hr	= 1
+					ei_hr	= 1
+					e_hr 	= 0.
+					ai_hr 	= 1
+					if(j_rand .eqv. .false. ) then !choose occupation
+						do ij = 1,nj
+							j_val_ij = 0.
+							do idi=1,ndi
+								j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij) &
+												&+ j_val_ij
+							enddo
+							vscale = j_val_ij + vscale
+						enddo
+					endif
+				endif 
 			enddo
+			vscale = vscale/junk/dble(nj)
 			
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,ep_hr, &
@@ -2770,7 +2785,7 @@ module sim_hists
 									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij) &
 													&+ j_val_ij
 								enddo
-								cumval = dexp(j_val_ij/amenityscale ) + cumval
+								cumval = dexp(j_val_ij/(amenityscale*vscale) ) + cumval
 							enddo
 							j_hr = 1 !initial value
 							do ij = 1,nj
@@ -2778,8 +2793,8 @@ module sim_hists
 								do idi = 1,ndi
 									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij)+j_val_ij
 								enddo
-								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/amenityscale)
-								j_val_ij = j_val_ij + jshock_ij(i,ij)*amenityscale ! + log(jwt)
+								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/(amenityscale*vscale))
+								j_val_ij = j_val_ij + jshock_ij(i,ij)*(amenityscale*vscale) ! + log(jwt)
 								if(j_val< j_val_ij ) then
 									j_hr = ij
 									j_val = j_val_ij
@@ -3204,11 +3219,13 @@ module find_params
 
 		j_scale = 0.		
 		do i = 1,Nsim
-			if(j_val_here(i) > -1.e9_dp) then !these guys were actually born
-				j_scale = j_val_here(i) + j_scale
+		do ij = 1,nj
+			if(j_val_ij(i,ij) > -1.e9_dp) then !these guys were actually born
+				j_scale = j_val_here(i,ij) + j_scale
 			endif
 		enddo
-		j_scale = j_scale/nborn
+		enddo
+		j_scale = j_scale/nborn/dble(nj)
 
 		prob_here = 0.
 		do i = 1,Nsim
