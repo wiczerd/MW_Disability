@@ -115,7 +115,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		prob_age(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
 		hazborn_t(Tsim), &	!hazard of being born at each point t
-		Njdist(nj)		!Fraction in each occupation
+		Njdist(nj),&		!Fraction in each occupation
+		jshift(nj)			!Preference shift to ensure proper proportions
 		
 integer :: 	dgrid(nd), &		! just enumerate the d states
 		agegrid(TT)		! the mid points of the ages
@@ -381,9 +382,11 @@ subroutine setparams()
 	!if(nj>1) then
 	do j=1,nj
 		Njdist(j) = 1./dble(nj)
+		jshift(j) = 0.
 	enddo
 	!endif
 	!Njdist = Njdist/sum(Njdist)
+	
 
 end subroutine setparams
 

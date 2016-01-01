@@ -2745,7 +2745,7 @@ module sim_hists
 						enddo
 					endif
 				endif 
-			enddo
+			enddo !i=1:Nsim
 			vscale = vscale/junk/dble(nj)
 			
 			!$OMP  parallel do &
@@ -2778,23 +2778,13 @@ module sim_hists
 						ai_hr 	= 1
 						if(j_rand .eqv. .false. ) then !choose occupation
 							j_val  = -1.e6_dp
-							cumval = 0.
-							do ij = 1,nj
-								j_val_ij = 0.
-								do idi=1,ndi
-									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij) &
-													&+ j_val_ij
-								enddo
-								cumval = dexp(j_val_ij/(amenityscale*vscale) ) + cumval
-							enddo
 							j_hr = 1 !initial value
 							do ij = 1,nj
 								j_val_ij = 0.
 								do idi = 1,ndi
 									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij)+j_val_ij
 								enddo
-								jwt	 = Njdist(ij)*cumval* dexp(-j_val_ij/(amenityscale*vscale))
-								j_val_ij = j_val_ij + jshock_ij(i,ij)*(amenityscale*vscale) ! + log(jwt)
+								j_val_ij = j_val_ij + jshock_ij(i,ij)*(amenityscale*vscale) + jshift(ij)*(amenityscale*vscale)
 								if(j_val< j_val_ij ) then
 									j_hr = ij
 									j_val = j_val_ij
@@ -3221,7 +3211,7 @@ module find_params
 		do i = 1,Nsim
 		do ij = 1,nj
 			if(j_val_ij(i,ij) > -1.e9_dp) then !these guys were actually born
-				j_scale = j_val_here(i,ij) + j_scale
+				j_scale = j_val_ij(i,ij) + j_scale
 			endif
 		enddo
 		enddo
@@ -3232,9 +3222,9 @@ module find_params
 			if(j_val_here(i) > -1.e9_dp) then !these guys were actually born
 				cumval = 0.
 				do ij=1,nj
-					cumval = dexp(j_val_ij(i,ij)/(j_scale*amenityscale))+cumval
+					cumval = dexp((j_val_ij(i,ij)+jshift(ij))/(j_scale*amenityscale))+cumval
 				enddo
-				prob_here = dexp(j_val_here(i)/(j_scale*amenityscale))/cumval + prob_here
+				prob_here = dexp((j_val_here(i)+jshift(ij_obj))/(j_scale*amenityscale))/cumval + prob_here
 			endif
 		enddo
 		
@@ -3313,11 +3303,80 @@ module find_params
 		enddo
 		enddo
 
-		
 	end subroutine newtfpgrid
 
-	subroutine iter_zproc(val_sol, hists_sim, prob_hist_target)
+	subroutine jshift_sol(val_sol, hists_sim, probj_in, jshift_out)
+		! solves for the factors jshift(j)
+		type(val_struct),intent(in), target :: val_sol
+		type(hist_struct), intent(in):: hists_sim
+		
+		real(dp), intent(in) :: probj_in(:)
+		real(dp), intent(out):: jshift_out(:)
+		real(dp) :: vscale,nborn,jshift_prratio,cumval,updjscale,distshift
+		real(dp) :: jshift0(nj)
+		integer  :: ij, ik, iter
+		integer :: age_hr,d_hr,ai_hr,ali_hr,ei_hr,i,ii,idi, it, beti=1
+		real(dp), allocatable :: j_val_ij(:,:)
+		allocate(j_val_ij(Nsim,nj))
 
+		updjscale  = 0.1_dp
+		jshift_out = 0._dp !initialize
+		jshift0 = 0._dp
+		j_val_ij = -1.e10_dp
+		nborn = 0._dp
+		vscale= 0._dp
+		! first load the value functions for the first period
+		it = 1
+		do i = 1,Nsim
+			if(hists_sim%born_hist(i,it).eq. 1 ) then !they've been born this period
+				nborn = 1._dp + nborn
+				!set the state
+				ali_hr 	= hists_sim%al_int_hist(i,it)
+				age_hr 	= 1
+				d_hr 	= 1
+				ai_hr	= 1
+				ei_hr	= 1
+				do ij = 1,nj
+					j_val_ij(i,ij) = 0.
+					do idi = 1,ndi ! expectation over delta
+						j_val_ij(i,ij) = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
+									& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
+					enddo
+					vscale = j_val_ij(i,ij) + vscale
+				enddo
+			endif
+		enddo
+		vscale = vscale/nborn
+
+		!iterate on shift_k
+		do iter=1,maxiter*nj
+			distshift = 0._dp
+			do ij=1,nj
+				jshift_prratio = 0.
+				do i =1,Nsim
+					if(j_val_ij(i,ij) > -1.e9_dp) then
+						cumval = 0.
+						do ik=1,nj
+							cumval = dexp( (j_val_ij(i,ik)+jshift0(ik))/(amenityscale*vscale) ) + cumval
+						enddo
+						jshift_prratio = dexp(j_val_ij(i,ij))/cumval + jshift_prratio
+					endif
+				enddo
+				jshift_prratio = probj_in(ij)/jshift_prratio*nborn
+				jshift_out(ij) = dlog(jshift_prratio)*amenityscale*vscale
+				distshift = dabs(jshift_out(ij) - jshift0(ij)) + distshift
+				jshift0(ij) = updjscale*jshift_out(ij) + (1._dp - updjscale)*jshift0(ij)
+			enddo
+			if (distshift<1.e-5_dp) then
+				exit
+			endif
+		enddo
+
+		deallocate(j_val_ij)
+		
+	end subroutine
+
+	subroutine iter_zproc(val_sol, hists_sim, prob_hist_target)
 		integer :: it, ij, ziter
 		type(val_struct), target :: val_sol
 		type(hist_struct), target:: hists_sim
@@ -3397,10 +3456,8 @@ module find_params
 			if (zscale_dist .lt. zscale_tol) then
 				exit
 			endif
-			
 		enddo
 
-		
 		deallocate(zscale0,zscale1,zgrid0,zgrid1)
 		
 	end subroutine iter_zproc
@@ -3422,7 +3479,8 @@ module find_params
 		call sol(val_sol,pol_sol)
 		if(verbose >2) print *, "Solving for z process"
 		call draw_shocks(hists_sim)
-		call iter_zproc(val_sol,hists_sim,mod_prob_hist_tgt)
+		call jshift_sol(val_sol, hists_sim, Njdist, jshift)
+		call iter_zproc(val_sol, hists_sim, mod_prob_hist_tgt)
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(val_sol, pol_sol, hists_sim)
