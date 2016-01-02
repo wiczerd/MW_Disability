@@ -172,19 +172,19 @@ module helper_funs
 	!------------------------------------------------------------------------
 	! 4) Utility Function
 	!--------------------
-	function util(cin,din,win)
+	function util(cin,din,wkin)
 	!--------------------
 	 
-		real(dp), intent(in)	:: cin
-		integer, intent(in)	:: din, win
+		real(dp),intent(in)	:: cin
+		integer, intent(in)	:: din, wkin
 		real(dp)			:: util
 		
 		
-		if ((win .gt. 1) .or. (din .gt. 1)) then
+		if ((wkin .gt. 1) .or. (din .gt. 1)) then
 			if(gam> 1+1e-5_dp .or. gam < 1-1e-5_dp) then
-				util = ((cin*dexp(theta*dble(din-1)+eta*dble(win-1)))**(1._dp-gam) )/(1._dp-gam)
+				util = ((cin*dexp(theta*dble(din-1)+eta*dble(wkin-1)))**(1._dp-gam) )/(1._dp-gam)
 			else 
-				util = dlog(cin*dexp(theta*dble(din-1)+eta*dble(win-1)))
+				util = dlog(cin*dexp(theta*dble(din-1)+eta*dble(wkin-1)))
 			endif
 		else 
 			if(gam> 1._dp+1e-5_dp .or. gam < 1_dp-1e-5_dp) then
@@ -200,21 +200,15 @@ module helper_funs
 	!------------------------------------------------------------------------
 	! 5) Earnings Index Function
 	!--------------------
-	function Hearn(tin,ein,win)
+	function Hearn(tin,ein,wgin)
 	!--------------------
 	
-		real(dp), intent(in)	:: win
+		real(dp), intent(in)	:: wgin
 		integer, intent(in)	:: ein, tin
 		real(dp)			:: Hearn
 
-
-		Hearn = win/(tlen*dble(agegrid(tin))) + egrid(ein)*(1._dp-1._dp/(tlen*dble(agegrid(tin))))
-		!if (tin .EQ. 1) THEN
-		!		weight new obsv by 1/ half of time expected in this stage
-		!	Hearn = (egrid(ein)*tlen*youngD/2+win)/(tlen*(youngD + oldD*oldN))
-		!else
-		!	Hearn = (egrid(ein)*tlen*(youngD+(tin-1)*oldD+oldD/2)+win)/(tlen*(youngD+oldD*oldN))
-		!end if
+		Hearn = wgin/(tlen*dble(agegrid(tin))) + egrid(ein)*(1._dp-1._dp/(tlen*dble(agegrid(tin))))
+	
 	end function
 
 	!------------------------------------------------------------------------
@@ -891,12 +885,13 @@ module sol_val
 		integer, intent(out) :: apol
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VD0(:,:,:,:)
-		real(dp) :: Vc1,chere,Vtest1,Vtest2
+		real(dp) :: Vc1,chere,Vtest1,Vtest2,ein
 		integer :: iw, iaa
 
 		iw = 1 ! don't work
 		Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa0,it+1)+ptau(it)*VD0(id,ie,iaa0,it))
-		chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa0)
+		ein = egrid(ie)
+		chere = SSDI(ein+R*agrid(ia)-agrid(iaa0))
 
 		Vtest1 = -1e6
 		apol = iaa0
@@ -2261,7 +2256,7 @@ module sim_hists
 		Njcumdist = 0
 		if(nj>1) then
 			do i=1,nj
-				Njcumdist(i+1) = Njdist(i) + Njcumdist(i)
+				Njcumdist(i+1) = occsz0(i) + Njcumdist(i)
 			enddo
 		
 			call random_seed(size = ss)
@@ -3177,8 +3172,8 @@ module find_params
 					ij = ij_obj
 					zgrid_min = minval(zgrid(nz/2+1:nz,ij))
 					zgrid_max = maxval(zgrid(nz/2+1:nz,ij))
-					! choose by scaling zgrid using the pre-transition values, 1:nz/2
-					zj_here   = zgrid(mod(hists_sim%z_jt_macro(it),nz/2)  ,ij) + zj_in
+					! choose by scaling zgrid using the pre-transition values, 1:nz/2.  The `mod' ensures we're in that range
+					zj_here   = zgrid(mod(hists_sim%z_jt_macro(it)-1,nz/2)+1,ij) + zj_in
 					zj_here	  = max(min(zj_here,zgrid_max),zgrid_min)
 					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here) + nz/2
 					zj_lo	  = max(zj_lo,nz/2+1)
@@ -3262,8 +3257,9 @@ module find_params
 			z_max = maxval(zgrid_in(nz/2+1:nz,ij))
 			z_min = minval(zgrid_in(nz/2+1:nz,ij))
 			do iz=nz/2+1,nz
-				zgrid_out(iz,ij) = zgrid_in(iz,ij) + zscale(ij)
-				zgrid_out(iz,ij) = max(min(zgrid_out(iz,ij),z_max),z_min) ! don't try to extrapolate
+				zgrid_out(iz,ij) = zgrid_in(iz - nz/2,ij) + zscale(ij) !scale off the pre-break value
+				! this will allow extrapolation
+				!zgrid_out(iz,ij) = max(min(zgrid_out(iz,ij),z_max),z_min) ! don't try to extrapolate
 			enddo
 		enddo
 
@@ -3287,7 +3283,7 @@ module find_params
 			zj_lo	  = max(zj_lo,nz/2+1)
 			zj_hi	  = min(zj_lo +1,nz)
 			zjwt 	  = (zgrid_in(zj_hi,ij) - zj_here)/(zgrid_in(zj_hi,ij) - zgrid_in(zj_lo,ij))
-			zjwt 	  = max(min(zjwt,1._dp),0.)
+			! zjwt 	  = max(min(zjwt,1._dp),0.) ! this prevents extrapolation
 			j_val_lo  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
 			j_val_hi  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
 			val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,iz,it) =  &
@@ -3328,7 +3324,7 @@ module find_params
 		! first load the value functions for the first period
 		it = 1
 		do i = 1,Nsim
-			if(hists_sim%born_hist(i,it).eq. 1 ) then !they've been born this period
+			if(hists_sim%age_hist(i,it) > 0 ) then !they're alive in the first period
 				nborn = 1._dp + nborn
 				!set the state
 				ali_hr 	= hists_sim%al_int_hist(i,it)
@@ -3346,7 +3342,7 @@ module find_params
 				enddo
 			endif
 		enddo
-		vscale = vscale/nborn
+		vscale = vscale/nborn/dble(nj)
 
 		!iterate on shift_k
 		do iter=1,maxiter*nj
@@ -3359,7 +3355,7 @@ module find_params
 						do ik=1,nj
 							cumval = dexp( (j_val_ij(i,ik)+jshift0(ik))/(amenityscale*vscale) ) + cumval
 						enddo
-						jshift_prratio = dexp(j_val_ij(i,ij))/cumval + jshift_prratio
+						jshift_prratio = dexp(j_val_ij(i,ij)/(amenityscale*vscale))/cumval + jshift_prratio
 					endif
 				enddo
 				jshift_prratio = probj_in(ij)/jshift_prratio*nborn
@@ -3400,22 +3396,22 @@ module find_params
 		zscale_mean = 0.
 		zgrid0 = zgrid
 		do ij=1,nj
-			zscale0(ij) = zscale(ij)
+			zscale0(ij) = zscale(ij) !begin setting it equal to the global
 			zscale_mean = zscale(ij)/dble(nj) + zscale_mean
 		enddo
 
-		call mat2csv(zgrid0,"zgrid0.csv")
+		if(print_lev>=2) call mat2csv(zgrid0,"zgrid0.csv")
 		do ziter = 1,maxiter
 			do ij=1,nj
 				mod_ij_obj = ij
 				it = struc_brk*nint(tlen)
 				mod_it = it
 				
-				mod_prob_target = 0.5 ! i havd to replace this
+				mod_prob_target = occprbrk(ij) ! i havd to replace this
 
 				! bounds on the area in which actually solved the problem
-				z_hi = zgrid0(nz,ij) - zgrid0(nz/2+1,ij)
-				z_lo = zgrid0(nz/2+1,ij) - zgrid0(nz,ij)
+				z_hi = zgrid(nz,ij) - zgrid(nz/2+1,ij)
+				z_lo = zgrid(nz/2+1,ij) - zgrid(nz,ij)
 					
 				! this adjusts it to be the bottom point for all grid points
 				resid_lo = obj_zj_wrap(z_lo,dummy_params)
@@ -3432,31 +3428,35 @@ module find_params
 				endif
 				zscale1(ij) = zj_opt
 			enddo
+			zscale_mean1 = 0.
 			do ij=1,nj
-				! hold the mean fixed: prevent drifting
-				zscale_mean1 = 0.
 				zscale_mean1 = zscale1(ij)/dble(nj) + zscale_mean1
 			enddo
 			zscale_dist =0.
 			do ij=1,nj
-			!	zscale1(ij) = zscale1(ij) -zscale_mean1 + zscale_mean
 				zscale_dist = (zscale1(ij)-zscale(ij))**2 + zscale_dist
 			enddo
+			zscale_mean1 = 0.
 			do ij=1,nj
+			!	zscale1(ij) = zscale1(ij) -zscale_mean1 + zscale_mean
 				zscale(ij) = upd_zscl*zscale1(ij) + (1._dp-upd_zscl)*zscale(ij)
-				zscale_mean1 = 0.
 				zscale_mean1 = zscale(ij)/dble(nj) + zscale_mean1
-			!	zscale(ij) = zscale(ij) -zscale_mean1 + zscale_mean ! hold the mean fixed: prevent drifting
+			enddo
+			do ij=1,nj
+				zscale(ij) = zscale(ij) -zscale_mean1 + zscale_mean ! hold the mean fixed: prevent drifting (necessary?)
 			enddo
 
 			! this will reassign the grid using zscale
-			call newtfpgrid(zgrid,zscale,zgrid1, val_sol)
-			call mat2csv(zgrid1,"zgrid1.csv")
+			call newtfpgrid(zgrid0,zscale,zgrid1, val_sol)
+			if(print_lev>=2) call mat2csv(zgrid1,"zgrid1.csv")
 			zgrid = zgrid1
+
 			if (zscale_dist .lt. zscale_tol) then
 				exit
 			endif
 		enddo
+
+		if(print_lev>=1) call mat2csv(zgrid1,"zgrid1.csv")
 
 		deallocate(zscale0,zscale1,zgrid0,zgrid1)
 		
@@ -3479,7 +3479,7 @@ module find_params
 		call sol(val_sol,pol_sol)
 		if(verbose >2) print *, "Solving for z process"
 		call draw_shocks(hists_sim)
-		call jshift_sol(val_sol, hists_sim, Njdist, jshift)
+		call jshift_sol(val_sol, hists_sim, occsz0, jshift)
 		call iter_zproc(val_sol, hists_sim, mod_prob_hist_tgt)
 		
 		if(verbose >2) print *, "Simulating the model"	

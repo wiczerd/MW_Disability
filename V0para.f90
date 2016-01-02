@@ -66,7 +66,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			ndi = 2,  &!3		    !Number of individual disability risk types
 			nj  = 2,  &		        !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 2, &!10	        !Points on earnings grid
+			ne  = 2, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 40, &!100	        !Points on assets grid
 			nz  = 6,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &!2000	!Tolerance parameter	
@@ -81,9 +81,8 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
 logical, parameter ::	del_by_occ = .true.,& 	!delta is fully determined by occupation, right now alternative is fully random
 			al_contin = .false.,&	!make alpha draws continuous or stay on the grid
-			j_rand = .false. 	!randomly assign j, or let choose.
-
-
+			j_rand = .false. 	! randomly assign j, or let choose.
+			
 
 real(8), parameter ::   Vtol = 1e-5, & 	!Tolerance on V-dist
 !		beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
@@ -115,7 +114,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		prob_age(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
 		hazborn_t(Tsim), &	!hazard of being born at each point t
-		Njdist(nj),&		!Fraction in each occupation
+		occprbrk(nj), & 	!Fraction choosing occupation after break
+		occsz0(nj),&		!Fraction in each occupation
 		jshift(nj)			!Preference shift to ensure proper proportions
 		
 integer :: 	dgrid(nd), &		! just enumerate the d states
@@ -232,6 +232,12 @@ subroutine setparams()
 	do j=1,nj
 		read(fread, *,iostat=k) occdel(j)
 	enddo
+	!ensure its mean is 1
+	summy = 0.
+	do j=1,nj
+		summy = occdel(j) + summy
+	enddo
+	forall(j=1:nj) occdel(j) = occdel(j) - summy/nj + 1.
 
 
 	! TFP
@@ -240,6 +246,19 @@ subroutine setparams()
 	!	zscale(j) = dble(j-1)/dble(nj-1)*(2*zsig) -zsig !zsig*(dble(j)-dble(nj-1)/2.-1.)/dble(nj-1)
 	!enddo
 	call settfp()
+
+	!Read in the sizes by occuaption
+	open(unit= fread, file="occupation_pr1.csv")
+	do j=1,nj
+		read(fread, *,iostat=k) occprbrk(j)
+	enddo
+	!ensure it adds to 1
+	summy = 0.
+	do j=1,nj
+		summy = occprbrk(j) + summy
+	enddo
+	forall(j=1:nj) occprbrk(j) = occprbrk(j)/summy
+
 
 	
 	!Age-Specific Things
@@ -299,8 +318,6 @@ subroutine setparams()
 	enddo
 
 	!DATA AGES: 
-
-
 	
 	!Age-related disability risk
 	dtau(1) = 0.5	!Young's Risk
@@ -378,15 +395,26 @@ subroutine setparams()
 	enddo
 		
 	! Initial distribution (just for debugging) of people across occupations
-	!Njdist(1) = 0.5
+	!occsz0(1) = 0.5
 	!if(nj>1) then
 	do j=1,nj
-		Njdist(j) = 1./dble(nj)
+		occsz0(j) = 1./dble(nj)
 		jshift(j) = 0.
 	enddo
 	!endif
-	!Njdist = Njdist/sum(Njdist)
-	
+	!Read in the sizes by occuaption
+	open(unit= fread, file="occupation_sz0.csv")
+	do j=1,nj
+		read(fread, *,iostat=k) occsz0(j)
+	enddo
+	!ensure it sums to 1
+	summy =0.
+	do j=1,nj
+		summy = occsz0(j) + summy
+	enddo
+	occsz0(j) = occsz0(j)/summy
+
+
 
 end subroutine setparams
 
