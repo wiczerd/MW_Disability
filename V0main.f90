@@ -3174,12 +3174,12 @@ module find_params
 					zgrid_max = maxval(zgrid(nz/2+1:nz,ij))
 					! choose by scaling zgrid using the pre-transition values, 1:nz/2.  The `mod' ensures we're in that range
 					zj_here   = zgrid(mod(hists_sim%z_jt_macro(it)-1,nz/2)+1,ij) + zj_in
-					zj_here	  = max(min(zj_here,zgrid_max),zgrid_min)
+					! zj_here	  = max(min(zj_here,zgrid_max),zgrid_min) This would prevent extrapolation
 					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here) + nz/2
-					zj_lo	  = max(zj_lo,nz/2+1)
+					zj_lo	  = min(max(zj_lo,nz/2+1) , nz-1)
 					zj_hi	  = min(zj_lo +1,nz)
 					zjwt 	  = (zgrid(zj_hi,ij) - zj_here)/(zgrid(zj_hi,ij) - zgrid(zj_lo,ij))
-					zjwt 	  = max(min(zjwt,1._dp),0._dp)
+					! zjwt 	  = max(min(zjwt,1._dp),0._dp)  This would prevent extrapolation
 					j_val_here(i) = 0._dp
 					do idi = 1,ndi ! expectation over delta
 						j_val_lo  = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zj_lo,age_hr)
@@ -3277,10 +3277,10 @@ module find_params
 
 		!interpolate the value function on z grid
 		!and will extrapolate for the top and bottom points (problematic?)
-		do iz=1,nz
+		do iz=nz/2+1,nz
 			zj_here   = zgrid_out(iz,ij)
 			zj_lo	  = finder(zgrid_in(nz/2+1:nz,ij),zj_here) + nz/2
-			zj_lo	  = max(zj_lo,nz/2+1)
+			zj_lo	  = min( max(zj_lo,nz/2+1), nz-1)
 			zj_hi	  = min(zj_lo +1,nz)
 			zjwt 	  = (zgrid_in(zj_hi,ij) - zj_here)/(zgrid_in(zj_hi,ij) - zgrid_in(zj_lo,ij))
 			! zjwt 	  = max(min(zjwt,1._dp),0.) ! this prevents extrapolation
@@ -3434,13 +3434,13 @@ module find_params
 			enddo
 			zscale_dist =0.
 			do ij=1,nj
+				zscale1(ij) = zscale1(ij) -zscale_mean1 + zscale_mean !re-set the mean of zscale1
 				zscale_dist = (zscale1(ij)-zscale(ij))**2 + zscale_dist
 			enddo
 			zscale_mean1 = 0.
 			do ij=1,nj
-			!	zscale1(ij) = zscale1(ij) -zscale_mean1 + zscale_mean
 				zscale(ij) = upd_zscl*zscale1(ij) + (1._dp-upd_zscl)*zscale(ij)
-				zscale_mean1 = zscale(ij)/dble(nj) + zscale_mean1
+				zscale_mean1 = zscale(ij)/dble(nj) + zscale_mean1 !should not be changing
 			enddo
 			do ij=1,nj
 				zscale(ij) = zscale(ij) -zscale_mean1 + zscale_mean ! hold the mean fixed: prevent drifting (necessary?)
