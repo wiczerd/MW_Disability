@@ -76,6 +76,7 @@ module helper_funs
 		real(dp) :: di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
 		integer :: alloced
 		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+2,nj+2)
+		real(dp) :: s2
 
 	end type 
 
@@ -419,16 +420,17 @@ module helper_funs
 	!------------------------------------------------------------------------
 	! 12) Run an OLS regression
 	!------------------------------------------------------------------------
-	subroutine OLS(XX,Y,coefs,cov_coef, status)
+	subroutine OLS(XX,Y,coefs,cov_coef, hatsig2, status)
 		real(dp), dimension(:,:), intent(in) :: XX
 		real(dp), dimension(:), intent(in) :: Y
 		real(dp), dimension(:), intent(out) :: coefs
 		real(dp), dimension(:,:), intent(out) :: cov_coef
+		real(dp), intent(out) :: hatsig2
 		integer, intent(out) :: status
+
 		integer :: nX, nY, nK, r,c
 		real(dp), dimension(:,:), allocatable :: XpX,XpX_fac,XpX_inv
 		real(dp), dimension(:), allocatable :: fitted,resids
-		real(dp) :: s2
 		integer :: i
 		
 		external dgemm,dgemv
@@ -470,11 +472,11 @@ module helper_funs
 			fitted = 0.
 			call dgemv('N', nX, nK, 1._dp, XX, nX, coefs, 1, 0., fitted, 1)
 			resids = Y - fitted
-			s2 = 0.
+			hatsig2 = 0.
 			do i=1,nY
-				s2 = (resids(i)**2)/(nX-nK) + s2
+				hatsig2 = (resids(i)**2)/dble(nX-nK) + hatsig2
 			enddo
-			if(status == 0) cov_coef = s2*XpX_inv
+			if(status == 0) cov_coef = hatsig2*XpX_inv
 		endif
 		
 		deallocate(XpX,XpX_fac,XpX_inv,fitted,resids)
@@ -586,7 +588,7 @@ module model_data
 			enddo
 		enddo
 
-		call OLS(emp_lagtimeconst,emp_t,moments_sim%ts_emp_coefs,moments_sim%ts_emp_cov_coefs, status)
+		call OLS(emp_lagtimeconst,emp_t,moments_sim%ts_emp_coefs,moments_sim%ts_emp_cov_coefs,moments_sim%s2,status)
 
 		if(print_lev >=2 ) call vec2csv(moments_sim%ts_emp_coefs,"ts_emp_coefs.csv")
 
@@ -611,7 +613,7 @@ module model_data
 			if(verbose >= 1) print *, "not correctly passing hists_struct to LPM"
 		endif
 
-		yr_stride = dnint(tlen) ! for doing year-length differences
+		yr_stride = itlen ! for doing year-length differences
 		! build X
 		obsX_vars = 0.
 		Nobs = 0
@@ -670,7 +672,7 @@ module model_data
 			endif
 		enddo
 		if(verbose >=2) print *, "bad cols of obsX", status 
-		call OLS(obsX_vars(1:Nobs,:),work_dif_long(1:Nobs),moments_sim%work_coefs,moments_sim%work_cov_coefs, status)
+		call OLS(obsX_vars(1:Nobs,:),work_dif_long(1:Nobs),moments_sim%work_coefs,moments_sim%work_cov_coefs,moments_sim%s2,status)
 
 		do ij = 1,Nk
 			if(badcoef(ij)) moments_sim%work_coefs(ij) = 0.
@@ -2286,13 +2288,13 @@ module sim_hists
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer, dimension(100) :: bdayseed
+		integer, dimension(5,2) :: NBER_start_stop
 		real(dp) :: z_innov
 		real(dp) :: cumpi_z(nz,nz+1),cumpi_zblock(nz/2,nz/2+1)
 
 		call random_seed(size = ss)
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
-
 
 		cumpi_z = 0.
 		cumpi_zblock = 0.
@@ -2309,16 +2311,46 @@ module sim_hists
 			enddo
 			cumpi_zblock(iz,:) = cumpi_zblock(iz,:)/cumpi_zblock(iz,nz/2)
 		enddo
+
+		!compute NBER dates in case of NBER_tseq == 1 
+		! 1980 + 0/4 -> 1980 + 2/4
+		! 1981 + 2/4 -> 1982 + 3/4
+		! 1990 + 2/4 -> 1991 + 0/4
+		! 2001 + 2/4 -> 2001 + 3/4
+		! 2007 + 3/4 -> 2009 + 1/4
+		NBER_start_stop(1,1) =  0*itlen + 0*dnint( tlen/4. ) +1
+		NBER_start_stop(1,2) =  0*itlen + 2*dnint( tlen/4. ) +1 
+		NBER_start_stop(2,1) =  1*itlen + 2*dnint( tlen/4. ) +1
+		NBER_start_stop(2,2) =  2*itlen + 3*dnint( tlen/4. ) +1
+		NBER_start_stop(3,1) = 10*itlen + 2*dnint( tlen/4. ) +1
+		NBER_start_stop(3,2) = 11*itlen + 0*dnint( tlen/4. ) +1
+		NBER_start_stop(4,1) = 21*itlen + 2*dnint( tlen/4. ) +1
+		NBER_start_stop(4,2) = 21*itlen + 3*dnint( tlen/4. ) +1
+		NBER_start_stop(5,1) = 27*itlen + 3*dnint( tlen/4. ) +1
+		NBER_start_stop(5,2) = 29*itlen + 1*dnint( tlen/4. ) +1
+		!start cycles on 1st
+		ss = 1
+
 		
 		!draw on zgrid
 		! start everyone from middle state, alternatively could start from random draw on ergodic dist
 		z_jt_t = (nz/2+1)/2
 		do it = 1,Tsim
-			call rand_num_closed(z_innov)
-			if(z_innov<0. .or. z_innov >1) then
+			if(NBER_tseq .eq. 1 ) then
+				if(it >= NBER_start_stop(ss,1) .and. it < NBER_start_stop(ss,2) ) then
+					z_innov = 0.
+				elseif( it == NBER_start_stop(ss,2) ) then
+					z_innov = 1.
+					ss = ss+1
+				else
+					z_innov = 0.5
+				endif
+			else
 				call rand_num_closed(z_innov)
-			endif
-			
+				if(z_innov<0. .or. z_innov >1) then
+					call rand_num_closed(z_innov)
+				endif
+			endif	
 			! use conditional probability w/in time block
 			z_jt_t = finder(cumpi_zblock(z_jt_t,:),z_innov )
 			if( dble(it)<struc_brk*tlen ) then
@@ -2327,12 +2359,11 @@ module sim_hists
 				z_jt_macro(it) = z_jt_t + nz/2
 			endif
 			! allow random time-block transitions
-			! z_jt_t = finder(cumpi_z(z_jt_t,:),z_innov )			
+			! z_jt_t = finder(cumpi_z(z_jt_t,:),z_innov )
+			
 		enddo
 		success = 0
-
 		!call mat2csv(cumpi_z,"cumpi_z.csv")
-
 	end subroutine draw_zjt
 	
 	subroutine draw_age_it(age_it, born_it, seed0, success)
@@ -3404,7 +3435,7 @@ module find_params
 		do ziter = 1,maxiter
 			do ij=1,nj
 				mod_ij_obj = ij
-				it = struc_brk*nint(tlen)
+				it = struc_brk*itlen
 				mod_it = it
 				
 				mod_prob_target = occprbrk(ij) ! i havd to replace this
@@ -3464,14 +3495,27 @@ module find_params
 	
 
 	subroutine cal_dist(paramvec, errvec)
-
+		! the inputs are the values of parameters we're moving in paramvec
+		! the outputs are deviations from targets
+		! 1/ persistence of occupation productivity shock
+		! 2/ standard deviation of occupation productivity shock
+		! 3/ dispersion of gumbel shock - amenityscale
+		! 
+		
 		real(dp) :: paramvec(:), errvec(:)
 
 		type(val_struct) :: val_sol
 		type(pol_struct) :: pol_sol
 		type(hist_struct):: hists_sim
 		type(moments_struct):: moments_sim
+		real(dp) :: condstd_tsemp
+		integer :: ij
 
+		zrho = paramvec(1)
+		zsig = paramvec(2)
+		amenityscale = paramvec(3)
+
+		call settfp()
 		call alloc_econ(val_sol,pol_sol,hists_sim)
 
 		! set up economy and solve it
@@ -3486,6 +3530,15 @@ module find_params
 		call sim(val_sol, pol_sol, hists_sim)
 		if(verbose >2) print *, "Computing moments"
 		call moments_compute(hists_sim,moments_sim)
+
+		condstd_tsemp = 0.
+		do ij = 1,nj
+			condstd_tsemp = moments_sim%ts_emp_coefs(ij+1) *occsz0(ij)+ condstd_tsemp
+		enddo
+
+		errvec(1) =  moments_sim%ts_emp_coefs(1) - emp_persist! auto-correlation
+		!errvec(2) =  
+
 
 		call dealloc_econ(val_sol,pol_sol,hists_sim)
 

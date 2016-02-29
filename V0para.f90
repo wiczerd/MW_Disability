@@ -31,8 +31,8 @@ real(8), parameter ::	youngD = 20., &	!Length of initial young period
 		upd_zscl = 0.1		! rate at which to update zscale
 
 integer, parameter :: oldN = 4,&	!4!Number of old periods
-		TT = oldN+2		!Total number of periods, oldN periods plus young and retired
-
+		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
+		itlen = 12		! just an integer version of tlen so I don't have to keep casting
 !----------------------------------------------------------------------------!
 	
  !Transition probabilities ----------------------------------------------------!
@@ -72,10 +72,11 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			maxiter = 2000, &!2000	!Tolerance parameter	
 			Nsim = 5000, &          !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
-			Tsim = int(tlen*(2010-1980)), &	!how many periods to solve for simulation
+			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20.,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
-			fread = 9
+			fread = 9, &
+			NBER_tseq = 1			!just feed in NBER recessions?
 
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
@@ -126,7 +127,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		nu = 0.05, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
-		alfrho = 0.988, &	!Peristance of Alpha_i type
+		alfrho = 0.988, &	!Peristence of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
 		alfsig = 0.015**0.5,&	!Unconditional StdDev of Alpha_i type (Normal)
 		b = 0.05,&		!Home production income
@@ -156,6 +157,11 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3
 		smthELPM = 1.		!Smoothing for the LPM
+
+!**** calibration targets
+real(8) :: emp_persist = 098 ,&
+		emp_std = 0.01 ,&
+		amen_tgt = 1. ! This is just a placeholder
 
 
 !Preferences----------------------------------------------------------------!
