@@ -69,14 +69,14 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			ne  = 2, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 40, &!100	        !Points on assets grid
 			nz  = 6,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
-			maxiter = 2000, &!2000	!Tolerance parameter	
-			Nsim = 5000, &          !how many agents to draw
+			maxiter = 20, &!2000	!Tolerance parameter	
+			Nsim = 10, & !5000         !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20.,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
-			fread = 9, &
-			NBER_tseq = 1			!just feed in NBER recessions?
+			fread = 10, &
+			NBER_tseq = 0			!just feed in NBER recessions?
 
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
@@ -238,6 +238,7 @@ subroutine setparams()
 	do j=1,nj
 		read(fread, *,iostat=k) occdel(j)
 	enddo
+	close(fread)
 	!ensure its mean is 1
 	summy = 0.
 	do j=1,nj
@@ -253,11 +254,12 @@ subroutine setparams()
 	!enddo
 	call settfp()
 
-	!Read in the sizes by occuaption
+	!Read in the sizes by occuaption later
 	open(unit= fread, file="occupation_pr1.csv")
 	do j=1,nj
 		read(fread, *,iostat=k) occprbrk(j)
 	enddo
+	close(fread)
 	!ensure it adds to 1
 	summy = 0.
 	do j=1,nj
@@ -413,6 +415,7 @@ subroutine setparams()
 	do j=1,nj
 		read(fread, *,iostat=k) occsz0(j)
 	enddo
+	close(fread)
 	!ensure it sums to 1
 	summy =0.
 	do j=1,nj
@@ -432,7 +435,7 @@ subroutine settfp()
 	real(8) :: zrhot,zsigt, zcondsigt
 
 	zrhot = zrho**(1./tlen)
-	zsigt = (zsig**2/tlen)**(0.5)
+	zsigt = zsig**(1/tlen)
 	zcondsig = ((zsig**2)*(1.-zrho**2))**(0.5)
 	zcondsigt = ((zsigt**2)*(1.-zrhot**2))**(0.5)
 	!first set transition probabilities at an annual basis

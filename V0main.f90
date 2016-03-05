@@ -2085,15 +2085,16 @@ module sim_hists
 		integer, intent(out) :: success
 		real(dp), dimension(:) :: del_i
 		integer, dimension(:) :: del_i_int
-		integer :: ss, Nsim, di_int,m,i,ij,idi
+		integer :: ss=1, Nsim, di_int,m,i,ij,idi
 		real(dp) :: delgridL, delgridH,delgrid_i
 		real(dp) :: delwtH,delwtL
-		integer, dimension(100) :: bdayseed
+		integer, allocatable :: bdayseed(:)
 
 		call random_seed(size = ss)
+		allocate(bdayseed(ss))
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
-
+		
 		Nsim = size(del_i)
 
 		delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
@@ -2145,6 +2146,7 @@ module sim_hists
 			del_i_int(i) = di_int
 		enddo
 		success = 0
+		deallocate(bdayseed)
 	end subroutine draw_deli
 	
 	subroutine draw_status_innov(status_it_innov, seed0, success)
@@ -2154,11 +2156,12 @@ module sim_hists
 		integer, intent(in) :: seed0
 		integer, intent(out) :: success
 		real(dp), dimension(:,:) :: status_it_innov
-		integer :: ss, m,i,it
+		integer :: ss=1, m,i,it
 		real(dp) :: s_innov
-		integer, dimension(100) :: bdayseed
+		integer, allocatable :: bdayseed(:)
 
 		call random_seed(size = ss)
+		allocate(bdayseed(ss))
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
@@ -2169,6 +2172,7 @@ module sim_hists
 			enddo
 		enddo
 		success = 0
+		deallocate(bdayseed)
 	end subroutine draw_status_innov
 	
 	subroutine draw_alit(al_it,al_it_int, seed0, success)
@@ -2179,14 +2183,15 @@ module sim_hists
 		integer, intent(out),optional :: success
 		real(dp), dimension(:,:) :: al_it
 		integer, dimension(:,:) :: al_it_int
-		integer :: ss, Nsim, alfgrid_int, t,m,i,k
+		integer :: ss=1, Nsim, alfgrid_int, t,m,i,k
 		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i
-		integer, dimension(100) :: bdayseed
+		integer, allocatable :: bdayseed(:)
 		real(dp), allocatable :: cumpi_al(:,:)
 
 		allocate(cumpi_al(nal,nal+1))
 
 		call random_seed(size = ss)
+		allocate(bdayseed(ss))
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
@@ -2226,12 +2231,16 @@ module sim_hists
 			! draw sequence:
 
 			do t=2,Tsim
-				call rand_num_closed(alf_innov)
-				alfgrid_int 	= finder(cumpi_al(alfgrid_int,:), alf_innov )
-				alfgrid_i	= alfgrid(alfgrid_int)
 				if(al_contin .eqv. .true.) then
-					al_it(i,t) = alfgrid_i ! log of wage shock
+					call random_normal(alf_innov)
+					alfgrid_i  = alfrho*alfgrid_i + (1.-alfrho**2)*alfsig*alf_innov + alfmu
+					al_it(i,t) = alfgrid_i  ! log of wage shock
+					alfgrid_int = finder(alfgrid,alfgrid_i)
+					! round up or down:
+					if( (alfgrid_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
 				else
+					call rand_num_closed(alf_innov)
+					alfgrid_int 	= finder(cumpi_al(alfgrid_int,:), alf_innov )
 					al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
 				endif
 				al_it_int(i,t) = alfgrid_int					
@@ -2241,17 +2250,17 @@ module sim_hists
 		if(success <= 0.2*Nsim*Tsim) success = 0
 		!call mat2csv(cumpi_al,"cumpi_al.csv")
 		deallocate(cumpi_al)
-		
+		deallocate(bdayseed)
 	end subroutine draw_alit
 
 	subroutine draw_ji(j_i,seed0, success)
 		implicit none
 		integer	:: j_i(:)
 		real(dp) :: jwt
-		integer	:: i,m,ss
+		integer	:: i,m,ss=1
 		integer,intent(in)  :: seed0
 		integer,intent(out) :: success
-		integer, dimension(100) :: bdayseed
+		integer, allocatable :: bdayseed(:)
 		real(dp)	:: Njcumdist(nj+1)
 		real(dp) :: draw_i
 
@@ -2262,6 +2271,7 @@ module sim_hists
 			enddo
 		
 			call random_seed(size = ss)
+			allocate(bdayseed(ss))
 			forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 			call random_seed(put = bdayseed(1:ss) )
 		
@@ -2271,6 +2281,8 @@ module sim_hists
 				if(j_i(i) < 1 ) j_i(i) = 1
 				if(j_i(i) > nj) j_i(i) = nj
 			enddo
+			
+			deallocate(bdayseed)
 		else
 			j_i = 1
 		endif
@@ -2284,15 +2296,16 @@ module sim_hists
 		implicit none
 
 		integer, intent(out) :: z_jt_macro(:) !this will be the panel across occupations -> z_jt by i's j
-		integer	:: it,i,ij,iz,izp,m,ss, z_jt_t
+		integer	:: it=1,i=1,ij=1,iz=1,izp=1,m=1,ss=1, z_jt_t=1
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
-		integer, dimension(100) :: bdayseed
+		integer, allocatable :: bdayseed(:) 
 		integer, dimension(5,2) :: NBER_start_stop
-		real(dp) :: z_innov
+		real(dp) :: z_innov=1.
 		real(dp) :: cumpi_z(nz,nz+1),cumpi_zblock(nz/2,nz/2+1)
-
+		
 		call random_seed(size = ss)
+		allocate(bdayseed(ss))
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
@@ -2363,21 +2376,23 @@ module sim_hists
 			
 		enddo
 		success = 0
+		deallocate(bdayseed)
 		!call mat2csv(cumpi_z,"cumpi_z.csv")
 	end subroutine draw_zjt
 	
 	subroutine draw_age_it(age_it, born_it, seed0, success)
 
 		integer,intent(out) :: age_it(:,:),born_it(:,:)
-		integer	:: it,itp,i,m,ss,bn_i
+		integer	:: it,itp,i,m,ss=1,bn_i
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
-		integer, dimension(100) :: bdayseed
+		integer, allocatable :: bdayseed(:)
 		real(dp), dimension(TT) :: cumpi_t0
 		real(dp), dimension(TT-1) :: prob_age_nTT
 		real(dp) :: rand_age,rand_born
 		
 		call random_seed(size = ss)
+		allocate(bdayseed(ss))
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
@@ -2441,7 +2456,7 @@ module sim_hists
 		enddo! m=1,50.... if never gets born
 
 		enddo! i=1,Nsim
-
+		deallocate(bdayseed)
 		success = 0
 	end subroutine draw_age_it
 
@@ -2450,12 +2465,13 @@ module sim_hists
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer,intent(in) :: age_it(:,:)
-		integer, dimension(100) :: bdayseed
+		integer, allocatable :: bdayseed(:)
 		integer,intent(out) :: drawi_ititer(:),drawt_ititer(:)
-		integer :: i,it,ii,m,ss,drawt,drawi,ndraw
+		integer :: i,it,ii,m,ss=1,drawt,drawi,ndraw
 		real(dp) :: junk
 
 		call random_seed(size = ss)
+		allocate(bdayseed(ss))
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
@@ -2480,6 +2496,7 @@ module sim_hists
 				drawt_ititer(i) = it
 			endif
 		enddo
+		deallocate(bdayseed)
 		success = 0
 	end subroutine
 
@@ -2519,9 +2536,9 @@ module sim_hists
 		
 
 
-		integer :: i, ii, iter, it, it_old, ij, idi, id, Tret, &
-			&  seed0, seed1, status, m,ss, iter_draws=5
-		integer :: bdayseed(100)
+		integer :: i=1, ii=1, iter=1, it=1, it_old=1, ij=1, idi=1, id=1, Tret=1, &
+			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5
+		integer, allocatable :: bdayseed(:)
 
 		real(dp), allocatable ::	del_i(:), jshock_ij(:,:) ! shocks to be drawn
 		
@@ -2557,16 +2574,17 @@ module sim_hists
 		integer, pointer ::	gapp(:,:,:,:,:,:,:), &
 					gwork(:,:,:,:,:,:,:)
 
-		logical :: ptrsuccess
+		logical :: ptrsuccess=.false.
 		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1),d_var(TT-1),&
 				& a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
 				& s_mean(TT-1),s_mean_liter(TT-1)
 	
 		! Other
-		real(dp)	:: wage_hr,al_hr, junk,a_hr, e_hr, bet_hr,z_hr,j_val,j_val_ij,jwt, vscale,cumval,work_dif_hr, app_dif_hr,js_ij, Nworkt, ep_hr
+		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1.,j_val=1.,j_val_ij=1.,jwt=1., vscale=1.,cumval=1., &
+					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.
 
-		integer :: ali_hr,d_hr,age_hr,del_hr, zi_hr, j_hr, ai_hr,api_hr,ei_hr, &
-			& beti, status_hr,status_tmrw,drawi,drawt
+		integer :: ali_hr=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
+			& beti=1, status_hr=1,status_tmrw=1,drawi=1,drawt=1
 		!************************************************************************************************!
 		! Allocate things
 		!************************************************************************************************!
@@ -2637,9 +2655,11 @@ module sim_hists
 		seed0 = 941987
 		seed1 = 12281951
 		call random_seed(size = ss)
+		allocate(bdayseed(ss))
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
+		
 		if(verbose >2) print *, "Drawing types and shocks"	
 		if(j_rand .eqv. .false. ) then
 			!draw gumbel-distributed shock
@@ -2751,7 +2771,7 @@ module sim_hists
 					endif
 				endif
 				! get straight the scale of jval shocks (for use with amenityscale)
-				if(born_it(i,it).eq. 1 .and. it> 1) then ! no one is ``born'' in the first period, but just to be sure
+				if(age_it(i,it)>0 ) then ! no one is ``born'' in the first period, so this is the pre-existing group
 					junk    = junk+1
 					age_hr	= 1
 					d_hr	= 1
@@ -2773,6 +2793,8 @@ module sim_hists
 				endif 
 			enddo !i=1:Nsim
 			vscale = vscale/junk/dble(nj)
+			!there's some probability junk == 0,
+			if( junk == 0.) vscale = 1.
 			
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,ep_hr, &
@@ -3121,7 +3143,8 @@ module sim_hists
 				call mat2csv (hst%app_dif_hist,"app_dif_hist.csv")
 				call mat2csv (hst%work_dif_hist,"work_dif_hist.csv")
 		endif
-	
+
+		deallocate(bdayseed)
 		deallocate(e_it)
 		deallocate(a_it_int,e_it_int)
 		deallocate(del_i)
@@ -3168,12 +3191,13 @@ module find_params
 		type(val_struct),  intent(in) :: val_sol
 		type(hist_struct), intent(in):: hists_sim
 		real(dp), intent(in) :: prob_target,zj_in
-		real(dp) :: resid, zj_here,nborn,j_val_hi,j_val_lo,j_scale
-		real(dp) :: cumval,j_val,zjwt,prob_here,e_hr
-		integer :: age_hr,d_hr,ai_hr,ali_hr,ei_hr,i,ii,idi, it, ij,beti
-		integer :: zj_hi,zj_lo, simT
+		real(dp) :: resid
+		real(dp) :: zj_here=1.,nborn=1.,j_val_hi=1.,j_val_lo=1.,j_scale=1.
+		real(dp) :: cumval=1.,j_val=1.,zjwt=1.,prob_here=1.,e_hr=1.
+		integer :: age_hr=1,d_hr=1,ai_hr=1,ali_hr=1,ei_hr=1,i=1,ii=1,idi=1, it=1, ij=1,beti=1
+		integer :: zj_hi=1,zj_lo=1, simT=1
 		real(dp), allocatable :: j_val_ij(:,:),j_val_here(:)
-		real(dp) :: zgrid_min, zgrid_max
+		real(dp) :: zgrid_min=1., zgrid_max=1.
 
 		allocate(j_val_ij(Nsim,nj))
 		allocate(j_val_here(Nsim))
@@ -3339,10 +3363,10 @@ module find_params
 		
 		real(dp), intent(in) :: probj_in(:)
 		real(dp), intent(out):: jshift_out(:)
-		real(dp) :: vscale,nborn,jshift_prratio,cumval,updjscale,distshift
+		real(dp) :: vscale=1.,nborn=1.,jshift_prratio=1.,cumval=1.,updjscale=1.,distshift=1.
 		real(dp) :: jshift0(nj)
-		integer  :: ij, ik, iter
-		integer :: age_hr,d_hr,ai_hr,ali_hr,ei_hr,i,ii,idi, it, beti=1
+		integer  :: ij=1, ik=1, iter=1
+		integer :: age_hr=1,d_hr=1,ai_hr=1,ali_hr=1,ei_hr=1,i=1,ii=1,idi=1, it=1, beti=1
 		real(dp), allocatable :: j_val_ij(:,:)
 		allocate(j_val_ij(Nsim,nj))
 
@@ -3404,16 +3428,16 @@ module find_params
 	end subroutine
 
 	subroutine iter_zproc(val_sol, hists_sim, prob_hist_target)
-		integer :: it, ij, ziter
+		integer :: it=1, ij=1, ziter=1
 		type(val_struct), target :: val_sol
 		type(hist_struct), target:: hists_sim
 
 		real(dp), intent(in) :: prob_hist_target(:,:)
-		real(dp) :: zj_here, zscale_mean,zscale_mean1
+		real(dp) :: zj_here=1., zscale_mean=1.,zscale_mean1=1.
 		real(dp) :: dummy_params(3)
 		!integer :: del_i_int(:)
-		integer :: flag
-		real(dp) :: resid_hi, resid_lo, z_hi,z_lo,zj_opt,zscale_dist, zscale_tol=1.e-4_dp
+		integer :: flag=1
+		real(dp) :: resid_hi=1., resid_lo=1., z_hi=1.,z_lo=1.,zj_opt=1.,zscale_dist=1., zscale_tol=1.e-4_dp
 		real(dp), allocatable :: zscale1(:),zscale0(:),zgrid1(:,:),zgrid0(:,:)
 		dummy_params = 0.
 
@@ -3509,7 +3533,7 @@ module find_params
 		type(hist_struct):: hists_sim
 		type(moments_struct):: moments_sim
 		real(dp) :: condstd_tsemp
-		integer :: ij
+		integer :: ij=1
 
 		zrho = paramvec(1)
 		zsig = paramvec(2)
@@ -3578,12 +3602,12 @@ program V0main
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: id, it, ij, ibi, ial, iz, narg_in, wo, status
+		integer  :: id=1, it=1, ij=1, ibi=1, ial=1, iz=1, narg_in=1, wo=1, status=1
 
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(dp)	:: wagehere,utilhere, junk, param0(2),err0(2)
+		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(2)=1.,err0(2)=1.
 		integer, allocatable :: iz_jt_in(:)
 	!************************************************************************************************!
 	! Structure to communicate everything
@@ -3593,8 +3617,8 @@ program V0main
 		type(moments_struct):: moments_sim
 		
 	! Timers
-		integer :: c1,c2,cr,cm
-		real(dp) :: t1,t2
+		integer :: c1=1,c2=1,cr=1,cm=1
+		real(dp) :: t1=1.,t2=1.
 		
 	!************************************************************************************************!
 	! Allocate phat matrices
@@ -3694,6 +3718,9 @@ program V0main
 			mod_prob_hist_tgt(it,ij) = (zgrid( iz_jt_in(it) , ij ) -junk) + (1._dp/dble(nj) )
 		enddo
 	enddo
+	! will have to change these with actual targets!!!!!
+	param0 = 0.
+	err0 = 0.
 	call cal_dist(param0,err0)
 	
 
