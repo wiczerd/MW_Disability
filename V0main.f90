@@ -10,7 +10,7 @@
 !	
 !************************************************************************************************!
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -o V0main.out  
-! val grind line: valgrind --leak-check=yes --error-limit=no --log-file=V0valgrind.log ./V0main.out &
+! val grind line: valgrind --leak-check=yes --error-limit=no --track-origins=yes --log-file=V0valgrind.log ./V0main_dbg.out &
 module helper_funs
 	
 	use V0para
@@ -988,7 +988,7 @@ module sol_val
 				enddo
 				enddo
 				Vtest2 = util(chere,id,iw) + Vtest2 &
-					& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) )
+					& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) ) !<-- application cost
 				
 				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then	
 					apol = iaa
@@ -996,8 +996,7 @@ module sol_val
 				elseif(simp_concav .eqv. .true.) then
 					exit
 				endif
-			!elseif(iaa<= iaa0 .and. Vtest1 <= -1e5 .and. apol == iaa0) then
-			!	iaa = 1 !started too much saving, go back towards zero
+
 			else
 				exit
 			endif
@@ -2134,14 +2133,14 @@ module sim_hists
 		delgridL = minval(delgrid)
 		delgridH = maxval(delgrid)
 		do i=1,Nsim
-			call rand_num_closed(delgrid_i) ! draw uniform on 0,1
+			call random_number(delgrid_i) ! draw uniform on 0,1
 			delgrid_i = delgrid_i*(delgridH-delgridL) + delgridL !change domain of uniform
 			di_int = finder(delgrid,delgrid_i)
 			! round up or down:
 			if(di_int < ndi) then
 				if( (delgrid_i - delgrid(di_int))/(delgrid(di_int+1) - delgrid(di_int)) > 0.5 ) di_int = di_int + 1
 			endif
-			di_int = max(min(di_int,nd),1)
+			di_int = max(min(di_int,ndi),1)
 			del_i(i) = delgrid_i
 			del_i_int(i) = di_int
 		enddo
@@ -2174,7 +2173,7 @@ module sim_hists
 		success = 0
 		deallocate(bdayseed)
 	end subroutine draw_status_innov
-	
+
 	subroutine draw_alit(al_it,al_it_int, seed0, success)
 	! draws alpha shocks and idices on the alpha grid (i.e at the discrete values)
 		implicit none
@@ -2540,9 +2539,7 @@ module sim_hists
 			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5
 		integer, allocatable :: bdayseed(:)
 
-		real(dp), allocatable ::	del_i(:), jshock_ij(:,:) ! shocks to be drawn
-		
-		real(dp), allocatable :: status_it_innov(:,:) !innovations to d, drawn randomly
+		real(dp), allocatable :: status_it_innov(:,:), jshock_ij(:,:)
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
 		real(dp), allocatable :: e_it(:,:)
@@ -2550,8 +2547,9 @@ module sim_hists
 		integer, allocatable :: drawi_ititer(:),drawt_ititer(:)
 		
 		! write to hst
-		real(dp), pointer     :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
+		real(dp), pointer    :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
 		integer, pointer     :: born_it(:,:) ! born status, drawn randomly		
+		real(dp), pointer	 ::	del_i(:)
 		integer, pointer     :: del_i_int(:)  ! integer valued shocks
 		integer, pointer     :: status_it(:,:)	!track W,U,N,D,R : 1,2,3,4,5
 		integer, pointer     :: age_it(:,:)	! ages, drawn randomly
@@ -2580,10 +2578,10 @@ module sim_hists
 				& s_mean(TT-1),s_mean_liter(TT-1)
 	
 		! Other
-		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1.,j_val=1.,j_val_ij=1.,jwt=1., vscale=1.,cumval=1., &
+		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., j_val=1.,j_val_ij=1.,jwt=1., vscale=1.,cumval=1., &
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.
 
-		integer :: ali_hr=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
+		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
 			& beti=1, status_hr=1,status_tmrw=1,drawi=1,drawt=1
 		!************************************************************************************************!
 		! Allocate things
@@ -2630,6 +2628,7 @@ module sim_hists
 		app_dif_it  => hst%app_dif_hist
 		d_it        => hst%d_hist
 		del_i_int   => hst%del_i_int
+		del_i       => hst%del_i
 		j_i         => hst%j_i
 		z_jt_macro  => hst%z_jt_macro
 		a_it        => hst%a_hist
@@ -2749,7 +2748,7 @@ module sim_hists
 		if(verbose >3) print *, "iter: ", iter
 			it = 1
 			ii = 1
-			vscale = 0.
+			
 			junk =0.
 			do i =1,Nsim
 				!for the population that is pre-existing in the first period 
@@ -2771,34 +2770,34 @@ module sim_hists
 					endif
 				endif
 				! get straight the scale of jval shocks (for use with amenityscale)
-				if(age_it(i,it)>0 ) then ! no one is ``born'' in the first period, so this is the pre-existing group
-					junk    = junk+1
-					age_hr	= 1
-					d_hr	= 1
-					a_hr 	= minval(agrid)
-					ai_hr	= 1
-					ei_hr	= 1
-					e_hr 	= 0.
-					ai_hr 	= 1
-					if(j_rand .eqv. .false. ) then !choose occupation
-						do ij = 1,nj
-							j_val_ij = 0.
-							do idi=1,ndi
-								j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij) &
-												&+ j_val_ij
-							enddo
-							vscale = j_val_ij + vscale
-						enddo
-					endif
-				endif 
+!				if(age_it(i,it)>0 ) then ! no one is ``born'' in the first period, so this is the pre-existing group
+!					junk    = junk+1
+!					age_hr	= 1
+!					d_hr	= 1
+!					a_hr 	= minval(agrid)
+!					ai_hr	= 1
+!					ei_hr	= 1
+!					e_hr 	= 0.
+!					ai_hr 	= 1
+!					if(j_rand .eqv. .false. ) then !choose occupation
+!						do ij = 1,nj
+!							j_val_ij = 0.
+!							do idi=1,ndi
+!								j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij) &
+!												&+ j_val_ij
+!							enddo
+!							vscale = j_val_ij + vscale
+!						enddo
+!					endif
+!				endif 
 			enddo !i=1:Nsim
-			vscale = vscale/junk/dble(nj)
-			!there's some probability junk == 0,
-			if( junk == 0.) vscale = 1.
+!			vscale = vscale/junk/dble(nj)
+!			!there's some probability junk == 0,
+!			if( junk == 0.) vscale = 1.
 			
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,ep_hr, &
-			!$OMP& ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
+			!$OMP& iiH, iiwt, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -2886,7 +2885,15 @@ module sim_hists
 					!make decisions if not yet retired
 					if(age_hr < TT) then 
 						if(status_hr .eq. 3) then ! choose wait or apply
-							app_dif_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							if(al_contin .eqv. .false.) then
+								app_dif_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							else
+								iiH  = min(ali_hr+1,nal)
+								iiwt = (alfgrid(iiH)- al_hr)/( alfgrid(iiH) -   alfgrid(ali_hr) )
+								if( iiH == ali_hr ) iiwt = 1.
+								app_dif_hr = iiwt*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							endif
 							app_dif_it(i,it) = app_dif_hr
 							if( app_dif_hr >= 0 ) then
 							! choose to apply
@@ -2898,7 +2905,15 @@ module sim_hists
 						! evalutate gwork and gapp to figure out lom of status 
 						if((status_hr < 3) .or. (status_hr .eq. 3 .and. app_dif_hr < 0 ))then !choose work or rest
 							app_dif_it(i,it) = 0. !just to fill in value
-							work_dif_hr = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							if(al_contin .eqv. .false. ) then
+								work_dif_hr = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							else 
+								iiH  = min(ali_hr+1,nal)
+								iiwt = (alfgrid(iiH)- al_hr)/( alfgrid(iiH) -  alfgrid(ali_hr) )
+								if( iiH == ali_hr ) iiwt = 1.
+								work_dif_hr = iiwt*gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											& 	(1.-iiwt)*gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							endif
 							
 							if( work_dif_hr > 0 ) then
 							! choose to work
@@ -3147,7 +3162,6 @@ module sim_hists
 		deallocate(bdayseed)
 		deallocate(e_it)
 		deallocate(a_it_int,e_it_int)
-		deallocate(del_i)
 		deallocate(app_it,work_it)
 		deallocate(status_it_innov)
 		deallocate(drawi_ititer,drawt_ititer)
@@ -3363,13 +3377,14 @@ module find_params
 		
 		real(dp), intent(in) :: probj_in(:)
 		real(dp), intent(out):: jshift_out(:)
-		real(dp) :: vscale=1.,nborn=1.,jshift_prratio=1.,cumval=1.,updjscale=1.,distshift=1.
+		real(dp) :: nborn=1.,jshift_prratio=1.,cumval=1.,updjscale=1.,distshift=1.
 		real(dp) :: jshift0(nj)
 		integer  :: ij=1, ik=1, iter=1
 		integer :: age_hr=1,d_hr=1,ai_hr=1,ali_hr=1,ei_hr=1,i=1,ii=1,idi=1, it=1, beti=1
 		real(dp), allocatable :: j_val_ij(:,:)
 		allocate(j_val_ij(Nsim,nj))
 
+		cumval = 0.
 		updjscale  = 0.1_dp
 		jshift_out = 0._dp !initialize
 		jshift0 = 0._dp
@@ -3607,7 +3622,7 @@ program V0main
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(2)=1.,err0(2)=1.
+		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(3)=1.,err0(3)=1.
 		integer, allocatable :: iz_jt_in(:)
 	!************************************************************************************************!
 	! Structure to communicate everything
@@ -3719,31 +3734,35 @@ program V0main
 		enddo
 	enddo
 	! will have to change these with actual targets!!!!!
-	param0 = 0.
+	!	zrho = paramvec(1)
+	!	zsig = paramvec(2)
+	!	amenityscale = paramvec(3)
+	
+	param0 = (/zrho,zsig,amenityscale /)
 	err0 = 0.
 	call cal_dist(param0,err0)
 	
 
-	if(verbose >2) print *, "Solving the model"
-	if(verbose >2) then
-		call system_clock(count_rate=cr)
-		call system_clock(count_max=cm)
-		call CPU_TIME(t1)
-		call SYSTEM_CLOCK(c1)
-	endif
-	call sol(val_sol,pol_sol)
-	if(verbose > 2) then
-		call CPU_TIME(t2)
-		call SYSTEM_CLOCK(c2)
-		print *, "System Time", dble(c2-c1)/dble(cr)
-		print *, "   CPU Time", (t2-t1)
-	endif
+!	if(verbose >2) print *, "Solving the model"
+!	if(verbose >2) then
+!		call system_clock(count_rate=cr)
+!		call system_clock(count_max=cm)
+!		call CPU_TIME(t1)
+!		call SYSTEM_CLOCK(c1)
+!	endif
+!	call sol(val_sol,pol_sol)
+!	if(verbose > 2) then
+!		call CPU_TIME(t2)
+!		call SYSTEM_CLOCK(c2)
+!		print *, "System Time", dble(c2-c1)/dble(cr)
+!		print *, "   CPU Time", (t2-t1)
+!	endif
 
 	
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(val_sol, pol_sol, hists_sim)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hists_sim,moments_sim)
+!	if(verbose >2) print *, "Simulating the model"	
+!	call sim(val_sol, pol_sol, hists_sim)
+!	if(verbose >2) print *, "Computing moments"
+!	call moments_compute(hists_sim,moments_sim)
 
 
 !    .----.   @   @

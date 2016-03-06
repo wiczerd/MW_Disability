@@ -66,11 +66,11 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			ndi = 2,  &!3		    !Number of individual disability risk types
 			nj  = 2,  &		        !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 2, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 40, &!100	        !Points on assets grid
 			nz  = 6,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
-			maxiter = 20, &!2000	!Tolerance parameter	
-			Nsim = 10, & !5000         !how many agents to draw
+			maxiter = 2000, &!2000	!Tolerance parameter	
+			Nsim = 5000, & !5000         !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20.,&	    ! when does the structural break happen
@@ -143,6 +143,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
 !		
 		amenityscale = .5,&	!scale parameter of gumbel distribution for occ choice
+		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
 		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
