@@ -2745,7 +2745,7 @@ module sim_hists
 		
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,iter_draws
-		if(verbose >3) print *, "iter: ", iter
+			if(verbose >3) print *, "iter: ", iter
 			it = 1
 			ii = 1
 			
@@ -2826,12 +2826,14 @@ module sim_hists
 						if(j_rand .eqv. .false. ) then !choose occupation
 							j_val  = -1.e6_dp
 							j_hr = 1 !initial value
+							if(it< (struc_brk*itlen)) iiH = 1
+							if(it>=(struc_brk*itlen)) iiH = 2
 							do ij = 1,nj
 								j_val_ij = 0.
 								do idi = 1,ndi
 									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij)+j_val_ij
 								enddo
-								j_val_ij = j_val_ij + jshock_ij(i,ij)*(amenityscale*vscale) + jshift(ij)*(amenityscale*vscale)
+								j_val_ij = j_val_ij + jshift(ij,iiH) + jshock_ij(i,ij)*(amenityscale*vscale)
 								if(j_val< j_val_ij ) then
 									j_hr = ij
 									j_val = j_val_ij
@@ -3286,9 +3288,9 @@ module find_params
 			if(j_val_here(i) > -1.e9_dp) then !these guys were actually born
 				cumval = 0.
 				do ij=1,nj
-					cumval = dexp((j_val_ij(i,ij)+jshift(ij))/(j_scale*amenityscale))+cumval
+					cumval = dexp((j_val_ij(i,ij)+jshift(ij,2))/(j_scale*amenityscale))+cumval
 				enddo
-				prob_here = dexp((j_val_here(i)+jshift(ij_obj))/(j_scale*amenityscale))/cumval + prob_here
+				prob_here = dexp((j_val_here(i)+jshift(ij_obj,2))/(j_scale*amenityscale))/cumval + prob_here
 			endif
 		enddo
 		
@@ -3367,31 +3369,26 @@ module find_params
 		enddo
 		enddo
 		enddo
-
 	end subroutine newtfpgrid
 
-	subroutine jshift_sol(val_sol, hists_sim, probj_in, jshift_out)
-		! solves for the factors jshift(j)
-		type(val_struct),intent(in), target :: val_sol
+
+	subroutine vscale_set(val_sol, hists_sim, vscale_out)
+		! this sets the scaling for vscale, which is necessary to do discrete choice over occuptions
+		type(val_struct),intent(in) :: val_sol
 		type(hist_struct), intent(in):: hists_sim
-		
-		real(dp), intent(in) :: probj_in(:)
-		real(dp), intent(out):: jshift_out(:)
-		real(dp) :: nborn=1.,jshift_prratio=1.,cumval=1.,updjscale=1.,distshift=1.
-		real(dp) :: jshift0(nj)
-		integer  :: ij=1, ik=1, iter=1
-		integer :: age_hr=1,d_hr=1,ai_hr=1,ali_hr=1,ei_hr=1,i=1,ii=1,idi=1, it=1, beti=1
+		real(8)	:: vscale_out
+		real(8)	:: cumval,updjscale,nborn
+		integer  :: ij=1, i=1, it=1
+		integer :: age_hr=1,d_hr=1,ai_hr=1,ali_hr=1,ei_hr=1,idi=1, beti=1
 		real(dp), allocatable :: j_val_ij(:,:)
 		allocate(j_val_ij(Nsim,nj))
-
 		cumval = 0.
 		updjscale  = 0.1_dp
-		jshift_out = 0._dp !initialize
-		jshift0 = 0._dp
 		j_val_ij = -1.e10_dp
 		nborn = 0._dp
-		vscale= 0._dp
-		! first load the value functions for the first period
+		vscale_out= 0._dp
+		! use value functions for the first period alive
+		
 		it = 1
 		do i = 1,Nsim
 			if(hists_sim%age_hist(i,it) > 0 ) then !they're alive in the first period
@@ -3408,13 +3405,61 @@ module find_params
 						j_val_ij(i,ij) = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
 									& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
 					enddo
-					vscale = j_val_ij(i,ij) + vscale
+					vscale_out = j_val_ij(i,ij) + vscale_out
 				enddo
 			endif
 		enddo
-		vscale = vscale/nborn/dble(nj)
+		vscale_out = vscale/nborn/dble(nj)
+		deallocate(j_val_ij)
+	end subroutine vscale_set
 
-		!iterate on shift_k
+
+	subroutine jshift_sol(val_sol, hists_sim, probj_in, t0tT,jshift_out)
+		! solves for the factors jshift(j)
+		type(val_struct),intent(in) :: val_sol
+		type(hist_struct), intent(in):: hists_sim
+		
+		real(dp), intent(in) :: probj_in(:)
+		integer,  intent(in) :: t0tT(:) ! should have the start and end periods during which people are born
+		real(dp), intent(out):: jshift_out(:)
+		real(dp) :: jshift_prratio=1.,cumval=1.,updjscale=1.,distshift=1.,nborn=0.
+		real(dp) :: jshift0(nj)
+		integer  :: ij=1, ik=1, iter=1
+		integer :: age_hr=1,d_hr=1,ai_hr=1,ali_hr=1,ei_hr=1,i=1,ii=1,idi=1, it=1, beti=1
+		real(dp), allocatable :: j_val_ij(:,:)
+		allocate(j_val_ij(Nsim,nj))
+
+		cumval = 0.
+		updjscale  = 0.1_dp
+		jshift_out = 0._dp !initialize
+		jshift0 = 0._dp
+		j_val_ij = -1.e10_dp
+		nborn = 0._dp
+
+		! first load the value functions for the target period
+		do it = t0tT(1), t0tT(2)
+			do i = 1,Nsim
+				if(hists_sim%born_hist(i,it) > 0 .or.  (it == 1 .and. hists_sim%age_hist(i,it) > 0) ) then !they're alive in the first period or born this period
+					nborn = 1._dp + nborn
+					!set the state
+					ali_hr 	= hists_sim%al_int_hist(i,it)
+					age_hr 	= 1
+					d_hr 	= 1
+					ai_hr	= 1
+					ei_hr	= 1
+					do ij = 1,nj
+						j_val_ij(i,ij) = 0.
+						do idi = 1,ndi ! expectation over delta
+							j_val_ij(i,ij) = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
+										& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
+						enddo
+					enddo
+				endif
+			enddo !do i
+		enddo !do it
+		
+
+		!iterate on shift_k to solve for it
 		do iter=1,maxiter*nj
 			distshift = 0._dp
 			do ij=1,nj
@@ -3442,12 +3487,11 @@ module find_params
 		
 	end subroutine
 
-	subroutine iter_zproc(val_sol, hists_sim, prob_hist_target)
+	subroutine iter_zproc(val_sol, hists_sim)
 		integer :: it=1, ij=1, ziter=1
 		type(val_struct), target :: val_sol
 		type(hist_struct), target:: hists_sim
 
-		real(dp), intent(in) :: prob_hist_target(:,:)
 		real(dp) :: zj_here=1., zscale_mean=1.,zscale_mean1=1.
 		real(dp) :: dummy_params(3)
 		!integer :: del_i_int(:)
@@ -3476,8 +3520,7 @@ module find_params
 				mod_ij_obj = ij
 				it = struc_brk*itlen
 				mod_it = it
-				
-				mod_prob_target = occprbrk(ij) ! i havd to replace this
+				mod_prob_target = occprbrk(ij) ! I don't like using globals here
 
 				! bounds on the area in which actually solved the problem
 				z_hi = zgrid(nz,ij) - zgrid(nz/2+1,ij)
@@ -3548,7 +3591,7 @@ module find_params
 		type(hist_struct):: hists_sim
 		type(moments_struct):: moments_sim
 		real(dp) :: condstd_tsemp
-		integer :: ij=1
+		integer :: ij=1,t0tT(2)
 
 		zrho = paramvec(1)
 		zsig = paramvec(2)
@@ -3562,8 +3605,14 @@ module find_params
 		call sol(val_sol,pol_sol)
 		if(verbose >2) print *, "Solving for z process"
 		call draw_shocks(hists_sim)
-		call jshift_sol(val_sol, hists_sim, occsz0, jshift)
-		call iter_zproc(val_sol, hists_sim, mod_prob_hist_tgt)
+		call vscale_set(val_sol, hists_sim, vscale)
+		t0tT = (/1,1/)
+		call jshift_sol(val_sol, hists_sim, occsz0, t0tT, jshift(:,1)) !jshift_sol(val_sol, hists_sim, probj_in, t0tT,jshift_out)
+		t0tT = (/ struc_brk*itlen,  Tsim/)
+		call jshift_sol(val_sol, hists_sim, occprbrk, t0tT,jshift(:,2))
+
+		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
+		!call iter_zproc(val_sol, hists_sim)
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(val_sol, pol_sol, hists_sim)

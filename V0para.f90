@@ -73,7 +73,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			Nsim = 5000, & !5000         !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
-			struc_brk = 20.,&	    ! when does the structural break happen
+			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10, &
 			NBER_tseq = 0			!just feed in NBER recessions?
@@ -117,7 +117,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		hazborn_t(Tsim), &	!hazard of being born at each point t
 		occprbrk(nj), & 	!Fraction choosing occupation after break
 		occsz0(nj),&		!Fraction in each occupation
-		jshift(nj)			!Preference shift to ensure proper proportions
+		jshift(nj,2)			!Preference shift to ensure proper proportions, 2 regimes
 		
 integer :: 	dgrid(nd), &		! just enumerate the d states
 		agegrid(TT)		! the mid points of the ages
@@ -408,7 +408,7 @@ subroutine setparams()
 	!if(nj>1) then
 	do j=1,nj
 		occsz0(j) = 1./dble(nj)
-		jshift(j) = 0.
+		jshift(j,:) = 0.
 	enddo
 	!endif
 	!Read in the sizes by occuaption
