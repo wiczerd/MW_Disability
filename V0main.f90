@@ -1559,24 +1559,66 @@ module sol_val
 			!Work Backwards TT-1,TT-2...1!
 		do it=TT-1,1,-1
 			!----Initialize---!
-			do ial=1,nal
-			do id =1,nd
-			do ie =1,ne
-			do iz =1,nz
-			do ia =1,na
-				
-			!Guess once, then use next period same occupation/beta as guess
-			! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
-				VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
-				VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
-				VN0((ij-1)*nbi+ibi,(idi-1)*nal +ial,id,ie,ia,iz,it) = VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
-				V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)= VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+			
+			if( ij==1 .and. idi>1) then
+				do ial=1,nal
+				do id =1,nd
+				do ie =1,ne
+				do iz =1,nz
+				do ia =1,na
+					
+				!Guess once, then use last occupation as guess (order occupations intelligently)
+				! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
+					VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW0((ij-1)*nbi+ibi,(idi-2)*nal+ial,id,ie,ia,iz,it)  
+					VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU0((ij-1)*nbi+ibi,(idi-2)*nal+ial,id,ie,ia,iz,it)
+					VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VN0((ij-1)*nbi+ibi,(idi-2)*nal +ial,id,ie,ia,iz,it)
+					V0 ((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = V0 ((ij-1)*nbi+ibi,(idi-2)*nal+ial,id,ie,ia,iz,it)
 
-			enddo	!ia
-			enddo	!iz
-			enddo	!ie
-			enddo 	!id
-			enddo	!ial   
+				enddo	!ia
+				enddo	!iz
+				enddo	!ie
+				enddo 	!id
+				enddo	!ial
+			elseif( ij>1 ) then
+				do ial=1,nal
+				do id =1,nd
+				do ie =1,ne
+				do iz =1,nz
+				do ia =1,na
+					
+				!Guess once, then use last occupation as guess (order occupations intelligently)
+				! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
+					VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW0((ij-2)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)  
+					VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU0((ij-2)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+					VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VN0((ij-2)*nbi+ibi,(idi-1)*nal +ial,id,ie,ia,iz,it)
+					V0 ((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = V0 ((ij-2)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+
+				enddo	!ia
+				enddo	!iz
+				enddo	!ie
+				enddo 	!id
+				enddo	!ial
+			else  ! should be only (ij ==1 .and. idi == 1)  then
+				do ial=1,nal
+				do id =1,nd
+				do ie =1,ne
+				do iz =1,nz
+				do ia =1,na
+					
+				!Guess once, then use next period same occupation/beta as guess
+				! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
+					VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VW ((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+					VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VU ((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+					VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VN ((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+					V0 ((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
+
+				enddo	!ia
+				enddo	!iz
+				enddo	!ie
+				enddo 	!id
+				enddo	!ial
+			
+			endif
 
 			!***********************************************************************************************************
 			!Loop over V=max(VU,VW)	
@@ -2509,6 +2551,8 @@ module sim_hists
 		seed0 = 941987
 		seed1 = 12281951
 
+		if(verbose >2) print *, "Drawing types and shocks"	
+
 		call draw_age_it(hst%age_hist,hst%born_hist,seed0,status)
 		seed0 = seed0 + 1
 		call draw_deli(hst%del_i, hst%del_i_int, seed1, status)
@@ -2545,6 +2589,9 @@ module sim_hists
 		real(dp), allocatable :: e_it(:,:)
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
 		integer, allocatable :: drawi_ititer(:),drawt_ititer(:)
+
+		! FOR DEBUGGING
+		real(dp), allocatable :: val_hr_it(:)
 		
 		! write to hst
 		real(dp), pointer    :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
@@ -2604,6 +2651,9 @@ module sim_hists
 		allocate(drawt_ititer(Nsim*10))
 
 
+		!!!!!!!!!!!!!!! DEBUGGING
+		allocate(val_hr_it(Nsim))
+		
 		!************************************************************************************************!
 		! Pointers
 		!************************************************************************************************!
@@ -2659,7 +2709,6 @@ module sim_hists
 		call random_seed(put = bdayseed(1:ss) )
 
 		
-		if(verbose >2) print *, "Drawing types and shocks"	
 		if(j_rand .eqv. .false. ) then
 			!draw gumbel-distributed shock
 			do i = 1,Nsim
@@ -2669,19 +2718,19 @@ module sim_hists
 				enddo
 			enddo
 		endif
-		call draw_shocks(hst)
 		
 		if(hst%drawn /= 1 )then
-			call draw_age_it(age_it,born_it,seed0,status)
-			seed0 = seed0 + 1
-			call draw_deli(del_i, del_i_int, seed1, status)
-			seed1 = seed1 + 1
-			call draw_alit(al_it,al_it_int, seed0, status)
-			seed0 = seed0 + 1
-			call draw_ji(j_i,seed1, status)
-			seed1 = seed1 + 1
-			call draw_zjt(z_jt_macro, seed0, status)
-			seed0 = seed0 + 1
+			call draw_shocks(hst)
+!			call draw_age_it(age_it,born_it,seed0,status)
+!			seed0 = seed0 + 1
+!			call draw_deli(del_i, del_i_int, seed1, status)
+!			seed1 = seed1 + 1
+!			call draw_alit(al_it,al_it_int, seed0, status)
+!			seed0 = seed0 + 1
+!			call draw_ji(j_i,seed1, status)
+!			seed1 = seed1 + 1
+!			call draw_zjt(z_jt_macro, seed0, status)
+!			seed0 = seed0 + 1
 		endif
 		
 		call draw_status_innov(status_it_innov,seed1,status)
@@ -2691,6 +2740,7 @@ module sim_hists
 		
 		! check the distributions
 		if(print_lev > 1 ) then
+			call mat2csv(jshock_ij,"jshock_ij.csv")
 			call vec2csv(del_i,"del_i.csv")
 			call veci2csv(j_i,"j_i.csv")
 			call mat2csv(al_it,"al_it.csv")
@@ -2748,7 +2798,6 @@ module sim_hists
 			if(verbose >3) print *, "iter: ", iter
 			it = 1
 			ii = 1
-			
 			junk =0.
 			do i =1,Nsim
 				!for the population that is pre-existing in the first period 
@@ -2769,32 +2818,8 @@ module sim_hists
 						ii = 1 !should never happen
 					endif
 				endif
-				! get straight the scale of jval shocks (for use with amenityscale)
-!				if(age_it(i,it)>0 ) then ! no one is ``born'' in the first period, so this is the pre-existing group
-!					junk    = junk+1
-!					age_hr	= 1
-!					d_hr	= 1
-!					a_hr 	= minval(agrid)
-!					ai_hr	= 1
-!					ei_hr	= 1
-!					e_hr 	= 0.
-!					ai_hr 	= 1
-!					if(j_rand .eqv. .false. ) then !choose occupation
-!						do ij = 1,nj
-!							j_val_ij = 0.
-!							do idi=1,ndi
-!								j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij) &
-!												&+ j_val_ij
-!							enddo
-!							vscale = j_val_ij + vscale
-!						enddo
-!					endif
-!				endif 
 			enddo !i=1:Nsim
-!			vscale = vscale/junk/dble(nj)
-!			!there's some probability junk == 0,
-!			if( junk == 0.) vscale = 1.
-			
+
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,ep_hr, &
 			!$OMP& iiH, iiwt, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
@@ -2815,7 +2840,8 @@ module sim_hists
 					!set the state
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
-					if(born_it(i,it).eq. 1 .and. it> 1) then ! no one is ``born'' in the first period, but just to be sure
+					if((born_it(i,it).eq. 1 .and. it> 1) .or. (age_it(i,it)>0 .and. it==1)) then
+					! no one is ``born'' in the first period, but they make a decision as if just born
 						age_hr	= 1
 						d_hr	= 1
 						a_hr 	= minval(agrid)
@@ -2840,16 +2866,26 @@ module sim_hists
 								endif
 							enddo
 							j_i(i) = j_hr
+							val_hr_it(i) = j_val
 							if(del_by_occ .eqv. .true.) then
+								junk = (del_i(i)-minval(delgrid))/(maxval(delgrid) - minval(delgrid))
 								do ii=1,ndi
-									if( del_i(i)< delcumwt(ii+1,j_hr)  ) then
+									if(junk < delcumwt(ii+1,j_hr)  ) then
 										del_hr = ii
 										exit
 									endif
 								enddo
 							endif
-
 							del_i_int(i) = del_hr
+							!also adjust del_i(i)
+						endif
+						if(it == 1) then !these were born, 
+							age_hr	= age_it(i,it)
+							d_hr	= d_it(i,it)
+							a_hr 	= a_it(i,it)
+							ei_hr	= e_it_int(i,it)
+							e_hr 	= e_it(i,it)
+							ai_hr 	= a_it_int(i,it)
 						endif
 					else 
 						age_hr	= age_it(i,it)
@@ -3033,8 +3069,8 @@ module sim_hists
 			enddo! 1,Nsim
 			!$OMP  end parallel do 
 
-			
 			if(print_lev >=3)then
+				call vec2csv(val_hr_it,"val_hr.csv")
 				call mat2csv (e_it,"e_it.csv")
 				call mat2csv (a_it,"a_it.csv")
 				call mati2csv(a_it_int,"a_it_int.csv")
@@ -3137,14 +3173,14 @@ module sim_hists
 					if(j_i(i) ==ij .and. status_it(i,it) == 1) &
 						& occsize_jt(ij,it) = 1._dp + occsize_jt(ij,it)
 				enddo
+			enddo
+			do ij =1,nj
 				occgrow_jt(ij,it) = occgrow_jt(ij,it)/occsize_jt(ij,it)
 				occshrink_jt(ij,it) = occshrink_jt(ij,it)/occsize_jt(ij,it)
 			enddo
 			forall(ij=1:nj) occsize_jt(ij,it) = occsize_jt(ij,it)/Nworkt
 		enddo
 		!$omp end parallel do
-
-		
 		if(print_lev > 1)then
 				call mat2csv (e_it,"e_it.csv")
 				call mat2csv (a_it,"a_it.csv")
@@ -3165,6 +3201,7 @@ module sim_hists
 		deallocate(e_it)
 		deallocate(a_it_int,e_it_int)
 		deallocate(app_it,work_it)
+		deallocate(val_hr_it)
 		deallocate(status_it_innov)
 		deallocate(drawi_ititer,drawt_ititer)
 
@@ -3188,8 +3225,6 @@ module find_params
 	use model_data
 
 	implicit none
-
-	real(dp), allocatable :: mod_prob_hist_tgt(:,:)
 
 	integer :: mod_ij_obj, mod_it
 	type(val_struct), pointer :: mod_val_sol
@@ -3439,7 +3474,8 @@ module find_params
 		! first load the value functions for the target period
 		do it = t0tT(1), t0tT(2)
 			do i = 1,Nsim
-				if(hists_sim%born_hist(i,it) > 0 .or.  (it == 1 .and. hists_sim%age_hist(i,it) > 0) ) then !they're alive in the first period or born this period
+				if(hists_sim%born_hist(i,it) > 0 .or.  (it == 1 .and. hists_sim%age_hist(i,it) > 0) ) then
+				!they're alive in the first period or born this period
 					nborn = 1._dp + nborn
 					!set the state
 					ali_hr 	= hists_sim%al_int_hist(i,it)
@@ -3454,11 +3490,10 @@ module find_params
 										& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
 						enddo
 					enddo
-				endif
+				endif !born
 			enddo !do i
 		enddo !do it
 		
-
 		!iterate on shift_k to solve for it
 		do iter=1,maxiter*nj
 			distshift = 0._dp
@@ -3482,6 +3517,7 @@ module find_params
 				exit
 			endif
 		enddo
+		call vec2csv(jshift0,"jshift0.csv")
 
 		deallocate(j_val_ij)
 		
@@ -3597,7 +3633,7 @@ module find_params
 		zsig = paramvec(2)
 		amenityscale = paramvec(3)
 
-		call settfp()
+	!	call settfp()
 		call alloc_econ(val_sol,pol_sol,hists_sim)
 
 		! set up economy and solve it
@@ -3610,7 +3646,7 @@ module find_params
 		call jshift_sol(val_sol, hists_sim, occsz0, t0tT, jshift(:,1)) !jshift_sol(val_sol, hists_sim, probj_in, t0tT,jshift_out)
 		t0tT = (/ struc_brk*itlen,  Tsim/)
 		call jshift_sol(val_sol, hists_sim, occprbrk, t0tT,jshift(:,2))
-
+		!!!!!!! fix this!!!!!!
 		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
 		!call iter_zproc(val_sol, hists_sim)
 		
@@ -3672,7 +3708,6 @@ program V0main
 	! Other
 	!************************************************************************************************!
 		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(3)=1.,err0(3)=1.
-		integer, allocatable :: iz_jt_in(:)
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct) :: val_sol
@@ -3684,10 +3719,6 @@ program V0main
 		integer :: c1=1,c2=1,cr=1,cm=1
 		real(dp) :: t1=1.,t2=1.
 		
-	!************************************************************************************************!
-	! Allocate phat matrices
-	!************************************************************************************************!
-	call alloc_econ(val_sol,pol_sol,hists_sim)
 	
 
 	moments_sim%alloced = 0
@@ -3765,23 +3796,6 @@ program V0main
 	junk = junk/dble(2*nd*nal*(TT-1))
 	util_const = - junk - util_const
 
-	! draw the initial set of targets for z
-	allocate(mod_prob_hist_tgt(Tsim,nj))
-	allocate(iz_jt_in(Tsim))
-	
-	mod_prob_hist_tgt = 0.
-
-	call draw_zjt(iz_jt_in, 12092015, status)
-	
-	do it=1,Tsim
-		junk = 0.
-		do ij=1,nj
-			junk = zgrid( iz_jt_in(it) , ij )/(dble(nj)) + junk
-		enddo
-		do ij=1,nj!test probabilities are deviations from uniform 
-			mod_prob_hist_tgt(it,ij) = (zgrid( iz_jt_in(it) , ij ) -junk) + (1._dp/dble(nj) )
-		enddo
-	enddo
 	! will have to change these with actual targets!!!!!
 	!	zrho = paramvec(1)
 	!	zsig = paramvec(2)
@@ -3791,6 +3805,10 @@ program V0main
 	err0 = 0.
 	call cal_dist(param0,err0)
 	
+	!************************************************************************************************!
+	! Allocate phat matrices
+	!************************************************************************************************!
+!	call alloc_econ(val_sol,pol_sol,hists_sim)
 
 !	if(verbose >2) print *, "Solving the model"
 !	if(verbose >2) then
@@ -3822,9 +3840,8 @@ program V0main
 	!****************************************************************************!
 	! IF you love something.... 
 	!****************************************************************************!
-	call dealloc_econ(val_sol,pol_sol,hists_sim)
-	deallocate(mod_prob_hist_tgt)
-	deallocate(iz_jt_in)
+!	call dealloc_econ(val_sol,pol_sol,hists_sim)
+
 End PROGRAM
 
 

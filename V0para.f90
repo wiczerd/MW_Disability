@@ -81,7 +81,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
 logical, parameter ::	del_by_occ = .true.,& 	!delta is fully determined by occupation, right now alternative is fully random
-			al_contin = .false.,&	!make alpha draws continuous or stay on the grid
+			al_contin = .true.,&	!make alpha draws continuous or stay on the grid
 			j_rand = .false. 	! randomly assign j, or let choose.
 			
 
@@ -246,7 +246,8 @@ subroutine setparams()
 		summy = occdel(j) + summy
 	enddo
 	forall(j=1:nj) occdel(j) = occdel(j) - summy/nj + 1.
-
+	delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
+		
 
 	! TFP
 	zscale = 0. 
