@@ -63,7 +63,7 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
-			ndi = 2,  &!3		    !Number of individual disability risk types
+			ndi = 3,  &!3		    !Number of individual disability risk types
 			nj  = 2,  &		        !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
@@ -80,12 +80,12 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
-logical, parameter ::	del_by_occ = .true.,& 	!delta is fully determined by occupation, right now alternative is fully random
-			al_contin = .true.,&	!make alpha draws continuous or stay on the grid
-			j_rand = .false. 	! randomly assign j, or let choose.
+logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
+					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
+					  j_rand     = .false. 	! randomly assign j, or let choose.
 			
 
-real(8), parameter ::   Vtol = 1e-5, & 	!Tolerance on V-dist
+real(8), parameter ::   Vtol = 1e-6, & 	!Tolerance on V-dist
 !		beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
 !		beti_sig = 0.0,    & 	!Var of beta_i wage parameter (Log Normal)
 !		di_lambd = 1.0,    &	!Shape of disability dist. (Exponential)

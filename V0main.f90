@@ -2696,6 +2696,7 @@ module sim_hists
 		ptrsuccess = associated(V,vfs%V)
 		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate V"
 		
+		hst%wage_hist = 0.
 		Tret = (Longev - youngD - oldD*oldN)*tlen
 		work_dif_it = 0.
 		app_dif_it = 0.
@@ -2859,7 +2860,7 @@ module sim_hists
 								do idi = 1,ndi
 									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij)+j_val_ij
 								enddo
-								j_val_ij = j_val_ij + jshift(ij,iiH) + jshock_ij(i,ij)*(amenityscale*vscale)
+								j_val_ij = (j_val_ij + jshift(ij,iiH))/(amenityscale*vscale) + jshock_ij(i,ij)
 								if(j_val< j_val_ij ) then
 									j_hr = ij
 									j_val = j_val_ij
@@ -3440,7 +3441,8 @@ module find_params
 						j_val_ij(i,ij) = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
 									& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
 					enddo
-					vscale_out = j_val_ij(i,ij) + vscale_out
+					vscale_out = dabs(j_val_ij(i,ij)) + vscale_out
+					!print *, j_val_ij(i,ij)
 				enddo
 			endif
 		enddo
@@ -3641,7 +3643,10 @@ module find_params
 		call sol(val_sol,pol_sol)
 		if(verbose >2) print *, "Solving for z process"
 		call draw_shocks(hists_sim)
+
 		call vscale_set(val_sol, hists_sim, vscale)
+		if(dabs(vscale)<1) vscale = 1.
+		print *, vscale 
 		t0tT = (/1,1/)
 		call jshift_sol(val_sol, hists_sim, occsz0, t0tT, jshift(:,1)) !jshift_sol(val_sol, hists_sim, probj_in, t0tT,jshift_out)
 		t0tT = (/ struc_brk*itlen,  Tsim/)
