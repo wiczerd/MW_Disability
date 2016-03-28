@@ -2625,7 +2625,7 @@ module sim_hists
 				& s_mean(TT-1),s_mean_liter(TT-1)
 	
 		! Other
-		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., j_val=1.,j_val_ij=1.,jwt=1., vscale=1.,cumval=1., &
+		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
@@ -3633,7 +3633,6 @@ module find_params
 
 		zrho = paramvec(1)
 		zsig = paramvec(2)
-		amenityscale = paramvec(3)
 
 	!	call settfp()
 		call alloc_econ(val_sol,pol_sol,hists_sim)
@@ -3645,6 +3644,7 @@ module find_params
 		call draw_shocks(hists_sim)
 
 		call vscale_set(val_sol, hists_sim, vscale)
+		print *, vscale 
 		if(dabs(vscale)<1) vscale = 1.
 		print *, vscale 
 		t0tT = (/1,1/)
@@ -3666,7 +3666,7 @@ module find_params
 		enddo
 
 		errvec(1) =  moments_sim%ts_emp_coefs(1) - emp_persist! auto-correlation
-		!errvec(2) =  
+		errvec(2) =  condstd_tsemp - emp_std
 
 
 		call dealloc_econ(val_sol,pol_sol,hists_sim)
@@ -3712,7 +3712,7 @@ program V0main
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(3)=1.,err0(3)=1.
+		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(2)=1.,err0(2)=1.
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct) :: val_sol
@@ -3806,7 +3806,7 @@ program V0main
 	!	zsig = paramvec(2)
 	!	amenityscale = paramvec(3)
 	
-	param0 = (/zrho,zsig,amenityscale /)
+	param0 = (/zrho,zsig /)
 	err0 = 0.
 	call cal_dist(param0,err0)
 	

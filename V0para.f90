@@ -142,7 +142,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
 !		
-		amenityscale = .5,&	!scale parameter of gumbel distribution for occ choice
+		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
@@ -160,7 +160,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		smthELPM = 1.		!Smoothing for the LPM
 
 !**** calibration targets
-real(8) :: emp_persist = 098 ,&
+real(8) :: emp_persist = 0.98 ,&
 		emp_std = 0.01 ,&
 		amen_tgt = 1. ! This is just a placeholder
 
