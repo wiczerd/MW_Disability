@@ -83,17 +83,30 @@ module helper_funs
 	type hist_struct
 		real(dp), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
 		real(dp), allocatable :: wage_hist(:,:) !realized wages
-		real(dp), allocatable :: a_hist(:,:), al_hist(:,:), del_i(:)
-
+		integer, allocatable :: z_jt_macroint(:) !endogenous realization of shocks given a sequence
 		! a bunch of explanitory variables to be stacked on each other
 		integer, allocatable :: status_hist(:,:) !status: W,U,N,D,R (1:5)
-
-		integer, allocatable :: age_hist(:,:), born_hist(:,:), del_i_int(:)
+		integer, allocatable :: d_hist(:,:)
+		real(dp), allocatable :: a_hist(:,:)
 		real(dp), allocatable :: occgrow_jt(:,:)
 		real(dp), allocatable :: occshrink_jt(:,:)
 		real(dp), allocatable :: occsize_jt(:,:)
-		integer, allocatable :: j_i(:),z_jt_macro(:)
-		integer, allocatable :: d_hist(:,:),al_int_hist(:,:)
+		integer :: alloced
+	end type
+	
+	type shocks_struct
+		! arrays related to randomly drawn stuff
+		integer, allocatable :: j_i(:)
+		real(dp), allocatable :: z_jt_select(:), z_jt_innov(:)
+		integer, allocatable :: al_int_hist(:,:)
+		integer, allocatable :: age_hist(:,:), born_hist(:,:), del_i_int(:)
+		real(dp), allocatable :: al_hist(:,:), del_i(:)
+		
+		real(dp), allocatable    :: status_it_innov(:,:)
+		real(dp), allocatable    :: jshock_ij(:,:)
+		integer,  allocatable    :: drawi_ititer(:)
+		integer,  allocatable    :: drawt_ititer(:)
+		
 		integer :: alloced
 		integer :: drawn
 	end type
@@ -488,10 +501,9 @@ module helper_funs
 	subroutine alloc_econ(val_sol, pol_sol,hists_sim)
 
 	! Structure to communicate everything
-		type(val_struct) :: val_sol
-		type(pol_struct) :: pol_sol
-		type(hist_struct):: hists_sim
-
+		type(val_struct)   :: val_sol
+		type(pol_struct)   :: pol_sol
+		type(hist_struct)  :: hists_sim
 		!************************************************************************************************!
 		! Allocate phat matrices
 		!************************************************************************************************!
@@ -520,22 +532,37 @@ module helper_funs
 		allocate(hists_sim%wage_hist(Nsim,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%work_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%app_dif_hist(Nsim,Tsim), stat=hists_sim%alloced)
-		allocate(hists_sim%age_hist(Nsim,Tsim), stat=hists_sim%alloced)
-		allocate(hists_sim%born_hist(Nsim,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%status_hist(Nsim,Tsim), stat=hists_sim%alloced)
-		allocate(hists_sim%al_hist(Nsim,Tsim), stat=hists_sim%alloced)
-		allocate(hists_sim%al_int_hist(Nsim,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%d_hist(Nsim,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%a_hist(Nsim,Tsim), stat=hists_sim%alloced)
-		allocate(hists_sim%j_i(Nsim), stat=hists_sim%alloced)
-		allocate(hists_sim%z_jt_macro(Tsim), stat=hists_sim%alloced)
-		allocate(hists_sim%del_i_int(Nsim), stat=hists_sim%alloced)
-		allocate(hists_sim%del_i(Nsim), stat=hists_sim%alloced)
+		allocate(hists_sim%z_jt_macroint(Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%occgrow_jt(nj,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%occshrink_jt(nj,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%occsize_jt(nj,Tsim), stat=hists_sim%alloced)
 
-	end subroutine
+	end subroutine alloc_econ
+	
+	subroutine alloc_shocks(shocks_sim)
+		
+		type(shocks_struct) :: shocks_sim
+
+		allocate(shocks_sim%age_hist(Nsim,Tsim), stat=shocks_sim%alloced)
+		allocate(shocks_sim%born_hist(Nsim,Tsim), stat=shocks_sim%alloced)
+		allocate(shocks_sim%al_hist(Nsim,Tsim), stat=shocks_sim%alloced)
+		allocate(shocks_sim%al_int_hist(Nsim,Tsim), stat=shocks_sim%alloced)
+		allocate(shocks_sim%j_i(Nsim), stat=shocks_sim%alloced)
+		allocate(shocks_sim%jshock_ij(Nsim,nj), stat=shocks_sim%alloced)
+		allocate(shocks_sim%status_it_innov(Nsim,Tsim), stat=shocks_sim%alloced)
+		allocate(shocks_sim%del_i_int(Nsim), stat=shocks_sim%alloced)
+		allocate(shocks_sim%del_i(Nsim), stat=shocks_sim%alloced)
+		
+		!this must be big enough that we are sure it's big enough that can always find a worker
+		allocate(shocks_sim%drawi_ititer(Nsim*10)) 
+		allocate(shocks_sim%drawt_ititer(Nsim*10))
+	
+	
+	end subroutine alloc_shocks
+	
 
 	subroutine dealloc_econ(val_sol,pol_sol,hists_sim)
 
@@ -543,19 +570,61 @@ module helper_funs
 		type(val_struct) :: val_sol
 		type(pol_struct) :: pol_sol
 		type(hist_struct):: hists_sim
+		deallocate(val_sol%VR, stat=val_sol%alloced)
+		deallocate(pol_sol%aR, stat=pol_sol%alloced)
 
-		deallocate(pol_sol%aR,pol_sol%aD,pol_sol%aN, pol_sol%aU, pol_sol%aW,pol_sol%gwork, pol_sol%gapp)
-		deallocate(pol_sol%gwork_dif,pol_sol%gapp_dif)
-		deallocate(val_sol%VR,val_sol%VD,val_sol%VN,val_sol%VU,val_sol%VW,val_sol%V)
-		deallocate(hists_sim%wage_hist,hists_sim%work_dif_hist)
-		deallocate(hists_sim%app_dif_hist,hists_sim%status_hist,hists_sim%born_hist)
-		deallocate(hists_sim%age_hist, hists_sim%al_hist, hists_sim%d_hist)
-		deallocate(hists_sim%a_hist,hists_sim%j_i,hists_sim%del_i_int,hists_sim%del_i)
-		deallocate(hists_sim%z_jt_macro,hists_sim%al_int_hist)
-		deallocate(hists_sim%occgrow_jt, hists_sim%occshrink_jt )
-		deallocate(hists_sim%occsize_jt)
+		! (disability extent, earn hist, assets, age)
+		deallocate(val_sol%VD, stat=val_sol%alloced)
+		deallocate(pol_sol%aD, stat=pol_sol%alloced)
+
+		! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
+		deallocate(val_sol%VN , stat=val_sol%alloced)
+		deallocate(val_sol%VU , stat=val_sol%alloced)
+		deallocate(val_sol%VW , stat=val_sol%alloced)
+		deallocate(val_sol%V , stat=val_sol%alloced)
+		deallocate(pol_sol%aN, stat=pol_sol%alloced)
+		deallocate(pol_sol%aW, stat=pol_sol%alloced)
+		deallocate(pol_sol%aU, stat=pol_sol%alloced)
+		deallocate(pol_sol%gwork, stat=pol_sol%alloced)
+		deallocate(pol_sol%gapp, stat=pol_sol%alloced)
+
+		deallocate(pol_sol%gapp_dif , stat=pol_sol%alloced)
+		deallocate(pol_sol%gwork_dif , stat=pol_sol%alloced)
+
+		deallocate(hists_sim%wage_hist , stat=hists_sim%alloced)
+		deallocate(hists_sim%work_dif_hist , stat=hists_sim%alloced)
+		deallocate(hists_sim%app_dif_hist , stat=hists_sim%alloced)
+		deallocate(hists_sim%status_hist , stat=hists_sim%alloced)
+		deallocate(hists_sim%d_hist , stat=hists_sim%alloced)
+		deallocate(hists_sim%a_hist , stat=hists_sim%alloced)
+		deallocate(hists_sim%z_jt_macroint, stat=hists_sim%alloced)
+		deallocate(hists_sim%occgrow_jt, stat=hists_sim%alloced)
+		deallocate(hists_sim%occshrink_jt, stat=hists_sim%alloced)
+		deallocate(hists_sim%occsize_jt, stat=hists_sim%alloced)
+
 		hists_sim%alloced = 0
-	end subroutine
+	end subroutine dealloc_econ
+	
+	
+	subroutine dealloc_shocks(shocks_sim)
+
+		type(shocks_struct) :: shocks_sim
+
+		deallocate(shocks_sim%age_hist , stat=shocks_sim%alloced)
+		deallocate(shocks_sim%born_hist , stat=shocks_sim%alloced)
+		deallocate(shocks_sim%al_hist , stat=shocks_sim%alloced)
+		deallocate(shocks_sim%al_int_hist , stat=shocks_sim%alloced)
+		deallocate(shocks_sim%j_i , stat=shocks_sim%alloced)
+		deallocate(shocks_sim%jshock_ij, stat=shocks_sim%alloced)
+		deallocate(shocks_sim%status_it_innov , stat=shocks_sim%alloced)
+		deallocate(shocks_sim%del_i_int, stat=shocks_sim%alloced)
+		deallocate(shocks_sim%del_i, stat=shocks_sim%alloced)
+		
+		!this must be big enough that we are sure it's big enough that can always find a worker
+		deallocate(shocks_sim%drawi_ititer) 
+		deallocate(shocks_sim%drawt_ititer)
+
+	end subroutine dealloc_shocks
 
 end module helper_funs
 
@@ -596,10 +665,11 @@ module model_data
 
 	end subroutine ts_employment
 	
-	subroutine LPM_employment(hists_sim,moments_sim)
+	subroutine LPM_employment(hists_sim,moments_sim,shocks_sim)
 	
 		type(moments_struct)	:: moments_sim
 		type(hist_struct)	:: hists_sim
+		type(shocks_struct) :: shocks_sim
 
 		real(dp), allocatable :: obsX_vars(:,:), work_dif_long(:)
 		integer :: i, ij,it,age_hr,id, status, nobs, yr_stride
@@ -619,11 +689,11 @@ module model_data
 		Nobs = 0
 		do i=1,Nsim
 			do it=1,Tsim
-				if( hists_sim%age_hist(i,it) <= TT-1 ) then
+				if( shocks_sim%age_hist(i,it) <= TT-1 ) then
 					Nobs = Nobs + 1
 					work_dif_long( Nobs ) = dexp(hists_sim%work_dif_hist(i,it)*smthELPM )/(1._dp + dexp(hists_sim%work_dif_hist(i,it)*smthELPM) )
 					do age_hr=1,TT-1
-						if(hists_sim%age_hist(i,it) .eq. age_hr ) obsX_vars( Nobs, age_hr) = 1._dp
+						if(shocks_sim%age_hist(i,it) .eq. age_hr ) obsX_vars( Nobs, age_hr) = 1._dp
 					enddo
 					do id = 1,nd-1
 						if(hists_sim%d_hist(i,it) .eq. id ) obsX_vars(Nobs, (TT-1)+id) = 1._dp
@@ -633,7 +703,7 @@ module model_data
 						endif
 					enddo
 					do ij = 1,nj
-						if(hists_sim%j_i(i) == ij )  then
+						if(shocks_sim%j_i(i) == ij )  then
 							if(it<=Tsim - yr_stride .and. it>= yr_stride+1) then
 								obsX_vars(Nobs, (TT-1)+(nd-1)*2+1) = (hists_sim%occsize_jt(ij,it+yr_stride) - hists_sim%occsize_jt(ij,it-yr_stride)) &
 													& /(hists_sim%occsize_jt(ij,it))
@@ -685,10 +755,11 @@ module model_data
 		
 	end subroutine LPM_employment
 
-	subroutine moments_compute(hists_sim,moments_sim)
+	subroutine moments_compute(hists_sim,moments_sim,shocks_sim)
 	
 		type(moments_struct) 	:: moments_sim
 		type(hist_struct)	:: hists_sim
+		type(shocks_struct) :: shocks_sim
 	
 		integer :: i, ij,id,it,ial,st,si,age_hr,status_hr
 		integer :: totage(TT),totD(TT),totW(TT),totst(Tsim),total(nal), tot3al(nal), &
@@ -727,8 +798,8 @@ module model_data
 		
 		do si = 1,Nsim
 			do st = 1,Tsim
-				if(hists_sim%status_hist(si,st) >0 .and. hists_sim%age_hist(si,st) >0 ) then
-					age_hr = hists_sim%age_hist(si,st)
+				if(hists_sim%status_hist(si,st) >0 .and. shocks_sim%age_hist(si,st) >0 ) then
+					age_hr = shocks_sim%age_hist(si,st)
 					totage_st(age_hr,st) = totage_st(age_hr,st) + 1
 					! savings and disability by time
 					a_t(st) = hists_sim%a_hist(si,st) + a_t(st)
@@ -749,8 +820,8 @@ module model_data
 								dD_age(age_hr) = dD_age(age_hr)+hists_sim%d_hist(si,st)
 								! associate this with its shock
 								do ial = 1,nal
-									if(  hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp) &
-									&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp) &
+									if(  shocks_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp) &
+									&	.and. shocks_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp) &
 									&	.and. hists_sim%status_hist(si,st) == 4 ) &
 									&	alD_age(ial,age_hr) = 1._dp + alD_age(ial,it)
 								enddo
@@ -769,8 +840,8 @@ module model_data
 					
 					! disability and app choice by shock level
 					do ial = 1,nal
-						if( hists_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp) &
-						&	.and. hists_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp)) then
+						if( shocks_sim%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp) &
+						&	.and. shocks_sim%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp)) then
 							if(hists_sim%status_hist(si,st) <3) then
 								!work choice:
 								alworkdif(ial) = alworkdif(ial) + hists_sim%work_dif_hist(si,st)
@@ -822,7 +893,7 @@ module model_data
 			call mat2csv(status_Nt,"status_Nt.csv")
 		endif
 
-		call LPM_employment(hists_sim,moments_sim)
+		call LPM_employment(hists_sim,moments_sim,shocks_sim)
 		call ts_employment(hists_sim, moments_sim)
 		
 	end subroutine moments_compute
@@ -2294,11 +2365,12 @@ module sim_hists
 		deallocate(bdayseed)
 	end subroutine draw_alit
 
-	subroutine draw_ji(j_i,seed0, success)
+	subroutine draw_ji(j_i,jshock_ij,seed0, success)
 		implicit none
 		integer	:: j_i(:)
+		real(dp) :: jshock_ij(:,:)
 		real(dp) :: jwt
-		integer	:: i,m,ss=1
+		integer	:: i,m,ss=1,ij
 		integer,intent(in)  :: seed0
 		integer,intent(out) :: success
 		integer, allocatable :: bdayseed(:)
@@ -2307,8 +2379,8 @@ module sim_hists
 
 		Njcumdist = 0
 		if(nj>1) then
-			do i=1,nj
-				Njcumdist(i+1) = occsz0(i) + Njcumdist(i)
+			do ij=1,nj
+				Njcumdist(ij+1) = occsz0(ij) + Njcumdist(ij)
 			enddo
 		
 			call random_seed(size = ss)
@@ -2322,9 +2394,20 @@ module sim_hists
 				if(j_i(i) < 1 ) j_i(i) = 1
 				if(j_i(i) > nj) j_i(i) = nj
 			enddo
+
+			if(j_rand .eqv. .false. ) then
+				!draw gumbel-distributed shock
+				do i = 1,Nsim
+					do ij = 1,nj
+						call random_gumbel(draw_i)
+						jshock_ij(i,ij)=draw_i
+					enddo
+				enddo
+			endif
 			
 			deallocate(bdayseed)
 		else
+			jshock_ij = 0.
 			j_i = 1
 		endif
 
@@ -2333,38 +2416,22 @@ module sim_hists
 		
 	end subroutine draw_ji
 
-	subroutine draw_zjt(z_jt_macro, seed0, success)
+	subroutine draw_zjt(z_jt_select, z_jt_innov, seed0, success)
 		implicit none
 
-		integer, intent(out) :: z_jt_macro(:) !this will be the panel across occupations -> z_jt by i's j
+		real(dp), intent(out) :: z_jt_innov(:) !this will drive the continuous AR process
+		real(dp), intent(out) :: z_jt_select(:) !this will select the state if we use a markov chain
 		integer	:: it=1,i=1,ij=1,iz=1,izp=1,m=1,ss=1, z_jt_t=1
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer, allocatable :: bdayseed(:) 
 		integer, dimension(5,2) :: NBER_start_stop
 		real(dp) :: z_innov=1.
-		real(dp) :: cumpi_z(nz,nz+1),cumpi_zblock(nz/2,nz/2+1)
 		
 		call random_seed(size = ss)
 		allocate(bdayseed(ss))
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
-
-		cumpi_z = 0.
-		cumpi_zblock = 0.
-		! for random transitions of time block
-		do iz=1,nz
-			do izp=1,nz
-				cumpi_z(iz,izp+1) = piz(iz,izp) + cumpi_z(iz,izp)
-			enddo
-		enddo
-		! for deterministic transition of time block
-		do iz=1,nz/2
-			do izp=1,nz/2
-				cumpi_zblock(iz,izp+1) = piz(iz,izp) + cumpi_zblock(iz,izp)
-			enddo
-			cumpi_zblock(iz,:) = cumpi_zblock(iz,:)/cumpi_zblock(iz,nz/2)
-		enddo
 
 		!compute NBER dates in case of NBER_tseq == 1 
 		! 1980 + 0/4 -> 1980 + 2/4
@@ -2392,28 +2459,21 @@ module sim_hists
 		do it = 1,Tsim
 			if(NBER_tseq .eq. 1 ) then
 				if(it >= NBER_start_stop(ss,1) .and. it < NBER_start_stop(ss,2) ) then
-					z_innov = 0.
-				elseif( it == NBER_start_stop(ss,2) ) then
-					z_innov = 1.
+					z_innov = -5.
+				elseif( it >= NBER_start_stop(ss,2) .and. it<= NBER_start_stop(ss,2)+(nz/2)/2  ) then !fully reverse the recession
+					z_innov = 5.
 					ss = ss+1
 				else
-					z_innov = 0.5
+					z_innov = 0. ! 
 				endif
 			else
-				call rand_num_closed(z_innov)
-				if(z_innov<0. .or. z_innov >1) then
-					call rand_num_closed(z_innov)
-				endif
+				call random_normal(z_innov)
+
 			endif	
-			! use conditional probability w/in time block
-			z_jt_t = finder(cumpi_zblock(z_jt_t,:),z_innov )
-			if( dble(it)<struc_brk*tlen ) then
-				z_jt_macro(it) = z_jt_t
-			else
-				z_jt_macro(it) = z_jt_t + nz/2
-			endif
-			! allow random time-block transitions
-			! z_jt_t = finder(cumpi_z(z_jt_t,:),z_innov )
+
+			z_jt_innov(it) = z_innov
+			z_jt_select(it) = alnorm(z_innov,.false.)
+			
 			
 		enddo
 		success = 0
@@ -2542,10 +2602,10 @@ module sim_hists
 	end subroutine
 
 
-	subroutine draw_shocks(hst)
+	subroutine draw_shocks(shk)
 
 		implicit none
-		type(hist_struct) :: hst
+		type(shocks_struct) :: shk
 		integer :: seed0,seed1, status 
 
 		seed0 = 941987
@@ -2553,29 +2613,104 @@ module sim_hists
 
 		if(verbose >2) print *, "Drawing types and shocks"	
 
-		call draw_age_it(hst%age_hist,hst%born_hist,seed0,status)
+		call draw_age_it(shk%age_hist,shk%born_hist,seed0,status)
 		seed0 = seed0 + 1
-		call draw_deli(hst%del_i, hst%del_i_int, seed1, status)
+		call draw_deli(shk%del_i, shk%del_i_int, seed1, status)
 		seed1 = seed1 + 1
-		call draw_alit(hst%al_hist,hst%al_int_hist, seed0, status)
+		call draw_alit(shk%al_hist,shk%al_int_hist, seed0, status)
 		seed0 = seed0 + 1
-		call draw_ji(hst%j_i,seed1, status)
+		call draw_ji(shk%j_i,shk%jshock_ij,seed1, status)
 		seed1 = seed1 + 1
-		call draw_zjt(hst%z_jt_macro, seed0, status)
+		call draw_zjt(shk%z_jt_select,shk%z_jt_innov, seed0, status)
 		seed0 = seed0 + 1
+		call draw_draw(shk%drawi_ititer, shk%drawt_ititer, shk%age_hist, seed1, status)
+		seed1 = seed1 + 1
+		call draw_status_innov(shk%status_it_innov, seed0, status)
+		seed0 = seed0 + 1
+		
+		shk%drawn = 1
 
-		hst%drawn = 1
-
+		! check the distributions
+		if(print_lev > 1 ) then
+			call mat2csv(shk%jshock_ij,"jshock_ij.csv")
+			call vec2csv(shk%del_i,"del_i.csv")
+			call veci2csv(shk%j_i,"j_i.csv")
+			call mat2csv(shk%al_hist,"al_it.csv")
+			call vec2csv(shk%z_jt_innov,"z_jt_innov.csv")
+			call mati2csv(shk%al_int_hist,"al_it_int.csv")
+			call mati2csv(shk%age_hist,"age_it.csv")
+			call veci2csv(shk%drawi_ititer,"drawi.csv")
+		endif
+		
 	end subroutine draw_shocks
 
+	subroutine set_zjt(z_jt_macroint, z_jt_panel, shk)
 	
-	subroutine sim(vfs, pfs,hst)
+		type(shocks_struct), intent(in) :: shk
+		real(8) :: z_jt_panel(:,:)
+		integer :: z_jt_macroint(:)
+		! for selecting the state of zj
+		real(dp) :: cumpi_z(nz,nz+1),cumpi_zblock(nz/2,nz/2+1)
+		real(dp) ::  cumergpi(nz/2+1)
+	
+		integer :: it,ij,iz,izp, zi_jt_t
+		real(8) :: muhere
+
+		call settfp() ! sets values for piz
+
+
+		cumpi_z = 0.
+		cumpi_zblock = 0.
+		cumergpi = 0.
+		! for random transitions of time block
+		do iz=1,nz
+			do izp=1,nz
+				cumpi_z(iz,izp+1) = piz(iz,izp) + cumpi_z(iz,izp)
+			enddo
+		enddo
+		! for deterministic transition of time block
+		do iz=1,nz/2
+			do izp=1,nz/2
+				cumpi_zblock(iz,izp+1) = piz(iz,izp) + cumpi_zblock(iz,izp)
+			enddo
+			cumpi_zblock(iz,:) = cumpi_zblock(iz,:)/cumpi_zblock(iz,nz/2)
+			cumergpi(iz+1) = cumergpi(iz)+ ergpiz(iz)
+		enddo
+		
+		it = 1
+		z_jt_panel(:,it) = (1.-zrho)*zmu + zsig*shk%z_jt_innov(it)		
+		zi_jt_t = finder(cumergpi,shk%z_jt_select(it) )
+		do it= 2,Tsim
+			! use conditional probability w/in time block
+			zi_jt_t = finder(cumpi_zblock(zi_jt_t,:),shk%z_jt_select(it) )
+			if( dble(it)<struc_brk*tlen ) then
+				z_jt_macroint(it) = zi_jt_t
+			else
+				z_jt_macroint(it) = zi_jt_t + nz/2
+			endif
+			! allow random time-block transitions
+			! z_jt_t = finder(cumpi_z(z_jt_t,:),z_innov )
+			do ij=1,Nj
+				if(it>= Tblock_sim*itlen) then 
+					muhere = zmu+zscale(ij)
+				else
+					muhere = zmu
+				endif
+				z_jt_panel(ij,it) = (1.-zrho)*muhere + zsig*shk%z_jt_innov(it) + zrho*z_jt_panel(ij,it-1)
+			enddo
+		enddo
+	
+	end subroutine set_zjt
+
+	
+	subroutine sim(vfs, pfs,hst,shk)
 		
 		implicit none
 
 		type(val_struct), intent(inout), target :: vfs
 		type(pol_struct), intent(inout), target :: pfs	
 		type(hist_struct), intent(inout), target :: hst
+		type(shocks_struct), intent(inout), target :: shk
 		
 
 
@@ -2583,17 +2718,15 @@ module sim_hists
 			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5
 		integer, allocatable :: bdayseed(:)
 
-		real(dp), allocatable :: status_it_innov(:,:), jshock_ij(:,:)
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
 		real(dp), allocatable :: e_it(:,:)
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
-		integer, allocatable :: drawi_ititer(:),drawt_ititer(:)
-
+		
 		! FOR DEBUGGING
 		real(dp), allocatable :: val_hr_it(:)
 		
-		! write to hst
+		! write to hst, get from shk
 		real(dp), pointer    :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
 		integer, pointer     :: born_it(:,:) ! born status, drawn randomly		
 		real(dp), pointer	 ::	del_i(:)
@@ -2602,11 +2735,19 @@ module sim_hists
 		integer, pointer     :: age_it(:,:)	! ages, drawn randomly
 		integer, pointer     :: j_i(:)		! occupation, maybe random
 		integer, pointer     :: d_it(:,:) 	! disability status
-		integer, pointer     :: z_jt_macro(:)! shocks to be drawn
+		integer, pointer     :: z_jt_macroint(:)! shocks to be drawn
 		integer, pointer     :: al_it_int(:,:)! integer valued shocks
-		real(dp), pointer     :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
-		real(dp), pointer     :: a_it(:,:) 	! assets
-		real(dp), pointer     ::	al_it(:,:)	! individual shocks
+		real(dp), pointer    :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
+		real(dp), pointer    :: a_it(:,:) 	! assets
+		real(dp), pointer    ::	al_it(:,:)	! individual shocks
+		real(dp), pointer    :: status_it_innov(:,:)
+		real(dp), pointer    :: jshock_ij(:,:)
+		integer,  pointer    :: drawi_ititer(:)
+		integer,  pointer    :: drawt_ititer(:)
+
+		real(dp), pointer	 :: z_jt_innov(:)
+		real(dp), pointer	 :: z_jt_select(:)
+
 
 		! read from vals
 		real(dp), pointer ::	V(:,:,:,:,:,:,:)	!Participant
@@ -2636,20 +2777,11 @@ module sim_hists
 
 		iter_draws = maxiter !globally set variable
 		
-		allocate(jshock_ij(Nsim,nj))
-		allocate(del_i(Nsim))
-		allocate(status_it_innov(Nsim,Tsim))
-		
 		allocate(a_it_int(Nsim,Tsim))		
 		allocate(e_it(Nsim,Tsim))
 		allocate(e_it_int(Nsim,Tsim))		
 		allocate(work_it(Nsim,Tsim))
 		allocate(app_it(Nsim,Tsim))
-
-		!this must be big enough that we are sure it's big enough that can always find a worker
-		allocate(drawi_ititer(Nsim*10)) 
-		allocate(drawt_ititer(Nsim*10))
-
 
 		!!!!!!!!!!!!!!! DEBUGGING
 		allocate(val_hr_it(Nsim))
@@ -2671,27 +2803,35 @@ module sim_hists
 		gapp_dif    => pfs%gapp_dif
 		gwork_dif   => pfs%gwork_dif
 
+
+		z_jt_innov  => shk%z_jt_innov
+		z_jt_select  => shk%z_jt_select
+		del_i_int   => shk%del_i_int
+		del_i       => shk%del_i
+		j_i         => shk%j_i
+		al_it       => shk%al_hist
+		al_it_int	=> shk%al_int_hist
+		age_it 	    => shk%age_hist
+		born_it	    => shk%born_hist
+		status_it_innov => shk%status_it_innov
+		jshock_ij  	 	=> shk%jshock_ij  
+		drawi_ititer    => shk%drawi_ititer
+		drawt_ititer    => shk%drawt_ititer
+
+
 		status_it   => hst%status_hist
-		age_it 	    => hst%age_hist
-		born_it	    => hst%born_hist
 		work_dif_it => hst%work_dif_hist
 		app_dif_it  => hst%app_dif_hist
 		d_it        => hst%d_hist
-		del_i_int   => hst%del_i_int
-		del_i       => hst%del_i
-		j_i         => hst%j_i
-		z_jt_macro  => hst%z_jt_macro
-		a_it        => hst%a_hist
-		al_it       => hst%al_hist
-		al_it_int	=> hst%al_int_hist
-		
+		z_jt_macroint  => hst%z_jt_macroint
+		a_it        => hst%a_hist		
 		occgrow_jt  => hst%occgrow_jt
 		occshrink_jt=> hst%occshrink_jt
 		occsize_jt  => hst%occsize_jt
 
 		ptrsuccess = associated(d_it,hst%d_hist)
 		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate d_it"
-		ptrsuccess = associated(age_it,hst%age_hist)
+		ptrsuccess = associated(age_it,shk%age_hist)
 		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate age_it"
 		ptrsuccess = associated(V,vfs%V)
 		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate V"
@@ -2702,55 +2842,10 @@ module sim_hists
 		app_dif_it = 0.
 
 
-		seed0 = 941987
-		seed1 = 12281951
-		call random_seed(size = ss)
-		allocate(bdayseed(ss))
-		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
-		call random_seed(put = bdayseed(1:ss) )
+		if(shk%drawn /= 1 )then
+			call draw_shocks(shk)
+		endif		
 
-		
-		if(j_rand .eqv. .false. ) then
-			!draw gumbel-distributed shock
-			do i = 1,Nsim
-				do ij = 1,nj
-					call random_gumbel(js_ij)
-					jshock_ij(i,ij)=js_ij
-				enddo
-			enddo
-		endif
-		
-		if(hst%drawn /= 1 )then
-			call draw_shocks(hst)
-!			call draw_age_it(age_it,born_it,seed0,status)
-!			seed0 = seed0 + 1
-!			call draw_deli(del_i, del_i_int, seed1, status)
-!			seed1 = seed1 + 1
-!			call draw_alit(al_it,al_it_int, seed0, status)
-!			seed0 = seed0 + 1
-!			call draw_ji(j_i,seed1, status)
-!			seed1 = seed1 + 1
-!			call draw_zjt(z_jt_macro, seed0, status)
-!			seed0 = seed0 + 1
-		endif
-		
-		call draw_status_innov(status_it_innov,seed1,status)
-		seed1 = seed1 + 1
-		call draw_draw(drawi_ititer, drawt_ititer, age_it, seed0, status)
-		seed0 = seed0 + 1
-		
-		! check the distributions
-		if(print_lev > 1 ) then
-			call mat2csv(jshock_ij,"jshock_ij.csv")
-			call vec2csv(del_i,"del_i.csv")
-			call veci2csv(j_i,"j_i.csv")
-			call mat2csv(al_it,"al_it.csv")
-			call veci2csv(z_jt_macro,"z_jt_macro.csv")
-			call mati2csv(al_it_int,"al_it_int.csv")
-			call mati2csv(age_it,"age_it.csv")
-			call veci2csv(drawi_ititer,"drawi.csv")
-		endif
-		
 		!set up cumpid,cumptau
 		cumpid = 0.
 		cumptau = 0.
@@ -2779,7 +2874,7 @@ module sim_hists
 		e_it_int = 1
 		status_it = 1 ! just to initialize on the first round - everyone working age starts working
 		where(age_it>=TT) status_it = 5
-		where(age_it <=0) status_it = 0
+		where(age_it<= 0) status_it = 0
 		
 		a_mean_liter = 0.
 		d_mean_liter = 0.
@@ -2841,6 +2936,8 @@ module sim_hists
 					!set the state
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
+					
+					
 					if((born_it(i,it).eq. 1 .and. it> 1) .or. (age_it(i,it)>0 .and. it==1)) then
 					! no one is ``born'' in the first period, but they make a decision as if just born
 						age_hr	= 1
@@ -2858,7 +2955,7 @@ module sim_hists
 							do ij = 1,nj
 								j_val_ij = 0.
 								do idi = 1,ndi
-									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macro(it),age_hr)*delwt(idi,ij)+j_val_ij
+									j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,z_jt_macroint(it),age_hr)*delwt(idi,ij)+j_val_ij
 								enddo
 								j_val_ij = (j_val_ij + jshift(ij,iiH))/(amenityscale*vscale) + jshock_ij(i,ij)
 								if(j_val< j_val_ij ) then
@@ -2878,7 +2975,7 @@ module sim_hists
 								enddo
 							endif
 							del_i_int(i) = del_hr
-							!also adjust del_i(i)
+							del_i(i) = delgrid(del_hr)
 						endif
 						if(it == 1) then !these were born, 
 							age_hr	= age_it(i,it)
@@ -2896,8 +2993,14 @@ module sim_hists
 						e_hr 	= e_it(i,it)
 						ai_hr 	= a_it_int(i,it)
 					endif
-					zi_hr	= z_jt_macro(it)
-					z_hr	= zgrid(zi_hr,j_hr)
+
+					zi_hr	= z_jt_macroint(it)
+					if(zj_contin .eqv. .false.) then
+						z_hr	= zgrid(zi_hr,j_hr)
+					else
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+						z_hr	= zgrid(zi_hr,j_hr)
+					endif
 					
 					wage_hr	= wage(bet_hr,al_hr,d_hr,z_hr,age_hr)
 					hst%wage_hist(i,it) = wage_hr
@@ -3189,7 +3292,7 @@ module sim_hists
 				call mati2csv(status_it,"status_it.csv")
 				call mati2csv(d_it,"d_it.csv")
 				call veci2csv(j_i,"j_i.csv")
-				call veci2csv(z_jt_macro,"z_jt.csv")
+				call veci2csv(z_jt_macroint,"z_jt.csv")
 				call mat2csv (occsize_jt,"occsize_jt.csv")
 				call mat2csv (occgrow_jt,"occgrow_jt.csv")
 				call mat2csv (occshrink_jt,"occshrink_jt.csv")
@@ -3203,8 +3306,8 @@ module sim_hists
 		deallocate(a_it_int,e_it_int)
 		deallocate(app_it,work_it)
 		deallocate(val_hr_it)
-		deallocate(status_it_innov)
-		deallocate(drawi_ititer,drawt_ititer)
+		!deallocate(status_it_innov)
+		!deallocate(drawi_ititer,drawt_ititer)
 
 	end subroutine sim
 
@@ -3230,11 +3333,12 @@ module find_params
 	integer :: mod_ij_obj, mod_it
 	type(val_struct), pointer :: mod_val_sol
 	type(hist_struct), pointer :: mod_hists_sim
+	type(shocks_struct), pointer :: mod_shocks_sim
 	real(dp) :: mod_prob_target
 
 	contains
 
-	function obj_zj(zj_in,val_sol,hists_sim,prob_target,ij_obj,it0) result(resid)
+	function obj_zj(zj_in,val_sol,hists_sim,shocks_sim,prob_target,ij_obj,it0) result(resid)
 		
 		! for each j in each t, this solves the implied z_j
 		! where z_j scales the rest of the markov chain
@@ -3242,6 +3346,7 @@ module find_params
 		integer, intent(in) :: ij_obj, it0
 		type(val_struct),  intent(in) :: val_sol
 		type(hist_struct), intent(in):: hists_sim
+		type(shocks_struct), intent(in) :: shocks_sim
 		real(dp), intent(in) :: prob_target,zj_in
 		real(dp) :: resid
 		real(dp) :: zj_here=1.,nborn=1.,j_val_hi=1.,j_val_lo=1.,j_scale=1.
@@ -3258,17 +3363,17 @@ module find_params
 		j_val_here = -1.e10_dp
 
 		
-		simT = size(hists_sim%born_hist,2)
+		simT = size(shocks_sim%born_hist,2)
 		beti = 1
 		prob_here = 0._dp
 		nborn = 0._dp
 		do it = it0,simT
 			do i = 1,Nsim
 
-				if(hists_sim%born_hist(i,it).eq. 1 ) then !they've been born this period
+				if(shocks_sim%born_hist(i,it).eq. 1 ) then !they've been born this period
 					nborn = 1._dp + nborn
 					!set the state
-					ali_hr 	= hists_sim%al_int_hist(i,it)
+					ali_hr 	= shocks_sim%al_int_hist(i,it)
 					age_hr 	= 1
 					d_hr 	= 1
 					ai_hr	= 1
@@ -3280,7 +3385,7 @@ module find_params
 					zgrid_min = minval(zgrid(nz/2+1:nz,ij))
 					zgrid_max = maxval(zgrid(nz/2+1:nz,ij))
 					! choose by scaling zgrid using the pre-transition values, 1:nz/2.  The `mod' ensures we're in that range
-					zj_here   = zgrid(mod(hists_sim%z_jt_macro(it)-1,nz/2)+1,ij) + zj_in
+					zj_here   = zgrid(mod(hists_sim%z_jt_macroint(it)-1,nz/2)+1,ij) + zj_in
 					! zj_here	  = max(min(zj_here,zgrid_max),zgrid_min) This would prevent extrapolation
 					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here) + nz/2
 					zj_lo	  = min(max(zj_lo,nz/2+1) , nz-1)
@@ -3299,7 +3404,7 @@ module find_params
 							j_val_ij(i,ij) = 0.
 							do idi = 1,ndi ! expectation over delta
 								j_val_ij(i,ij) = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
-											& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
+											& hists_sim%z_jt_macroint(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
 							enddo
 						else
 								j_val_ij(i,ij) = j_val_here(i)
@@ -3342,7 +3447,7 @@ module find_params
 		real(dp), intent(in) :: dummy_params(:)
 		real(dp) :: resid
 
-		resid = obj_zj(zj_here,mod_val_sol,mod_hists_sim,mod_prob_target,mod_ij_obj,mod_it)
+		resid = obj_zj(zj_here,mod_val_sol,mod_hists_sim,mod_shocks_sim, mod_prob_target,mod_ij_obj,mod_it)
 
 	end function obj_zj_wrap
 
@@ -3408,10 +3513,11 @@ module find_params
 	end subroutine newtfpgrid
 
 
-	subroutine vscale_set(val_sol, hists_sim, vscale_out)
+	subroutine vscale_set(val_sol, hists_sim, shocks_sim, vscale_out)
 		! this sets the scaling for vscale, which is necessary to do discrete choice over occuptions
 		type(val_struct),intent(in) :: val_sol
 		type(hist_struct), intent(in):: hists_sim
+		type(shocks_struct), intent(in):: shocks_sim
 		real(8)	:: vscale_out
 		real(8)	:: cumval,updjscale,nborn
 		integer  :: ij=1, i=1, it=1
@@ -3427,10 +3533,10 @@ module find_params
 		
 		it = 1
 		do i = 1,Nsim
-			if(hists_sim%age_hist(i,it) > 0 ) then !they're alive in the first period
+			if(shocks_sim%age_hist(i,it) > 0 ) then !they're alive in the first period
 				nborn = 1._dp + nborn
 				!set the state
-				ali_hr 	= hists_sim%al_int_hist(i,it)
+				ali_hr 	= shocks_sim%al_int_hist(i,it)
 				age_hr 	= 1
 				d_hr 	= 1
 				ai_hr	= 1
@@ -3439,7 +3545,7 @@ module find_params
 					j_val_ij(i,ij) = 0.
 					do idi = 1,ndi ! expectation over delta
 						j_val_ij(i,ij) = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
-									& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
+									& hists_sim%z_jt_macroint(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
 					enddo
 					vscale_out = dabs(j_val_ij(i,ij)) + vscale_out
 					!print *, j_val_ij(i,ij)
@@ -3451,10 +3557,11 @@ module find_params
 	end subroutine vscale_set
 
 
-	subroutine jshift_sol(val_sol, hists_sim, probj_in, t0tT,jshift_out)
+	subroutine jshift_sol(val_sol, hists_sim, shocks_sim, probj_in, t0tT,jshift_out)
 		! solves for the factors jshift(j)
 		type(val_struct),intent(in) :: val_sol
 		type(hist_struct), intent(in):: hists_sim
+		type(shocks_struct), intent(in):: shocks_sim
 		
 		real(dp), intent(in) :: probj_in(:)
 		integer,  intent(in) :: t0tT(:) ! should have the start and end periods during which people are born
@@ -3476,11 +3583,11 @@ module find_params
 		! first load the value functions for the target period
 		do it = t0tT(1), t0tT(2)
 			do i = 1,Nsim
-				if(hists_sim%born_hist(i,it) > 0 .or.  (it == 1 .and. hists_sim%age_hist(i,it) > 0) ) then
+				if(shocks_sim%born_hist(i,it) > 0 .or.  (it == 1 .and. shocks_sim%age_hist(i,it) > 0) ) then
 				!they're alive in the first period or born this period
 					nborn = 1._dp + nborn
 					!set the state
-					ali_hr 	= hists_sim%al_int_hist(i,it)
+					ali_hr 	= shocks_sim%al_int_hist(i,it)
 					age_hr 	= 1
 					d_hr 	= 1
 					ai_hr	= 1
@@ -3489,7 +3596,7 @@ module find_params
 						j_val_ij(i,ij) = 0.
 						do idi = 1,ndi ! expectation over delta
 							j_val_ij(i,ij) = val_sol%V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr, &
-										& hists_sim%z_jt_macro(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
+										& hists_sim%z_jt_macroint(it),age_hr)*delwt(idi,ij) + j_val_ij(i,ij)
 						enddo
 					enddo
 				endif !born
@@ -3525,10 +3632,11 @@ module find_params
 		
 	end subroutine
 
-	subroutine iter_zproc(val_sol, hists_sim)
+	subroutine iter_zproc(val_sol, hists_sim,shocks_sim)
 		integer :: it=1, ij=1, ziter=1
 		type(val_struct), target :: val_sol
 		type(hist_struct), target:: hists_sim
+		type(shocks_struct), target:: shocks_sim
 
 		real(dp) :: zj_here=1., zscale_mean=1.,zscale_mean1=1.
 		real(dp) :: dummy_params(3)
@@ -3544,6 +3652,7 @@ module find_params
 		allocate(zgrid1(nz,nj))
 		mod_val_sol => val_sol
 		mod_hists_sim => hists_sim
+		mod_shocks_sim => shocks_sim
 		zscale1 = 0.
 		zscale_mean = 0.
 		zgrid0 = zgrid
@@ -3614,7 +3723,7 @@ module find_params
 	end subroutine iter_zproc
 	
 
-	subroutine cal_dist(paramvec, errvec)
+	subroutine cal_dist(paramvec, errvec,shocks_sim)
 		! the inputs are the values of parameters we're moving in paramvec
 		! the outputs are deviations from targets
 		! 1/ persistence of occupation productivity shock
@@ -3622,8 +3731,11 @@ module find_params
 		! 3/ dispersion of gumbel shock - amenityscale
 		! 
 		
-		real(dp) :: paramvec(:), errvec(:)
-
+		real(dp), intent(in) :: paramvec(:)
+		real(dp), intent(out) :: errvec(:)
+		
+		type(shocks_struct) :: shocks_sim
+		
 		type(val_struct) :: val_sol
 		type(pol_struct) :: pol_sol
 		type(hist_struct):: hists_sim
@@ -3641,24 +3753,24 @@ module find_params
 		if(verbose >2) print *, "Solving the model"	
 		call sol(val_sol,pol_sol)
 		if(verbose >2) print *, "Solving for z process"
-		call draw_shocks(hists_sim)
 
-		call vscale_set(val_sol, hists_sim, vscale)
-		print *, vscale 
-		if(dabs(vscale)<1) vscale = 1.
-		print *, vscale 
+		call vscale_set(val_sol, hists_sim, shocks_sim, vscale)
+		if(dabs(vscale)<1) then 
+			vscale = 1.
+			if( verbose >1 ) print *, "reset vscale to 1"
+		endif
 		t0tT = (/1,1/)
-		call jshift_sol(val_sol, hists_sim, occsz0, t0tT, jshift(:,1)) !jshift_sol(val_sol, hists_sim, probj_in, t0tT,jshift_out)
+		call jshift_sol(val_sol, hists_sim,shocks_sim, occsz0, t0tT, jshift(:,1)) !jshift_sol(val_sol, hists_sim, shocks_sim, probj_in, t0tT,jshift_out)
 		t0tT = (/ struc_brk*itlen,  Tsim/)
-		call jshift_sol(val_sol, hists_sim, occprbrk, t0tT,jshift(:,2))
+		call jshift_sol(val_sol, hists_sim,shocks_sim, occprbrk, t0tT,jshift(:,2))
 		!!!!!!! fix this!!!!!!
 		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
-		!call iter_zproc(val_sol, hists_sim)
+		!call iter_zproc(val_sol, hists_sim,shocks_sim)
 		
 		if(verbose >2) print *, "Simulating the model"	
-		call sim(val_sol, pol_sol, hists_sim)
+		call sim(val_sol, pol_sol, hists_sim,shocks_sim)
 		if(verbose >2) print *, "Computing moments"
-		call moments_compute(hists_sim,moments_sim)
+		call moments_compute(hists_sim,moments_sim,shocks_sim)
 
 		condstd_tsemp = 0.
 		do ij = 1,nj
@@ -3677,7 +3789,8 @@ module find_params
 		integer :: Nin, Nout
 		real(dp) :: paramvec(:), errvec(:)
 
-		call cal_dist(paramvec,errvec)
+		! need to get shocks_sim into here
+		!call cal_dist(paramvec,errvec, shocks_sim)
 		
 	end subroutine dfovec
 
@@ -3718,6 +3831,7 @@ program V0main
 		type(val_struct) :: val_sol
 		type(pol_struct) :: pol_sol
 		type(hist_struct):: hists_sim
+		type(shocks_struct) :: shocks_sim
 		type(moments_struct):: moments_sim
 		
 	! Timers
@@ -3806,9 +3920,16 @@ program V0main
 	!	zsig = paramvec(2)
 	!	amenityscale = paramvec(3)
 	
+	call alloc_shocks(shocks_sim)
+	
+	call draw_shocks(shocks_sim)
+
+	
 	param0 = (/zrho,zsig /)
 	err0 = 0.
-	call cal_dist(param0,err0)
+	call cal_dist(param0,err0,shocks_sim)
+	
+	call dealloc_shocks(shocks_sim)
 	
 	!************************************************************************************************!
 	! Allocate phat matrices

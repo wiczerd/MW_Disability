@@ -82,6 +82,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
 logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
+					  zj_contin	 = .false.,& !make zj draws continous
 					  j_rand     = .false. 	! randomly assign j, or let choose.
 			
 
@@ -111,6 +112,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		egrid(ne),&		!Earnings Index Grid
 		pialf(nal,nal),&	!Alpha_i transition matrix
 		piz(nz,nz),&		!TFP transition matrix
+		ergpiz(nz/2),& !ergodic TFP distribution
 		pid(nd,nd,ndi,TT-1),&	!Disability transition matrix
 		prob_age(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
@@ -140,7 +142,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		Tblock_sim = 20,&	!The actual time before structural change (years)
 		zrho	= 0.95,	&	!Persistence of the AR process
 		zmu	= 0.,	&	!Drift of the AR process, should always be 0
-		zsig	= 0.015**0.5,&	!Unconditional standard deviation of AR process
+		zsig	= 0.15**0.5,&	!Unconditional standard deviation of AR process
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
@@ -435,6 +437,9 @@ subroutine settfp()
 	logical, parameter :: lower= .FALSE. 
 	real(8) ::  summy, zcondsig
 	real(8) :: zrhot,zsigt, zcondsigt
+	real(8) :: piblock(nz/2,nz/2),ergpi1(nz/2,nz/2),ergpi2(nz/2,nz/2)
+
+	external dgemm
 
 	zrhot = zrho**(1./tlen)
 	zsigt = zsig**(1/tlen)
@@ -466,7 +471,17 @@ subroutine settfp()
 	piz(1:nz/2,1:nz/2) = (1.-1./(Tblock*tlen))*piz(1:nz/2,1:nz/2) ! make it markov
 	piz(nz/2+1:nz,1:nz/2) = 1./(Tblock*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! go back
 	piz(nz/2+1:nz,1+nz/2:nz) = (1.-1./(Tblock*tlen))*piz(nz/2+1:nz,1+nz/2:nz) ! go back
-	
+
+	piblock = piz(1:nz/2,1:nz/2)
+		!DGEMM('N','N',  M,  N,    K, ALPHA,  A,     M,    B,       K,  BETA,     C,       M)
+	call dgemm('n','n',nz/2,nz/2,nz/2,1._dp,piblock,nz/2, piblock, nz/2, 0._dp, ergpi1,nz/2)
+	do i=1,10000
+			call dgemm('n','n',nz/2,nz/2,nz/2,1._dp,piblock,nz/2, ergpi1, nz/2, 0._dp, ergpi2,nz/2)
+			ergpi1 = ergpi2
+	enddo
+	do i=1,nz/2
+		ergpiz(i) = ergpi1(1,i)
+	enddo
 	
 end subroutine settfp
 
@@ -732,7 +747,6 @@ fn_val = -log(-log(r) )
 
 
 END subroutine random_gumbel
-
 
 FUNCTION brent(ax,bx,cx,func,xmin, funcp,info,tol_in,niter)
 ! inputs: 
