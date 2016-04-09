@@ -84,6 +84,7 @@ module helper_funs
 		real(dp), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
 		real(dp), allocatable :: wage_hist(:,:) !realized wages
 		integer, allocatable :: z_jt_macroint(:) !endogenous realization of shocks given a sequence
+		real(dp), allocatable :: z_jt_panel(:,:)
 		! a bunch of explanitory variables to be stacked on each other
 		integer, allocatable :: status_hist(:,:) !status: W,U,N,D,R (1:5)
 		integer, allocatable :: d_hist(:,:)
@@ -536,6 +537,7 @@ module helper_funs
 		allocate(hists_sim%d_hist(Nsim,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%a_hist(Nsim,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%z_jt_macroint(Tsim), stat=hists_sim%alloced)
+		allocate(hists_sim%z_jt_pane(nj,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%occgrow_jt(nj,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%occshrink_jt(nj,Tsim), stat=hists_sim%alloced)
 		allocate(hists_sim%occsize_jt(nj,Tsim), stat=hists_sim%alloced)
@@ -598,6 +600,7 @@ module helper_funs
 		deallocate(hists_sim%d_hist , stat=hists_sim%alloced)
 		deallocate(hists_sim%a_hist , stat=hists_sim%alloced)
 		deallocate(hists_sim%z_jt_macroint, stat=hists_sim%alloced)
+		deallocate(hists_sim%z_jt_panel, stat=hists_sim%alloced)
 		deallocate(hists_sim%occgrow_jt, stat=hists_sim%alloced)
 		deallocate(hists_sim%occshrink_jt, stat=hists_sim%alloced)
 		deallocate(hists_sim%occsize_jt, stat=hists_sim%alloced)
@@ -2348,11 +2351,13 @@ module sim_hists
 					alfgrid_i  = alfrho*alfgrid_i + (1.-alfrho**2)*alfsig*alf_innov + alfmu
 					al_it(i,t) = alfgrid_i  ! log of wage shock
 					alfgrid_int = finder(alfgrid,alfgrid_i)
-					! round up or down:
-					if( (alfgrid_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
+					alfgrid_int = max(min(alfgrid_int,nal),1)
 				else
 					call rand_num_closed(alf_innov)
 					alfgrid_int 	= finder(cumpi_al(alfgrid_int,:), alf_innov )
+					! round up or down:
+					if( (alfgrid_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
+					alfgrid_int = max(min(alfgrid_int,nal),1)
 					al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
 				endif
 				al_it_int(i,t) = alfgrid_int					
@@ -2690,13 +2695,17 @@ module sim_hists
 			endif
 			! allow random time-block transitions
 			! z_jt_t = finder(cumpi_z(z_jt_t,:),z_innov )
-			do ij=1,Nj
+			do ij=1,nj
 				if(it>= Tblock_sim*itlen) then 
 					muhere = zmu+zscale(ij)
 				else
 					muhere = zmu
 				endif
-				z_jt_panel(ij,it) = (1.-zrho)*muhere + zsig*shk%z_jt_innov(it) + zrho*z_jt_panel(ij,it-1)
+				if( zj_contin .eqv. .true.) then
+					z_jt_panel(ij,it) = (1.-zrho)*muhere + zsig*shk%z_jt_innov(it) + zrho*z_jt_panel(ij,it-1)
+				else
+					z_jt_panel(ij,it) = zgrid(z_jt_macroint(it),ij)
+				endif
 			enddo
 		enddo
 	
@@ -2720,8 +2729,10 @@ module sim_hists
 
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
-		real(dp), allocatable :: e_it(:,:)
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
+		real(dp), allocatable :: e_it(:,:)
+		real(dp), allocatable :: z_jt_panel(:,:), z_jt_macroint(:)
+		
 		
 		! FOR DEBUGGING
 		real(dp), allocatable :: val_hr_it(:)
@@ -2736,6 +2747,8 @@ module sim_hists
 		integer, pointer     :: j_i(:)		! occupation, maybe random
 		integer, pointer     :: d_it(:,:) 	! disability status
 		integer, pointer     :: z_jt_macroint(:)! shocks to be drawn
+		real(8), pointer     :: z_jt_panel(:,:)! shocks to be drawn
+		
 		integer, pointer     :: al_it_int(:,:)! integer valued shocks
 		real(dp), pointer    :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
 		real(dp), pointer    :: a_it(:,:) 	! assets
@@ -2766,10 +2779,10 @@ module sim_hists
 				& s_mean(TT-1),s_mean_liter(TT-1)
 	
 		! Other
-		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
+		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., ziwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.
 
-		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
+		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
 			& beti=1, status_hr=1,status_tmrw=1,drawi=1,drawt=1
 		!************************************************************************************************!
 		! Allocate things
@@ -2824,6 +2837,7 @@ module sim_hists
 		app_dif_it  => hst%app_dif_hist
 		d_it        => hst%d_hist
 		z_jt_macroint  => hst%z_jt_macroint
+		z_jt_panel  => hst%z_jt_panel
 		a_it        => hst%a_hist		
 		occgrow_jt  => hst%occgrow_jt
 		occshrink_jt=> hst%occshrink_jt
@@ -2845,6 +2859,8 @@ module sim_hists
 		if(shk%drawn /= 1 )then
 			call draw_shocks(shk)
 		endif		
+
+		call set_zjt(z_jt_macroint, z_jt_panel, shk)
 
 		!set up cumpid,cumptau
 		cumpid = 0.
@@ -2918,7 +2934,7 @@ module sim_hists
 
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,ep_hr, &
-			!$OMP& iiH, iiwt, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
+			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -2936,7 +2952,7 @@ module sim_hists
 					!set the state
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
-					
+
 					
 					if((born_it(i,it).eq. 1 .and. it> 1) .or. (age_it(i,it)>0 .and. it==1)) then
 					! no one is ``born'' in the first period, but they make a decision as if just born
@@ -2994,12 +3010,13 @@ module sim_hists
 						ai_hr 	= a_it_int(i,it)
 					endif
 
-					zi_hr	= z_jt_macroint(it)
+					
 					if(zj_contin .eqv. .false.) then
+						zi_hr	= z_jt_macroint(it)
 						z_hr	= zgrid(zi_hr,j_hr)
 					else
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
-						z_hr	= zgrid(zi_hr,j_hr)
+						z_hr	= z_jt_panel(it,j_hr)
+						zi_hr	= finder(zgrid(:,j_hr),z_hr)
 					endif
 					
 					wage_hr	= wage(bet_hr,al_hr,d_hr,z_hr,age_hr)
@@ -3024,18 +3041,34 @@ module sim_hists
 						
 					endif 
 
+					!figure out where to evaluate alpha
+					if(al_contin .eqv. .true.) then
+						iiH  = min(ali_hr+1,nal)
+						iiwt = (alfgrid(iiH)- al_hr)/( alfgrid(iiH) -   alfgrid(ali_hr) )
+						if( iiH == ali_hr ) iiwt = 1.
+					endif
+					!figure out where to evaluate z
+					if(zj_contin .eqv. .true.) then
+						ziH  = min(zi_hr+1,nz)
+						ziwt = (zgrid(ziH,ij)- z_hr)/( zgrid(ziH,ij) -   zgrid(zi_hr,ij) )
+						if( ziH == zi_hr ) ziwt = 1.
+					endif
+
 					!make decisions if not yet retired
 					if(age_hr < TT) then 
 						if(status_hr .eq. 3) then ! choose wait or apply
-							if(al_contin .eqv. .false.) then
+							if(al_contin .eqv. .false. .and. zj_contin .eqv. .false. ) then
 								app_dif_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-							else
-								iiH  = min(ali_hr+1,nal)
-								iiwt = (alfgrid(iiH)- al_hr)/( alfgrid(iiH) -   alfgrid(ali_hr) )
-								if( iiH == ali_hr ) iiwt = 1.
-								app_dif_hr = iiwt*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .false. ) then
+								app_dif_hr = iiwt    *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .true. ) then
+								app_dif_hr = ziwt    * iiwt    *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	 ziwt    *(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	(1.-ziwt)*  iiwt   *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
+										&	(1.-ziwt)*(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) 
 							endif
+							
 							app_dif_it(i,it) = app_dif_hr
 							if( app_dif_hr >= 0 ) then
 							! choose to apply
@@ -3049,12 +3082,14 @@ module sim_hists
 							app_dif_it(i,it) = 0. !just to fill in value
 							if(al_contin .eqv. .false. ) then
 								work_dif_hr = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-							else 
-								iiH  = min(ali_hr+1,nal)
-								iiwt = (alfgrid(iiH)- al_hr)/( alfgrid(iiH) -  alfgrid(ali_hr) )
-								if( iiH == ali_hr ) iiwt = 1.
-								work_dif_hr = iiwt*gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											& 	(1.-iiwt)*gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .false. ) then
+								work_dif_hr = iiwt   *gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	(1.-iiwt)*gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .true. ) then
+								work_dif_hr = ziwt    * iiwt    *gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	  ziwt    *(1.-iiwt)*gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	 (1.-ziwt)* iiwt    *gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
+										&	 (1.-ziwt)*(1.-iiwt)*gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr )
 							endif
 							
 							if( work_dif_hr > 0 ) then
@@ -3095,22 +3130,54 @@ module sim_hists
 							work_dif_it(i,it) = 0.
 
 						endif
-						!evaluate the asset policy			
-						if(status_hr .eq. 1) then
-							api_hr = aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
-						elseif(status_hr .eq. 2) then
-							api_hr = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-						elseif(status_hr .eq. 3) then
-							api_hr = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-						elseif(status_hr .eq. 4) then
-							api_hr = aD( d_hr,ei_hr,ai_hr,age_hr )
+						!evaluate the asset policy
+						if(status_hr .eq. 4) then
+							api_hr = iiwt*aD( d_hr,ei_hr,ai_hr,age_hr )
 						elseif(status_hr .eq. 5) then ! should never be in this condition
 							api_hr = aR(d_hr,ei_hr,ai_hr)
+						else
+							if(al_contin .eqv. .false. .and. zj_contin .eqv. .false.) then
+								if(status_hr .eq. 1) then
+									api_hr = aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
+								elseif(status_hr .eq. 2) then
+									api_hr = aU( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								elseif(status_hr .eq. 3) then
+									api_hr = aN( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								endif
+							elseif(al_contin .eqv. .true.  .and. zj_contin .eqv. .false.) then
+								if(status_hr .eq. 1) then
+									api_hr = iiwt    *aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ) +&
+										&	(1.-iiwt)*aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
+								elseif(status_hr .eq. 2) then
+									api_hr = iiwt    *aU( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) +&
+										&	(1.-iiwt)*aU( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								elseif(status_hr .eq. 3) then
+									api_hr = iiwt    *aN( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) +&
+										&	(1.-iiwt)*aN( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								endif
+							elseif(al_contin .eqv. .true.  .and. zj_contin .eqv. .true.) then
+								if(status_hr .eq. 1) then
+									api_hr = ziwt    * iiwt    *aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ) +&
+										&	 ziwt    *(1.-iiwt)*aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ) +&
+										&	(1.-ziwt)* iiwt    *aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr  ) +&
+										&	(1.-ziwt)*(1.-iiwt)*aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr  )
+								elseif(status_hr .eq. 2) then
+									api_hr = ziwt    * iiwt    *aU( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) +&
+										&	 ziwt    *(1.-iiwt)*aU( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) +&
+										&   (1.-ziwt)* iiwt    *aU( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) +&
+										&	(1.-ziwt)*(1.-iiwt)*aU( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr )
+								elseif(status_hr .eq. 3) then
+									api_hr = ziwt    * iiwt    *aN( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) +&
+										&	 ziwt    *(1.-iiwt)*aN( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) +&
+										&   (1.-ziwt)* iiwt    *aN( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) +&
+										&	(1.-ziwt)*(1.-iiwt)*aN( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr )
+								endif
+							endif
 						endif
 					! retired
 					elseif( (age_hr==TT) .and. (it_old <= Tret)) then
-						api_hr = aR( d_hr,ei_hr,ai_hr )
-						status_hr = 5
+						api_hr      = aR( d_hr,ei_hr,ai_hr )
+						status_hr   = 5
 						status_tmrw = 5
 						if(it<Tsim) &
 						&	status_it(i,it+1) = status_hr
