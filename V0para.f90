@@ -111,6 +111,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		agrid(na),&		!Assets grid
 		egrid(ne),&		!Earnings Index Grid
 		pialf(nal,nal),&	!Alpha_i transition matrix
+		ergpialf(nal),&		!Alpha_i ergodic distribution
 		piz(nz,nz),&		!TFP transition matrix
 		ergpiz(nz/2),& !ergodic TFP distribution
 		pid(nd,nd,ndi,TT-1),&	!Disability transition matrix
@@ -202,8 +203,6 @@ subroutine setparams()
 	!beti(2) = 1.2 
 
 	!Individual Wage component (alpha)- grid= 2 std. deviations
-	!Nodes >2 chosen as chebychev zeros, node 1 chosen to make unemployment
-	
 	alfrhot = alfrho**(1./tlen)
 	alfcondsig = (alfsig**2*(1-alfrho**2))**0.5
 	alfsigt = (alfsig**2/tlen)**0.5
@@ -225,6 +224,14 @@ subroutine setparams()
 	pialf(2:nal,1) = xsep
 	forall(i=2:nal,k=2:nal) pialf(i,k) = pialf(i,k)*(1-xsep)
 
+	ergpialf = 0.
+	ergpialf(1) = xsep
+	do i=2,(nal-1)
+		ergpialf(i) = (1.-xsep)*( &
+			&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.-alfmu) /alfsig,.false.)- &
+			&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.-alfmu) /alfsig,.false.) )
+	enddo
+	ergpialf(nal) = 1.-sum(ergpialf(1:(nal-1)))
 
 	forall(i=1:nd) dgrid(i) = i
 
@@ -253,9 +260,7 @@ subroutine setparams()
 
 	! TFP
 	zscale = 0. 
-	!do j=1,nj
-	!	zscale(j) = dble(j-1)/dble(nj-1)*(2*zsig) -zsig !zsig*(dble(j)-dble(nj-1)/2.-1.)/dble(nj-1)
-	!enddo
+
 	call settfp()
 
 	!Read in the sizes by occuaption later
