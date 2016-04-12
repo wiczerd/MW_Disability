@@ -69,7 +69,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 40, &!100	        !Points on assets grid
 			nz  = 6,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
-			maxiter = 2000, &!2000	!Tolerance parameter	
+			maxiter = 20, &!2000	!Tolerance parameter	
 			Nsim = 5000, & !5000         !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
@@ -82,7 +82,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
 logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
-					  zj_contin	 = .false.,& !make zj draws continous
+					  zj_contin	 = .true.,& !make zj draws continous
 					  j_rand     = .false. 	! randomly assign j, or let choose.
 			
 
