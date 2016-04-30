@@ -54,6 +54,8 @@ module helper_funs
 					VU(:,:,:,:,:,:,:), &	!Unemployed
 					V(:,:,:,:,:,:,:)	!Participant
 		integer :: alloced 	! status indicator
+		integer :: inited 	! intiialized indicator
+		
 	end type	
 	
 	!------------------------------------------------------------------
@@ -653,6 +655,10 @@ module model_data
 
 		allocate(emp_t((Tsim-1)*nj))
 		allocate(emp_lagtimeconst((Tsim-1)*nj,2+nj))
+		!initialize
+		moments_sim%s2 = 0.
+		moments_sim%ts_emp_cov_coefs = 0.
+		moments_sim%ts_emp_coefs = 0.
 
 		do it=2,Tsim
 			do ij =1,nj
@@ -2302,11 +2308,16 @@ module sim_hists
 		real(dp), dimension(:,:) :: al_it
 		integer, dimension(:,:) :: al_it_int
 		integer :: ss=1, Nsim, alfgrid_int, t,m,i,k
-		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i
+		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i,alf_i
+		real(dp) :: alfgrid_minE,alfgrid_maxE,alfgrid_Uval !min max value while employed and val of unemp
 		integer, allocatable :: bdayseed(:)
 		real(dp), allocatable :: cumpi_al(:,:)
 
 		allocate(cumpi_al(nal,nal+1))
+
+		alfgrid_minE = alfgrid(2)
+		alfgrid_maxE = alfgrid(nal)
+		alfgrid_Uval = alfgrid(1)
 
 		call random_seed(size = ss)
 		allocate(bdayseed(ss))
@@ -2330,19 +2341,20 @@ module sim_hists
 			
 			call random_normal(alf_innov) ! draw normal disturbances on 0,1
 			! transform it by the ergodic distribution for the first period:
-			alfgrid_i = alf_innov*alfsig + alfmu
+			alf_i = alf_innov*alfsig + alfmu
 
-			if(alfgrid_i >maxval(alfgrid) .or. alfgrid_i < minval(alfgrid)) success = 1+success !count how often we truncate
+			if(alf_i >alfgrid_maxE .or. alf_i < alfgrid_minE) success = 1+success !count how often we truncate
 			!impose bounds
-			alfgrid_i = max(alfgrid_i,minval(alfgrid))
-			alfgrid_i = min(alfgrid_i,maxval(alfgrid))
-			alfgrid_int = finder(alfgrid,alfgrid_i)
+			alf_i = max(alf_i,alfgrid_minE)
+			alf_i = min(alf_i,alfgrid_maxE)
+			alfgrid_int = finder(alfgrid,alf_i)
 			! round up or down:
-			if( (alfgrid_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
+			if( (alf_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
 			if(al_contin .eqv. .true.) then
-				al_it(i,t) = alfgrid_i ! log of wage shock
+				al_it(i,t) = alf_i ! log of wage shock
 			else
 				al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
+				alfgrid_i = alf_i
 			endif
 			al_it_int(i,t) = alfgrid_int
 			
@@ -2350,16 +2362,22 @@ module sim_hists
 
 			do t=2,Tsim
 				if(al_contin .eqv. .true.) then
-					call random_normal(alf_innov)
-					alfgrid_i  = alfrho*alfgrid_i + (1.-alfrho**2)*alfsig*alf_innov + alfmu
-					al_it(i,t) = alfgrid_i  ! log of wage shock
-					alfgrid_int = finder(alfgrid,alfgrid_i)
-					alfgrid_int = max(min(alfgrid_int,nal),1)
+					call rand_num_closed(alf_innov)
+					! unemployment risk
+					if( alf_innov < cumpi_al(alfgrid_int,2)) then
+						alf_i = alfgrid(1)
+						al_it(i,t) = alf_i
+						alfgrid_int = 1
+					else
+						call random_normal(alf_innov)
+						alf_i  = alfrho*alf_i + (1.-alfrho**2)*alfsig*alf_innov + alfmu
+						al_it(i,t) = alf_i  ! log of wage shock
+						alfgrid_int = finder(alfgrid,alf_i)
+						alfgrid_int = max(min(alfgrid_int,nal),2)
+					endif
 				else
 					call rand_num_closed(alf_innov)
-					alfgrid_int 	= finder(cumpi_al(alfgrid_int,:), alf_innov )
-					! round up or down:
-					if( (alfgrid_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
+					alfgrid_int = finder(cumpi_al(alfgrid_int,:), alf_innov )
 					alfgrid_int = max(min(alfgrid_int,nal),1)
 					al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
 				endif
@@ -2435,6 +2453,13 @@ module sim_hists
 		integer, allocatable :: bdayseed(:) 
 		integer, dimension(5,2) :: NBER_start_stop
 		real(dp) :: z_innov=1.
+		integer  :: nzblock = nz/2
+		
+		if(z_regimes .eqv. .true.) then
+			nzblock = nz/2
+		else
+			nzblock = nz
+		endif
 		
 		call random_seed(size = ss)
 		allocate(bdayseed(ss))
@@ -2463,12 +2488,12 @@ module sim_hists
 		
 		!draw on zgrid
 		! start everyone from middle state, alternatively could start from random draw on ergodic dist
-		z_jt_t = (nz/2+1)/2
+		z_jt_t = (nzblock+1)/2
 		do it = 1,Tsim
 			if(NBER_tseq .eq. 1 ) then
 				if(it >= NBER_start_stop(ss,1) .and. it < NBER_start_stop(ss,2) ) then
 					z_innov = -5.
-				elseif( it >= NBER_start_stop(ss,2) .and. it<= NBER_start_stop(ss,2)+(nz/2)/2  ) then !fully reverse the recession
+				elseif( it >= NBER_start_stop(ss,2) .and. it<= NBER_start_stop(ss,2)+nzblock/2  ) then !fully reverse the recession
 					z_innov = 5.
 					ss = ss+1
 				else
@@ -2590,7 +2615,7 @@ module sim_hists
 					call random_number(junk)
 					drawi = max(1,idnint(junk*Nsim))
 					call random_number(junk)
-					drawt = max(1,idnint(junk*(Tblock_sim*tlen)-1))
+					drawt = max(1,idnint(junk*(dble(Tblock_sim)*tlen)-1))
 					if((age_it(drawi,drawt) .eq. age_it(i,it))) then
 						exit ageloop
 					endif
@@ -2655,11 +2680,19 @@ module sim_hists
 		real(8) :: z_jt_panel(:,:)
 		integer :: z_jt_macroint(:)
 		! for selecting the state of zj
-		real(dp) :: cumpi_z(nz,nz+1),cumpi_zblock(nz/2,nz/2+1)
-		real(dp) ::  cumergpi(nz/2+1)
+		real(dp) :: cumpi_z(nz,nz+1)
+		real(dp), allocatable :: cumpi_zblock(:,:)
+		real(dp) ::  cumergpi(nz+1)
 	
-		integer :: it,ij,iz,izp, zi_jt_t
-		real(8) :: muhere
+		integer :: it,ij,iz,izp, zi_jt_t , nzblock
+		real(8) :: muhere, Zz_t
+
+		if( z_regimes .eqv. .true.) then
+			nzblock = nz/2
+		else
+			nzblock = nz
+		endif
+		allocate(cumpi_zblock(nzblock,nzblock+1))
 
 		call settfp() ! sets values for piz
 
@@ -2667,48 +2700,61 @@ module sim_hists
 		cumpi_z = 0.
 		cumpi_zblock = 0.
 		cumergpi = 0.
-		! for random transitions of time block
+		! for random transitions of time block or if z_regimes .eqv. .false.
 		do iz=1,nz
 			do izp=1,nz
 				cumpi_z(iz,izp+1) = piz(iz,izp) + cumpi_z(iz,izp)
 			enddo
 		enddo
 		! for deterministic transition of time block
-		do iz=1,nz/2
-			do izp=1,nz/2
-				cumpi_zblock(iz,izp+1) = piz(iz,izp) + cumpi_zblock(iz,izp)
+		if(z_regimes .eqv. .true.) then
+			do iz=1,nz/2
+				do izp=1,nz/2
+					cumpi_zblock(iz,izp+1) = piz(iz,izp) + cumpi_zblock(iz,izp)
+				enddo
+				cumpi_zblock(iz,:) = cumpi_zblock(iz,:)/cumpi_zblock(iz,nz/2)
+				cumergpi(iz+1) = cumergpi(iz)+ ergpiz(iz)
 			enddo
-			cumpi_zblock(iz,:) = cumpi_zblock(iz,:)/cumpi_zblock(iz,nz/2)
-			cumergpi(iz+1) = cumergpi(iz)+ ergpiz(iz)
-		enddo
+		else 
+			cumpi_zblock = cumpi_z
+		endif
 		
 		it = 1
-		z_jt_panel(:,it) = (1.-zrho)*zmu + zsig*shk%z_jt_innov(it)		
 		zi_jt_t = finder(cumergpi,shk%z_jt_select(it) )
 		z_jt_macroint(it) = zi_jt_t
+		Zz_t = zsig*shk%z_jt_innov(it)
+		forall (ij = 1:nj)	z_jt_panel(ij,it) = Zz_t*zscale(ij)
+		
 		do it= 2,Tsim
+			!z_jt_t = finder(cumpi_z(z_jt_t,:),z_innov ) <- random time-block transitions:
+
 			! use conditional probability w/in time block
 			zi_jt_t = finder(cumpi_zblock(zi_jt_t,:),shk%z_jt_select(it) )
-			if( dble(it)<struc_brk*tlen ) then
-				z_jt_macroint(it) = zi_jt_t
+			if( it >= Tblock_sim*itlen .and. z_regimes .eqv. .true.) then
+				z_jt_macroint(it) = zi_jt_t  + nz/2
 			else
-				z_jt_macroint(it) = zi_jt_t + nz/2
+				z_jt_macroint(it) = zi_jt_t
 			endif
-			! allow random time-block transitions
-			! z_jt_t = finder(cumpi_z(z_jt_t,:),z_innov )
+			
+			
+			Zz_t = (1.-zrho) * zmu + zsig*shk%z_jt_innov(it) + zrho*Zz_t
 			do ij=1,nj
-				if(it>= Tblock_sim*itlen) then 
-					muhere = zmu+zscale(ij)
+				if(it>= Tblock_sim*itlen .and. z_regimes .eqv. .true.) then 
+					muhere = zshift(ij)
 				else
-					muhere = zmu
+					muhere = 0.
 				endif
+				
 				if( zj_contin .eqv. .true.) then
-					z_jt_panel(ij,it) = (1.-zrho)*muhere + zsig*shk%z_jt_innov(it) + zrho*z_jt_panel(ij,it-1)
+					!z_jt_panel(ij,it) = (1.-zrho)*muhere + zsig*shk%z_jt_innov(it) + zrho*z_jt_panel(ij,it-1)
+					z_jt_panel(ij,it) = Zz_t*zscale(ij) + (1.-zrho)*muhere
 				else
 					z_jt_panel(ij,it) = zgrid(z_jt_macroint(it),ij)
 				endif
 			enddo
 		enddo
+	
+		deallocate(cumpi_zblock)
 	
 	end subroutine set_zjt
 
@@ -3349,7 +3395,7 @@ module sim_hists
 			occshrink_jt(:,it) = 0.
 			occsize_jt  (:,it) = 0.
 			do i=1,Nsim
-				if(status_it(i,it) <= 2 .and. status_it(i,it)>=1 .and. age_it(i,it) > 0 ) Nworkt = 1._dp + Nworkt !labor force in this period
+				if((status_it(i,it) <= 2 .and. status_it(i,it)>=1) .and. age_it(i,it) > 0 ) Nworkt = 1._dp + Nworkt !labor force in this period
 				do ij =1,nj
 					if(j_i(i) ==ij .and. born_it(i,it) == 1 ) &
 						& occgrow_jt(ij,it) = 1._dp + occgrow_jt(ij,it)
@@ -3368,6 +3414,7 @@ module sim_hists
 			forall(ij=1:nj) occsize_jt(ij,it) = occsize_jt(ij,it)/Nworkt
 		enddo
 		!$omp end parallel do
+		
 		if(print_lev > 1)then
 				call mat2csv (e_it,"e_it.csv")
 				call mat2csv (a_it,"a_it.csv")
@@ -3376,6 +3423,7 @@ module sim_hists
 				call mati2csv(d_it,"d_it.csv")
 				call veci2csv(j_i,"j_i.csv")
 				call veci2csv(z_jt_macroint,"z_jt.csv")
+				call mat2csv(z_jt_panel,"z_jt_panel.csv") 
 				call mat2csv (occsize_jt,"occsize_jt.csv")
 				call mat2csv (occgrow_jt,"occgrow_jt.csv")
 				call mat2csv (occshrink_jt,"occshrink_jt.csv")
@@ -3539,10 +3587,10 @@ module find_params
 	end function obj_zj_wrap
 
 
-	subroutine newtfpgrid(zgrid_in, zscale_in, zgrid_out,vfs)
+	subroutine newtfpgrid(zgrid_in, zshift_in, zgrid_out,vfs)
 		real(dp), intent(in)	:: zgrid_in(:,:)
 		real(dp), intent(out):: zgrid_out(:,:)
-		real(dp), intent(in)	:: zscale_in(:)
+		real(dp), intent(in)	:: zshift_in(:)
 		type(val_struct)	:: vfs
 
 		integer :: iz,i,ij,beti,idi,ial,id,ie,ia,it
@@ -3556,7 +3604,7 @@ module find_params
 			z_max = maxval(zgrid_in(nz/2+1:nz,ij))
 			z_min = minval(zgrid_in(nz/2+1:nz,ij))
 			do iz=nz/2+1,nz
-				zgrid_out(iz,ij) = zgrid_in(iz - nz/2,ij) + zscale(ij) !scale off the pre-break value
+				zgrid_out(iz,ij) = zgrid_in(iz - nz/2,ij) + zshift(ij) !scale off the pre-break value
 				! this will allow extrapolation
 				!zgrid_out(iz,ij) = max(min(zgrid_out(iz,ij),z_max),z_min) ! don't try to extrapolate
 			enddo
@@ -3741,27 +3789,27 @@ module find_params
 		type(hist_struct), target:: hst
 		type(shocks_struct), target:: shk
 
-		real(dp) :: zj_here=1., zscale_mean=1.,zscale_mean1=1.
+		real(dp) :: zj_here=1., zshift_mean=1.,zshift_mean1=1.
 		real(dp) :: dummy_params(3)
 		!integer :: del_i_int(:)
 		integer :: flag=1
-		real(dp) :: resid_hi=1., resid_lo=1., z_hi=1.,z_lo=1.,zj_opt=1.,zscale_dist=1., zscale_tol=1.e-4_dp
-		real(dp), allocatable :: zscale1(:),zscale0(:),zgrid1(:,:),zgrid0(:,:)
+		real(dp) :: resid_hi=1., resid_lo=1., z_hi=1.,z_lo=1.,zj_opt=1.,zshift_dist=1., zshift_tol=1.e-4_dp
+		real(dp), allocatable :: zshift1(:),zshift0(:),zgrid1(:,:),zgrid0(:,:)
 		dummy_params = 0.
 
-		allocate(zscale1(nj))
-		allocate(zscale0(nj))
+		allocate(zshift1(nj))
+		allocate(zshift0(nj))
 		allocate(zgrid0(nz,nj))
 		allocate(zgrid1(nz,nj))
 		mod_vfs => vfs
 		mod_hst => hst
 		mod_shk => shk
-		zscale1 = 0.
-		zscale_mean = 0.
+		zshift1 = 0.
+		zshift_mean = 0.
 		zgrid0 = zgrid
 		do ij=1,nj
-			zscale0(ij) = zscale(ij) !begin setting it equal to the global
-			zscale_mean = zscale(ij)/dble(nj) + zscale_mean
+			zshift0(ij) = zshift(ij) !begin setting it equal to the global
+			zshift_mean = zshift(ij)/dble(nj) + zshift_mean
 		enddo
 
 		if(print_lev>=2) call mat2csv(zgrid0,"zgrid0.csv")
@@ -3783,45 +3831,45 @@ module find_params
 
 				if(resid_hi*resid_lo < 0.) then
 					zj_opt = zbrent(obj_zj_wrap,z_lo,z_hi,&
-						& dummy_params ,zscale_tol/100.,flag)
+						& dummy_params ,zshift_tol/100.,flag)
 				elseif( dabs(resid_hi)<dabs(resid_lo) ) then
 					zj_opt = z_hi
 				else
 					zj_opt = z_lo
 				endif
-				zscale1(ij) = zj_opt
+				zshift1(ij) = zj_opt
 			enddo
-			zscale_mean1 = 0.
+			zshift_mean1 = 0.
 			do ij=1,nj
-				zscale_mean1 = zscale1(ij)/dble(nj) + zscale_mean1
+				zshift_mean1 = zshift1(ij)/dble(nj) + zshift_mean1
 			enddo
-			zscale_dist =0.
+			zshift_dist =0.
 			do ij=1,nj
-				zscale1(ij) = zscale1(ij) -zscale_mean1 + zscale_mean !re-set the mean of zscale1
-				zscale_dist = (zscale1(ij)-zscale(ij))**2 + zscale_dist
+				zshift1(ij) = zshift1(ij) -zshift_mean1 + zshift_mean !re-set the mean of zshift1
+				zshift_dist = (zshift1(ij)-zshift(ij))**2 + zshift_dist
 			enddo
-			zscale_mean1 = 0.
+			zshift_mean1 = 0.
 			do ij=1,nj
-				zscale(ij) = upd_zscl*zscale1(ij) + (1._dp-upd_zscl)*zscale(ij)
-				zscale_mean1 = zscale(ij)/dble(nj) + zscale_mean1 !should not be changing
+				zshift(ij) = upd_zscl*zshift1(ij) + (1._dp-upd_zscl)*zshift(ij)
+				zshift_mean1 = zshift(ij)/dble(nj) + zshift_mean1 !should not be changing
 			enddo
 			do ij=1,nj
-				zscale(ij) = zscale(ij) -zscale_mean1 + zscale_mean ! hold the mean fixed: prevent drifting (necessary?)
+				zshift(ij) = zshift(ij) -zshift_mean1 + zshift_mean ! hold the mean fixed: prevent drifting (necessary?)
 			enddo
 
-			! this will reassign the grid using zscale
-			call newtfpgrid(zgrid0,zscale,zgrid1, vfs)
+			! this will reassign the grid using zshift
+			call newtfpgrid(zgrid0,zshift,zgrid1, vfs)
 			if(print_lev>=2) call mat2csv(zgrid1,"zgrid1.csv")
 			zgrid = zgrid1
 
-			if (zscale_dist .lt. zscale_tol) then
+			if (zshift_dist .lt. zshift_tol) then
 				exit
 			endif
 		enddo
 
 		if(print_lev>=1) call mat2csv(zgrid1,"zgrid1.csv")
 
-		deallocate(zscale0,zscale1,zgrid0,zgrid1)
+		deallocate(zshift0,zshift1,zgrid0,zgrid1)
 		
 	end subroutine iter_zproc
 	
@@ -3843,11 +3891,13 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		type(moments_struct):: moments_sim
-		real(dp) :: condstd_tsemp
-		integer :: ij=1,t0tT(2)
+		real(dp) :: condstd_tsemp,totdi_rt
+		integer :: ij=1,t0tT(2),it
 
 		zrho = paramvec(1)
 		zsig = paramvec(2)
+
+		nu   = paramvec(3)
 
 	!	call settfp()
 		call alloc_econ(vfs,pfs,hst)
@@ -3872,7 +3922,7 @@ module find_params
 
 		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
 		!call iter_zproc(vfs, hst,shk)
-		!after this, I should cycle and re-solve it all
+		!after iter_zproc, I should cycle and re-solve it all
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
 		if(verbose >2) print *, "Computing moments"
@@ -3882,23 +3932,63 @@ module find_params
 		do ij = 1,nj
 			condstd_tsemp = moments_sim%ts_emp_coefs(ij+1) *occsz0(ij)+ condstd_tsemp
 		enddo
+		totdi_rt = 0.
+		do it=1,(TT-1)
+			totdi_rt = prob_age(it)*moments_sim%di_rate(it) + totdi_rt
+		enddo
+		totdi_rt = totdi_rt/(1- prob_age(TT))
 
 		errvec(1) =  moments_sim%ts_emp_coefs(1) - emp_persist! auto-correlation
 		errvec(2) =  condstd_tsemp - emp_std
-
-
+		errvec(3) =  totdi_rt - 0.045
 		call dealloc_econ(vfs,pfs,hst)
 
 	end subroutine cal_dist
 
-	subroutine  dfovec(Nin,Nout,paramvec,errvec)
-		integer :: Nin, Nout
-		real(dp) :: paramvec(:), errvec(:)
+	subroutine cal_dist_nloptwrap(fval, nparam, paramvec, gradvec, need_grad, shk)
+
+		real(8) :: fval, paramvec(:),gradvec(:)
+		integer :: nparam,need_grad
+		type(shocks_struct) :: shk
+		real(8) :: errvec(nparam),paramwt(nparam),paramvecH(nparam),errvecH(nparam),paramvecL(nparam),errvecL(nparam),gradstep(nparam)
+		integer :: i
+		
+
+		call cal_dist(paramvec, errvec,shk)
+
+		paramwt = 1./dble(nparam)		! equal weight
+		fval = 0.
+		do i = 1,nparam
+			fval = paramvec(i)*paramwt(i) + fval
+		enddo
+		if( need_grad .ne. 0) then
+
+			do i=1,nparam
+				gradstep (i) = min( dabs( paramvec(i)*(5.e-5_dp) ) ,5.e-5_dp)
+				paramvecH(i) = paramvec(i) + gradstep(i)
+			enddo
+			call cal_dist(paramvecH, errvecH,shk)
+			do i=1,nparam
+				paramvecL(i) = paramvec(i) - gradstep(i)
+			enddo
+			call cal_dist(paramvecL, errvecL,shk)
+			do i=1,nparam
+				gradvec(i) = (errvecH(i) - errvecL(i))/(2._dp * gradstep(i))
+			enddo
+		endif
+		
+
+	end subroutine cal_dist_nloptwrap
+
+
+!	subroutine  dfovec(Nin,Nout,paramvec,errvec)
+!		integer :: Nin, Nout
+!		real(dp) :: paramvec(:), errvec(:)
 
 		! need to get shk into here
 		!call cal_dist(paramvec,errvec, shk)
 		
-	end subroutine dfovec
+!	end subroutine dfovec
 
 end module find_params
 
@@ -3931,7 +4021,7 @@ program V0main
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(2)=1.,err0(2)=1.
+		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(3)=1.,err0(3)=1.
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct) :: vfs
@@ -4031,7 +4121,7 @@ program V0main
 	call draw_shocks(shk)
 
 	
-	param0 = (/zrho,zsig /)
+	param0 = (/zrho,zsig,nu /)
 	err0 = 0.
 	call cal_dist(param0,err0,shk)
 	

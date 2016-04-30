@@ -28,7 +28,7 @@ real(8), parameter ::	youngD = 20., &	!Length of initial young period
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.407,&	!Fraction young who are eligable
 		R =dexp(.03/tlen),&	!People can save
-		upd_zscl = 0.1		! rate at which to update zscale
+		upd_zscl = 0.1		! rate at which to update zshift
 
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
@@ -69,7 +69,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 40, &!100	        !Points on assets grid
 			nz  = 6,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
-			maxiter = 20, &!2000	!Tolerance parameter	
+			maxiter = 2000, &!2000	!Tolerance parameter	
 			Nsim = 5000, & !5000         !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
@@ -83,6 +83,7 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
 					  zj_contin	 = .true.,& !make zj draws continous
+					  z_regimes	 = .true.,& !different z regimes?
 					  j_rand     = .false. 	! randomly assign j, or let choose.
 			
 
@@ -105,7 +106,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		delwt(ndi,nj),&		!The occupation-specific probability of getting a particular delta
 		delcumwt(ndi+1,nj),&	!cumulative dist
 		occdel(nj),&		!The occupation,specific mean delta
-		zscale(nj),&		!scales occupation TFP in second period.  
+		zshift(nj),&		!shifts occupation TFP in second period.  
+		zscale(nj),&		!scales occupation TFP relative to the aggregate shock.  
 		zgrid(nz,nj), &		!TFP shock grid
 		xi(nd,TT-1), &		!DI acceptance probability
 		agrid(na),&		!Assets grid
@@ -113,7 +115,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		pialf(nal,nal),&	!Alpha_i transition matrix
 		ergpialf(nal),&		!Alpha_i ergodic distribution
 		piz(nz,nz),&		!TFP transition matrix
-		ergpiz(nz/2),& !ergodic TFP distribution
+		ergpiz(nz),& !ergodic TFP distribution
 		pid(nd,nd,ndi,TT-1),&	!Disability transition matrix
 		prob_age(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
@@ -139,10 +141,8 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
 		xsep = 0.015, &		!Separation probability into unemployment
 !	Agregate income risk
-		Tblock	= 2e4,	&	!Expected time before structural change (years)
-		Tblock_sim = 20,&	!The actual time before structural change (years)
 		zrho	= 0.95,	&	!Persistence of the AR process
-		zmu	= 0.,	&	!Drift of the AR process, should always be 0
+		zmu		= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.15**0.5,&	!Unconditional standard deviation of AR process
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
@@ -161,6 +161,10 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3
 		smthELPM = 1.		!Smoothing for the LPM
+integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
+			Tblock_sim = struc_brk		!The actual time before structural change (years)
+
+
 
 !**** calibration targets
 real(8) :: emp_persist = 0.98 ,&
@@ -259,7 +263,8 @@ subroutine setparams()
 		
 
 	! TFP
-	zscale = 0. 
+	zshift = 0. 
+	zscale = 1. 
 
 	call settfp()
 
@@ -438,55 +443,82 @@ end subroutine setparams
 
 subroutine settfp()
 
-	integer :: i, k,j
+	integer :: i, k,j,nzblock
 	logical, parameter :: lower= .FALSE. 
 	real(8) ::  summy, zcondsig
 	real(8) :: zrhot,zsigt, zcondsigt
-	real(8) :: piblock(nz/2,nz/2),ergpi1(nz/2,nz/2),ergpi2(nz/2,nz/2)
+	real(8), allocatable :: piblock(:,:),ergpi1(:,:),ergpi2(:,:)
+	real(8) :: Zzgrid(nz)
 
 	external dgemm
+
+	if(z_regimes .eqv. .true.) then
+		nzblock = nz/2
+	else
+		nzblock = nz
+	endif
+	
+	allocate(piblock(nzblock,nzblock))
+	allocate(ergpi1(nzblock,nzblock))
+	allocate(ergpi2(nzblock,nzblock))
 
 	zrhot = zrho**(1./tlen)
 	zsigt = zsig**(1/tlen)
 	zcondsig = ((zsig**2)*(1.-zrho**2))**(0.5)
 	zcondsigt = ((zsigt**2)*(1.-zrhot**2))**(0.5)
 	!first set transition probabilities at an annual basis
-	call rouwenhorst(nz/2,zmu,zrho,zcondsig,zgrid(1:nz/2,1),piz(1:nz/2,1:nz/2))
-	do j=2,nj
-		zgrid(1:nz/2,j) = zgrid(1:nz/2,1)
-	enddo
-	!adjust the mean for after the transition
-	do j=1,nj
-		do i=(nz/2+1),nz
-			zgrid(i,j) = zscale(j) + zgrid(i-nz/2,j)
-		enddo
-	enddo
-	!adjust transition probabilities to come only ever tlen periods
-	do i=1,nz/2
-		piz(i,i) = piz(i,i)**(1./tlen)
-		do k=1,nz/2
-			if(k /= i) piz(i,k) = 1.-(1.-piz(i,k))**(1./tlen)
-		enddo
-		summy = sum(piz(i,1:nz/2))
-		if(summy /= 1) piz(i,1:nz/2) = piz(i,1:nz/2)/summy !this is correcting numerical error
-	enddo
+	call rouwenhorst(nz/2,zmu,zrho,zcondsig,zgrid(1:nzblock,1),piz(1:nzblock,1:nzblock))
 
-	piz(nz/2+1:nz,nz/2+1:nz)= piz(1:nz/2,1:nz/2)
-	piz(1:nz/2,nz/2+1:nz) 	= 1./(Tblock*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! struct change
-	piz(1:nz/2,1:nz/2) = (1.-1./(Tblock*tlen))*piz(1:nz/2,1:nz/2) ! make it markov
-	piz(nz/2+1:nz,1:nz/2) = 1./(Tblock*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! go back
-	piz(nz/2+1:nz,1+nz/2:nz) = (1.-1./(Tblock*tlen))*piz(nz/2+1:nz,1+nz/2:nz) ! go back
+	if(z_regimes .eqv. .true.) then
+		!adjust the mean for after the transition
+		do j=2,nj
+			zgrid(1:nz/2,j) = zgrid(1:nz/2,1)
+		enddo
+		do j=1,nj
+			do i=(nz/2+1),nz
+				zgrid(i,j) = zshift(j) + zgrid(i-nz/2,j)
+			enddo
+		enddo
+		!adjust transition probabilities to come only ever tlen periods
+		do i=1,nz/2
+			piz(i,i) = piz(i,i)**(1./tlen)
+			do k=1,nz/2
+				if(k /= i) piz(i,k) = 1.-(1.-piz(i,k))**(1./tlen)
+			enddo
+			summy = sum(piz(i,1:nzblock))
+			if(summy /= 1) piz(i,1:nzblock) = piz(i,1:nzblock)/summy !this is correcting numerical error
+		enddo
 
-	piblock = piz(1:nz/2,1:nz/2)
-		!DGEMM('N','N',  M,  N,    K, ALPHA,  A,     M,    B,       K,  BETA,     C,       M)
-	call dgemm('n','n',nz/2,nz/2,nz/2,1._dp,piblock,nz/2, piblock, nz/2, 0._dp, ergpi1,nz/2)
+		piz(nz/2+1:nz,nz/2+1:nz)= piz(1:nz/2,1:nz/2)
+		piz(1:nz/2,nz/2+1:nz) 	= 1./(dble(Tblock_exp)*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! struct change
+		piz(1:nz/2,1:nz/2) = (1.-1./(dble(Tblock_exp)*tlen))*piz(1:nz/2,1:nz/2) ! make it markov
+		piz(nz/2+1:nz,1:nz/2) = 1./(dble(Tblock_exp)*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! go back
+		piz(nz/2+1:nz,1+nz/2:nz) = (1.-1./(dble(Tblock_exp)*tlen))*piz(nz/2+1:nz,1+nz/2:nz) ! go back
+
+		piblock = piz(1:nz/2,1:nz/2)
+		
+	else
+		piblock= piz
+		Zzgrid = zgrid(:,1)
+		do j=1,nj
+			zgrid(:,j) = Zzgrid*zscale(j)
+		enddo
+	endif
+	!DGEMM('N','N',  M,  N,    K, ALPHA,  A,     M,    B,       K,  BETA,     C,       M)
+	call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, piblock, nzblock, 0._dp, ergpi1,nzblock)
 	do i=1,10000
-			call dgemm('n','n',nz/2,nz/2,nz/2,1._dp,piblock,nz/2, ergpi1, nz/2, 0._dp, ergpi2,nz/2)
+			call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, ergpi1, nzblock, 0._dp, ergpi2,nzblock)
 			ergpi1 = ergpi2
 	enddo
-	do i=1,nz/2
-		ergpiz(i) = ergpi1(1,i)
-	enddo
+	if(z_regimes .eqv. .true.) then
+		do i=1,nz/2
+			ergpiz(i) = ergpi1(1,i)
+			ergpiz(i+nz/2) = ergpi1(1,i)
+		enddo
+	else
+		ergpiz = ergpi1(1,:)
+	endif
+	deallocate(ergpi1,ergpi2,piblock)
 	
 end subroutine settfp
 
