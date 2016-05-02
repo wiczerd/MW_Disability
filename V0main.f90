@@ -74,10 +74,10 @@ module helper_funs
 	end type
 
 	type moments_struct
-		real(dp) :: work_coefs(Nk), di_coefs(Nk),ts_emp_coefs(nj+2)
+		real(dp) :: work_coefs(Nk), di_coefs(Nk),ts_emp_coefs(nj+1)
 		real(dp) :: di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
 		integer :: alloced
-		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+2,nj+2)
+		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+1,nj+1)
 		real(dp) :: s2
 
 	end type 
@@ -112,6 +112,17 @@ module helper_funs
 		
 		integer :: alloced
 		integer :: drawn
+	end type
+	
+	
+	type val_pol_shocks_struct
+	
+		! try to do this with pointers
+		type(shocks_struct), pointer :: shk_ptr
+		type(val_struct)   , pointer :: vfs_ptr
+		type(pol_struct)   , pointer :: pfs_ptr
+	
+		integer :: pointed
 	end type
 	
 	contains
@@ -499,6 +510,23 @@ module helper_funs
 	
 	end subroutine OLS
 
+	subroutine alloc_hist(hst)
+	
+		type(hist_struct) :: hst
+
+		allocate(hst%wage_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%work_dif_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%app_dif_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%status_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%d_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%a_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%z_jt_macroint(Tsim), stat=hst%alloced)
+		allocate(hst%z_jt_panel(nj,Tsim), stat=hst%alloced)
+		allocate(hst%occgrow_jt(nj,Tsim), stat=hst%alloced)
+		allocate(hst%occshrink_jt(nj,Tsim), stat=hst%alloced)
+		allocate(hst%occsize_jt(nj,Tsim), stat=hst%alloced)
+	
+	end subroutine alloc_hist
 
 
 	subroutine alloc_econ(vfs, pfs,hst)
@@ -531,18 +559,8 @@ module helper_funs
 
 		allocate(pfs%gapp_dif(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=pfs%alloced)
 		allocate(pfs%gwork_dif(nj*nbi,ndi*nal,nd,ne,na,nz,TT), stat=pfs%alloced)
-
-		allocate(hst%wage_hist(Nsim,Tsim), stat=hst%alloced)
-		allocate(hst%work_dif_hist(Nsim,Tsim), stat=hst%alloced)
-		allocate(hst%app_dif_hist(Nsim,Tsim), stat=hst%alloced)
-		allocate(hst%status_hist(Nsim,Tsim), stat=hst%alloced)
-		allocate(hst%d_hist(Nsim,Tsim), stat=hst%alloced)
-		allocate(hst%a_hist(Nsim,Tsim), stat=hst%alloced)
-		allocate(hst%z_jt_macroint(Tsim), stat=hst%alloced)
-		allocate(hst%z_jt_panel(nj,Tsim), stat=hst%alloced)
-		allocate(hst%occgrow_jt(nj,Tsim), stat=hst%alloced)
-		allocate(hst%occshrink_jt(nj,Tsim), stat=hst%alloced)
-		allocate(hst%occsize_jt(nj,Tsim), stat=hst%alloced)
+		
+		call alloc_hist(hst)
 
 	end subroutine alloc_econ
 	
@@ -569,6 +587,26 @@ module helper_funs
 	
 	end subroutine alloc_shocks
 	
+
+	subroutine dealloc_hist(hst)
+
+		type(hist_struct) :: hst
+		
+		deallocate(hst%wage_hist , stat=hst%alloced)
+		deallocate(hst%work_dif_hist , stat=hst%alloced)
+		deallocate(hst%app_dif_hist , stat=hst%alloced)
+		deallocate(hst%status_hist , stat=hst%alloced)
+		deallocate(hst%d_hist , stat=hst%alloced)
+		deallocate(hst%a_hist , stat=hst%alloced)
+		deallocate(hst%z_jt_macroint, stat=hst%alloced)
+		deallocate(hst%z_jt_panel, stat=hst%alloced)
+		deallocate(hst%occgrow_jt, stat=hst%alloced)
+		deallocate(hst%occshrink_jt, stat=hst%alloced)
+		deallocate(hst%occsize_jt, stat=hst%alloced)
+
+		hst%alloced = 0
+		
+	end subroutine dealloc_hist
 
 	subroutine dealloc_econ(vfs,pfs,hst)
 
@@ -597,19 +635,7 @@ module helper_funs
 		deallocate(pfs%gapp_dif , stat=pfs%alloced)
 		deallocate(pfs%gwork_dif , stat=pfs%alloced)
 
-		deallocate(hst%wage_hist , stat=hst%alloced)
-		deallocate(hst%work_dif_hist , stat=hst%alloced)
-		deallocate(hst%app_dif_hist , stat=hst%alloced)
-		deallocate(hst%status_hist , stat=hst%alloced)
-		deallocate(hst%d_hist , stat=hst%alloced)
-		deallocate(hst%a_hist , stat=hst%alloced)
-		deallocate(hst%z_jt_macroint, stat=hst%alloced)
-		deallocate(hst%z_jt_panel, stat=hst%alloced)
-		deallocate(hst%occgrow_jt, stat=hst%alloced)
-		deallocate(hst%occshrink_jt, stat=hst%alloced)
-		deallocate(hst%occsize_jt, stat=hst%alloced)
-
-		hst%alloced = 0
+		call dealloc_hist(hst)
 	end subroutine dealloc_econ
 	
 	
@@ -650,30 +676,76 @@ module model_data
 		type(moments_struct)	:: moments_sim
 		type(hist_struct)	:: hst
 
-		real(dp), allocatable :: emp_lagtimeconst(:,:), emp_t(:) ! will be a fraction of labor force in each occupation
+		real(dp), allocatable :: emp_jt_trend(:,:), emp_jt_cyc(:,:), logemp_jt(:,:)
+		real(dp), allocatable :: emp_Agconst(:,:), emp_jt(:), occ_loading(:), occ_loading_cov(:,:) ! will predict a fraction of labor force in each occupation
+		real(dp), allocatable :: emp_Ag(:), emp_lagAgconst(:,:), emp_Ag_coefs(:),emp_Ag_covcoefs(:,:)
 		integer ij,it,nobs,yr, status
 
-		allocate(emp_t((Tsim-1)*nj))
-		allocate(emp_lagtimeconst((Tsim-1)*nj,2+nj))
+		real(dp) :: hp_smoothparam,emp_Ag_sig2
+
+		allocate(emp_jt((Tsim-1)*nj))
+		allocate(logemp_jt(nj,Tsim))
+		allocate(emp_jt_cyc(nj,Tsim))
+		allocate(emp_jt_trend(nj,Tsim))
+		allocate(emp_Agconst((Tsim-1)*nj,1+nj))
+		allocate(occ_loading(nj+1))
+		allocate(occ_loading_cov(nj+1,nj+1))
+		
+		allocate(emp_Ag(Tsim-1))
+		allocate(emp_lagAgconst(Tsim-1,2))
+		allocate(emp_Ag_coefs(2))
+		allocate(emp_Ag_covcoefs(2,2))
+		
 		!initialize
 		moments_sim%s2 = 0.
 		moments_sim%ts_emp_cov_coefs = 0.
 		moments_sim%ts_emp_coefs = 0.
+		
+		emp_Ag = 0.
+		emp_lagAgconst = 0.
+		emp_Agconst = 0.
 
-		do it=2,Tsim
-			do ij =1,nj
-				emp_t((ij-1)*(Tsim-1) + it-1) = hst%occsize_jt(ij,it)
-				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1) = hst%occsize_jt(ij,it-1)
-				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,1+ij) = dble(it-1)/tlen
-				emp_lagtimeconst((ij-1)*(Tsim-1) + it-1,2+nj) = 1._dp
+
+		!detrend occupations
+		hp_smoothparam = 14400 !monthly
+		do ij=1,nj
+			forall(it=1:Tsim) logemp_jt(ij,it) = log(hst%occsize_jt(ij,it))
+			call hptrend(Tsim,logemp_jt(ij,:),hp_smoothparam, emp_jt_trend(ij,:),emp_jt_cyc(ij,:))
+			!compute aggregate employment
+			do it=2,Tsim
+				emp_Ag(it-1) = exp(emp_jt_cyc(ij,it))+emp_Ag(it-1)
+				emp_lagAgconst(it,1) = exp(emp_jt_cyc(ij,it-1))+emp_lagAgconst(it,1)
+			enddo
+		enddo
+		forall(it=1:(Tsim-1)) emp_Ag(it) = log(emp_Ag(it))
+		forall(it=1:(Tsim-1)) emp_lagAgconst(it,1) = log(emp_lagAgconst(it,1))
+		emp_lagAgconst(:,2) = 1.
+		call OLS(emp_lagAgconst,emp_Ag,emp_Ag_coefs,emp_Ag_covcoefs,emp_Ag_sig2,status)
+
+		do ij =1,nj
+			do it=2,Tsim
+				emp_jt((ij-1)*(Tsim-1) + it-1) = emp_jt_cyc(ij,it-1)
+				emp_Agconst((ij-1)*(Tsim-1) + it-1,ij) = emp_Ag(it-1)
+				emp_Agconst((ij-1)*(Tsim-1) + it-1,1+nj) = 1._dp
 			enddo
 		enddo
 
-		call OLS(emp_lagtimeconst,emp_t,moments_sim%ts_emp_coefs,moments_sim%ts_emp_cov_coefs,moments_sim%s2,status)
+		if(print_lev >= 2) then 
+			call mat2csv(emp_Agconst,"emp_Agconst.csv")
+			call vec2csv(emp_jt,"emp_jt.csv")
+		endif
+
+		call OLS(emp_Agconst,emp_jt,occ_loading,occ_loading_cov,moments_sim%s2,status)
+		moments_sim%ts_emp_coefs(1) = emp_Ag_coefs(1)
+		moments_sim%ts_emp_coefs(2:nj+1) = occ_loading
+		moments_sim%ts_emp_cov_coefs(1,1) = emp_Ag_covcoefs(1,1)
+		moments_sim%ts_emp_cov_coefs(2:(nj+1),2:(nj+1)) = occ_loading_cov
 
 		if(print_lev >=2 ) call vec2csv(moments_sim%ts_emp_coefs,"ts_emp_coefs.csv")
 
-		deallocate(emp_lagtimeconst,emp_t)
+		deallocate(emp_Agconst,emp_jt,emp_jt_trend,emp_jt_cyc,logemp_jt)
+		deallocate(occ_loading,occ_loading_cov)
+		deallocate(emp_Ag, emp_lagAgconst,emp_Ag_coefs,emp_Ag_covcoefs)
 
 	end subroutine ts_employment
 	
@@ -905,7 +977,7 @@ module model_data
 			call mat2csv(status_Nt,"status_Nt.csv")
 		endif
 
-		call LPM_employment(hst,moments_sim,shk)
+!		call LPM_employment(hst,moments_sim,shk)
 		call ts_employment(hst, moments_sim)
 		
 	end subroutine moments_compute
@@ -3516,14 +3588,21 @@ module find_params
 					zgrid_min = minval(zgrid(nz/2+1:nz,ij))
 					zgrid_max = maxval(zgrid(nz/2+1:nz,ij))
 					! choose by scaling zgrid using the pre-transition values, 1:nz/2.  The `mod' ensures we're in that range
-					zj_here   = zgrid(mod(hst%z_jt_macroint(it)-1,nz/2)+1,ij) + zj_in
+					if(zj_contin .eqv. .true.) then
+						zj_here   = hst%z_jt_panel(ij,it) - zshift(ij) + zj_in
+					else
+						zj_here   = zgrid(mod(hst%z_jt_macroint(it)-1,nz/2)+1,ij) + zj_in
+					endif
 					! zj_here	  = max(min(zj_here,zgrid_max),zgrid_min) This would prevent extrapolation
 					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here) + nz/2
 					zj_lo	  = min(max(zj_lo,nz/2+1) , nz-1)
 					zj_hi	  = min(zj_lo +1,nz)
 					zjwt 	  = (zgrid(zj_hi,ij) - zj_here)/(zgrid(zj_hi,ij) - zgrid(zj_lo,ij))
+					if(zj_hi == zj_lo) zjwt=1.
 					! zjwt 	  = max(min(zjwt,1._dp),0._dp)  This would prevent extrapolation
 					j_val_here(i) = 0._dp
+					
+
 					do idi = 1,ndi ! expectation over delta, alpha
 					do ali = 1,nal
 						j_val_lo  = vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,zj_lo,age_hr)
@@ -3535,12 +3614,28 @@ module find_params
 					do ij = 1,nj
 						if(ij /= ij_obj) then
 							j_val_ij(i,ij) = 0.
-							do idi = 1,ndi ! expectation over delta, alpha
+							if(zj_contin .eqv. .true.)then
+								zj_here	= hst%z_jt_panel(it,ij)
+								zj_lo	= finder(zgrid(nz/2+1:nz,ij),zj_here) + nz/2
+								zj_lo	= min(max(zj_lo,nz/2+1) , nz-1)
+								zj_hi   = min(zj_lo+1,nz)
+								zjwt = (zgrid(zj_hi,ij)- zj_here)/( zgrid(zj_hi,ij) -   zgrid(zj_lo,ij) )
+								if(zj_hi == zj_lo) zjwt=1.
+							endif
+							
+							do idi = 1,ndi ! expectation over delta and alpha
 							do ali = 1,nal
-								j_val_ij(i,ij) = vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr, &
-											& hst%z_jt_macroint(it),age_hr)*delwt(idi,ij)*ergpialf(ali) + j_val_ij(i,ij)
+								if(zj_contin .eqv. .true.) then
+									j_val_ij(i,ij) =( zjwt    * vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,zj_lo,age_hr) &
+											&	+	 (1.-zjwt)* vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,zj_hi,age_hr) ) &
+											&	*  delwt(idi,ij)*ergpialf(ali) + j_val_ij(i,ij)
+								else
+									j_val_ij(i,ij) = vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr, &
+												& hst%z_jt_macroint(it),age_hr)*delwt(idi,ij)*ergpialf(ali) + j_val_ij(i,ij)
+								endif
 							enddo
 							enddo
+								
 						else
 								j_val_ij(i,ij) = j_val_here(i)
 						endif
@@ -3586,10 +3681,121 @@ module find_params
 
 	end function obj_zj_wrap
 
+	subroutine scaleTFPgrid(zgrid_in, zscale_in, zgrid_out,vfs,pfs)
+		real(dp), intent(in)  :: zgrid_in (:)
+		real(dp), intent(out) :: zgrid_out(:)
+		real(dp), intent(in)  :: zscale_in(:)
+		type(val_struct) :: vfs
+		type(pol_struct) :: pfs
+		
+		integer :: iz,i,ij,beti,idi,ial,id,ie,ia,it
+		real(dp) :: z_min,z_max,zjwt, zj_here
+		real(dp) :: j_val_lo,j_val_hi
+		real(dp) :: p_val_lo,p_val_hi		
+		integer :: zj_lo, zj_hi
 
-	subroutine newtfpgrid(zgrid_in, zshift_in, zgrid_out,vfs)
+		zgrid_out = zgrid_in
+		! apply shift
+		do ij=1,nj
+			z_max = maxval(zgrid_in(nz/2+1:nz,ij))
+			z_min = minval(zgrid_in(nz/2+1:nz,ij))
+			do iz=1,nz
+			
+				if(iz>nz/2 .and. z_regimes .eqv. .true.) then !don't shift around the mean
+					zgrid_out(iz,ij) = (zgrid_in(iz,ij) - zshift(ij))/zscale(ij)*zscale_in(ij)+zshift(ij)
+				else
+					zgrid_out(iz,ij) = zgrid_in(iz,ij)/zscale(ij)*zscale_in(ij)
+				endif
+			enddo
+		enddo
+
+		! interpolate V and pols
+		beti = 1
+		do ij=1,nj
+		do idi=1,ndi
+		do ial = 1,nal
+		do id = 1,nd
+		do ie = 1,ne
+		do ia=1,na
+		do it = 1,TT-1
+
+		!interpolate the value function on z grid
+		!and will extrapolate for the top and bottom points (problematic?)
+		do iz=1,nz
+			zj_here   = zgrid_out(iz,ij)
+			if( iz<= nz) then
+				zj_lo	  = finder(zgrid_in(1:nz/2,ij),zj_here) 
+				zj_lo	  = min( max(zj_lo,1), nz/2-1)
+				zj_hi	  = min(zj_lo +1,nz/2)
+			else
+				zj_lo	  = finder(zgrid_in(nz/2+1:nz,ij),zj_here) + nz/2
+				zj_lo	  = min( max(zj_lo,nz/2+1), nz-1)
+				zj_hi	  = min(zj_lo +1,nz)
+			endif
+			zjwt 	  = (zgrid_in(zj_hi,ij) - zj_here)/(zgrid_in(zj_hi,ij) - zgrid_in(zj_lo,ij))
+			if(zj_lo == zj_hi) zjwt = 1.
+			
+			j_val_lo  = vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			j_val_hi  = vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,iz,it) =  &
+				& zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi
+				
+			!now do this for a bunch of policies:
+			p_val_lo = pfs%aW((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%aW((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%aW((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+				
+			p_val_lo = pfs%aU((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%aU((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%aU((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+			
+			p_val_lo = pfs%aN((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%aN((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%aN((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+			
+			! DO not do aD, or aR.  They don't depend on z: aR( d_hr,ei_hr,ai_hr ) and aD( d_hr,ei_hr,ai_hr,age_hr )
+			
+			
+			p_val_lo = pfs%gwork_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%gwork_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%gwork_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+			
+			if(pfs%gwork_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) > 0) then
+				pfs%gwork((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 1
+			else
+				pfs%gwork((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 0
+			endif
+				
+			p_val_lo = pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+			if(pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) > 0) then
+				pfs%gapp((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 1
+			else
+				pfs%gapp((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 0
+			endif
+			
+		enddo
+
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+	
+	end subroutine scaleTFPgrid
+
+
+	subroutine shiftTFPgrid(zgrid_in, zshift_in, zgrid_out,vfs)
 		real(dp), intent(in)	:: zgrid_in(:,:)
-		real(dp), intent(out):: zgrid_out(:,:)
+		real(dp), intent(out)	:: zgrid_out(:,:)
 		real(dp), intent(in)	:: zshift_in(:)
 		type(val_struct)	:: vfs
 
@@ -3599,7 +3805,7 @@ module find_params
 		integer :: zj_lo, zj_hi
 
 		zgrid_out = zgrid_in
-		! apply scaling
+		! apply shift
 		do ij=1,nj
 			z_max = maxval(zgrid_in(nz/2+1:nz,ij))
 			z_min = minval(zgrid_in(nz/2+1:nz,ij))
@@ -3643,7 +3849,7 @@ module find_params
 		enddo
 		enddo
 		enddo
-	end subroutine newtfpgrid
+	end subroutine shiftTFPgrid
 
 
 	subroutine vscale_set(vfs, hst, shk, vscale_out)
@@ -3858,7 +4064,7 @@ module find_params
 			enddo
 
 			! this will reassign the grid using zshift
-			call newtfpgrid(zgrid0,zshift,zgrid1, vfs)
+			call shiftTFPgrid(zgrid0,zshift,zgrid1, vfs)
 			if(print_lev>=2) call mat2csv(zgrid1,"zgrid1.csv")
 			zgrid = zgrid1
 
@@ -3899,12 +4105,12 @@ module find_params
 
 		nu   = paramvec(3)
 
-	!	call settfp()
+		
 		call alloc_econ(vfs,pfs,hst)
 
 		! set up economy and solve it
 
-		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk)
+		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
 		
 		if(verbose >2) print *, "Solving the model"	
 		call sol(vfs,pfs)
@@ -3917,11 +4123,15 @@ module find_params
 		endif
 		t0tT = (/1,1/)
 		call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
-		t0tT = (/ struc_brk*itlen,  Tsim/)
-		call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift(:,2))
-
+		if(j_regimes .eqv. .true.) then
+			t0tT = (/ struc_brk*itlen,  Tsim/)
+			call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift(:,2))
+		else
+			jshift(:,2) = jshift(:,1)
+		endif
+			
 		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
-		!call iter_zproc(vfs, hst,shk)
+		call iter_zproc(vfs, hst,shk)
 		!after iter_zproc, I should cycle and re-solve it all
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -3979,6 +4189,85 @@ module find_params
 		
 
 	end subroutine cal_dist_nloptwrap
+
+
+	subroutine zjload_dist(paramvec, errvec,vfs_pfs_shk)
+		! the inputs are the values of parameters we're moving in paramvec
+		! the outputs are deviations from targets
+		! 1/ persistence of occupation productivity shock
+		! 2/ standard deviation of occupation productivity shock
+		! 3/ dispersion of gumbel shock - amenityscale
+		! 
+		
+		real(dp), intent(in) :: paramvec(:)
+		real(dp), intent(out) :: errvec(:)
+		
+		type(val_pol_shocks_struct) :: vfs_pfs_shk
+
+		type(hist_struct):: hst
+		type(moments_struct):: moments_sim
+		real(dp) :: condstd_tsemp,totdi_rt
+		integer :: ij=1,t0tT(2),it
+
+		!paramvec is a vector off occupation loadings on zj
+		
+		
+		call alloc_hist(hst)
+		
+		if(verbose >2) print *, "Simulating the model"	
+		call sim(vfs_pfs_shk%vfs, vfs_pfs_shk%pfs, hst,vfs_pfs_shk%shk)
+		if(verbose >2) print *, "Computing moments"
+		call moments_compute(hst,moments_sim,vfs_pfs_shkshk)
+
+
+		totdi_rt = 0.
+		do it=1,(TT-1)
+			totdi_rt = prob_age(it)*moments_sim%di_rate(it) + totdi_rt
+		enddo
+		totdi_rt = totdi_rt/(1- prob_age(TT))
+
+		errvec(1) =  moments_sim%ts_emp_coefs(1) - emp_persist! auto-correlation
+		errvec(2) =  condstd_tsemp - emp_std
+		errvec(3) =  totdi_rt - 0.045
+		call dealloc_hst(hst)
+
+	end subroutine zjload_dist
+
+	subroutine zjload_dist_nloptwrap(fval, nparam, paramvec, gradvec, need_grad, shk)
+
+		real(8) :: fval, paramvec(:),gradvec(:)
+		integer :: nparam,need_grad
+		type(shocks_struct) :: shk
+		real(8) :: errvec(nparam),paramwt(nparam),paramvecH(nparam),errvecH(nparam),paramvecL(nparam),errvecL(nparam),gradstep(nparam)
+		integer :: i
+		
+
+		call cal_dist(paramvec, errvec,shk)
+
+		paramwt = 1./dble(nparam)		! equal weight
+		fval = 0.
+		do i = 1,nparam
+			fval = paramvec(i)*paramwt(i) + fval
+		enddo
+		if( need_grad .ne. 0) then
+
+			do i=1,nparam
+				gradstep (i) = min( dabs( paramvec(i)*(5.e-5_dp) ) ,5.e-5_dp)
+				paramvecH(i) = paramvec(i) + gradstep(i)
+			enddo
+			call cal_dist(paramvecH, errvecH,shk)
+			do i=1,nparam
+				paramvecL(i) = paramvec(i) - gradstep(i)
+			enddo
+			call cal_dist(paramvecL, errvecL,shk)
+			do i=1,nparam
+				gradvec(i) = (errvecH(i) - errvecL(i))/(2._dp * gradstep(i))
+			enddo
+		endif
+		
+
+	end subroutine zjload_dist_nloptwrap
+
 
 
 !	subroutine  dfovec(Nin,Nout,paramvec,errvec)

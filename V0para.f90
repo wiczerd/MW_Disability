@@ -84,6 +84,7 @@ logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupa
 					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
 					  zj_contin	 = .true.,& !make zj draws continous
 					  z_regimes	 = .true.,& !different z regimes?
+					  j_regimes  = .false.,&!different pref shifts
 					  j_rand     = .false. 	! randomly assign j, or let choose.
 			
 
@@ -1005,9 +1006,123 @@ FUNCTION zbrent(func,x1,x2,funcp,tol,flag)
 END FUNCTION zbrent
 
 
+subroutine hptrend(t,y,phi, yt,yd)
+!
+!  Detrend time series with Hodrick-Prescott method:
+!
+!      sum  (y(t)-yt(t))^2 + phi sum [(yt(t+1)-yt(t))-(yt(t)-yt(t-1))]^2
+!     t=1:T                     t=2:T-1     
+!
+!  for the data in y.   A larger phi results in a smoother trend series.  
+!  For quarterly data Hodrick and Prescott (1980) use phi=1600.
+!
+!  Also returned are the series with no trend:  yd =y-yt
+!
+!          
+
+!  Ellen R. McGrattan,  4-23-87
+!  Revised, 5-16-06, ERM
+
+!  References
+!  ----------
+!  [1] Hodrick, Robert J. and Edward C. Prescott, "Post-War U.S. Business 
+!        Cycles: An Empirical Investigation," Working Paper, Carnegie-Mellon 
+!        University, November, 1980.
+!  [2] Prescott, Edward C., "Theory Ahead of Business Cycle Measurement," 
+!        QUARTERLY REVIEW, Federal Reserve Bank of Minneapolis, Fall 1986.
+!      
+
+
+	implicit none
+	integer, parameter             :: maxit=100,nm=40
+	integer, intent(in)            :: t
+	integer, dimension(t+1)        :: ip
+	integer, dimension(t)          :: iwork,ju
+	integer, dimension(5*t-6)      :: ia,ja,jlu
+	integer                        :: i,j,info
+	real(8), intent(in)               :: phi
+	real(8)                           :: eps
+	real(8), dimension(t),intent(in)  :: y
+	real(8), dimension(t),intent(out) :: yd,yt
+	real(8), dimension(t)             :: yn
+	real(8), dimension(t,t)           :: a
+	real(8), dimension(5*t-6)         :: s,alu
+	real(8), dimension(t,nm+1)        :: v
+	real(8), dimension(t-2)           :: x2
+	real(8), dimension(t-3)           :: x3
+	real(8), dimension(t-4)           :: x4
+
+	external dgesv
+
+	!if (t<301) then <- DGW comment: Ellen has a version for large and for small datasets.  Only implemented here is the small dataset version
+
+	a              = 0.
+	a(1,1:3)       = (/ 1.+phi, -2.*phi, phi /)
+	a(2,1:4)       = (/ -2.*phi, 1.+5.*phi, -4.*phi, phi /)
+	do i=3,t-2
+		a(i,i-2:i+2) = (/ phi, -4.*phi, 1.+6.*phi, -4.*phi, phi /)
+	enddo
+	a(t-1,t-3:t)   = (/ phi, -4.*phi, 1.+5.*phi, -2.*phi /)
+	a(t,t-2:t)     = (/ phi, -2.*phi, 1.+phi /)
+
+	yt             = y
+	call dgesv(t,1,a,t,iwork,yt,t,info)
+	if (info /= 0) then
+		write(*,*) 'Error: problem with dgesv'
+		return
+	endif
+
+	!else
+
+	!	s(1:3)         = (/ 1.+phi, -2.*phi, phi /)
+	!	ia(1:3)        = (/ 1,1,1 /)
+	!	ja(1:3)        = (/ 1,2,3 /)
+	!	s(4:7)         = (/ -2.*phi, 1.+5.*phi, -4.*phi, phi /)
+	!	ia(4:7)        = (/ 2,2,2,2 /)
+	!	ja(4:7)        = (/ 1,2,3,4 /)
+	!	j              = 8
+	!	do i=3,t-2
+	!		s(j:j+4)     = (/ phi, -4.*phi, 1.+6.*phi, -4.*phi, phi /)
+	!		ia(j:j+4)    = (/ i,i,i,i,i /)
+	!		ja(j:j+4)    = (/ i-2,i-1,i,i+1,i+2 /)
+	!		j            = j+5
+	!	enddo
+	!	s(j:j+3)       = (/ phi, -4.*phi, 1.+5.*phi, -2.*phi /)
+	!	ia(j:j+3)      = (/ t-1,t-1,t-1,t-1 /)
+	!	ja(j:j+3)      = (/ t-3,t-2,t-1,t /)
+	!	j              = j+4
+	!	s(j:j+2)       = (/ phi, -2.*phi, 1.+phi /)
+	!	ia(j:j+2)      = (/ t,t,t /)
+	!	ja(j:j+2)      = (/ t-2,t-1,t /)
+	!	j              = 1
+	!	ip(1)          = 1
+	!	do i=2,5*t-6
+	!		if (ia(i) /= ia(i-1)) then
+	!			j          = j+1
+	!			ip(j)      = i
+	!		endif
+	!	enddo
+	!	ip(t+1)        = 5*t-5
+
+	!	call ilu0(t,s,ja,ip,alu,jlu,ju,iwork,info)
+	!	if (info /= 0) then
+	!		write(*,*) 'Error: problem with ilu0'
+	!		return
+	!	endif
+	!	eps            = 1.e-10
+	!	yn             = y
+	!	call pgmres(t,nm,yn,yt,v,eps,maxit,0,s,ja,ip,alu,jlu,ju,info)
+	!	if (info /= 0) then
+	!		write(*,*) 'Error: problem with pgmres'
+	!		return
+	!	endif
+
+	!endif
+	yd  = y-yt
+
+end subroutine hptrend
 
 
 end module V0para
-
 
 
