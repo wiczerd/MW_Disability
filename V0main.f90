@@ -4,10 +4,6 @@
 ! @ Amanda Michaud, v1: 10/6/2014; current: 10/31/2014
 ! @ David Wiczer, v2: 03/31/2015
 !-----------------------------------------------------
-!This is a sub-program for DIchoices paper 
-!	Objective: compute V0(j), the expected value of choosing occupation j in {1,2...J}
-!				  before individual types are drawn.
-!	
 !************************************************************************************************!
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -o V0main.out  
 ! val grind line: valgrind --leak-check=yes --error-limit=no --track-origins=yes --log-file=V0valgrind.log ./V0main_dbg.out &
@@ -714,7 +710,7 @@ module model_data
 			!compute aggregate employment
 			do it=2,Tsim
 				emp_Ag(it-1) = exp(emp_jt_cyc(ij,it))+emp_Ag(it-1)
-				emp_lagAgconst(it,1) = exp(emp_jt_cyc(ij,it-1))+emp_lagAgconst(it,1)
+				emp_lagAgconst(it-1,1) = exp(emp_jt_cyc(ij,it-1))+emp_lagAgconst(it-1,1)
 			enddo
 		enddo
 		forall(it=1:(Tsim-1)) emp_Ag(it) = log(emp_Ag(it))
@@ -1072,29 +1068,41 @@ module sol_val
 		Vout = Vtest1
 	end subroutine maxVD
 
-	subroutine maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vout)
+	subroutine maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0,iaa0,iaaA,apol,Vout)
 		integer, intent(in) :: ij,ibi,idi,ial,id,ie,ia,iz,it
 		integer, intent(in) :: iaa0, iaaA 
 		integer, intent(out) :: apol
 		real(dp), intent(out) :: Vout
-		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
+		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:),VU0(:,:,:,:,:,:,:)
 		real(dp) :: Vc1,chere,Vtest1,Vtest2
 		integer :: iw, iaa,iaai,izz
 
 		iw = 1 ! don't work
-
 		Vtest1 = -1e6 ! just a very bad number, does not really matter
 		apol = iaa0
 		do iaa=iaa0,iaaA
-			chere = UI(egrid(ie))+R*agrid(ia)-agrid(iaa)
+			chere = UI(egrid(ie)) + R*agrid(ia)-agrid(iaa)
 			if(chere>0.) then 
 				Vtest2 = 0. !Continuation value if don't go on disability
 				do izz = 1,nz	 !Loop over z'
-				do iaai = 1,nal !Loop over alpha_i'
-					Vc1 = (1._dp-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
-						& 	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) )  !Age and might go LTU
-					Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) & 
-						&	+(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
+				do iaai = iaaL,nal !Loop over alpha_i'
+				
+					if(iaai > iaaU) then
+						Vc1 = (1._dp-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
+							& 	            +(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) )  !Age and might go LTU
+						Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) & 
+							&	      +(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
+					else
+						Vc1 = (1._dp-ptau(it))*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
+							& 	+(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) +&
+									 (1.- fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,id,ie,iaa,izz,it+1)  ) )  !Age and might go LTU
+
+						Vc1 = ptau(it)*(pphi*             VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,id,ie,iaa,izz,it) & 
+							  & +(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) +&
+							  &		  (1.-fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,id,ie,iaa,izz,it) ) ) + Vc1    !Don't age, maybe LTU
+					endif
+
+					!Vc1 = (1.-fndrate(iz,ij))*Vc1 + fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1  !Probability of alpha_i X z_i draw 
 				enddo
 				enddo
@@ -1132,7 +1140,7 @@ module sol_val
 				Vtest2 = 0.
 				!Continuation if apply for DI
 				do izz = 1,nz	 !Loop over z'
-				do iaai = 1,nal !Loop over alpha_i'
+				do iaai = iaaL,nal !Loop over alpha_i'
 					Vc1 = (1-ptau(it))*((1-xi(id,it))* &
 						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1)  &
 						& +xi(id,it)*VD0(id,ie,iaa,it+1)) !Age and might go on DI
@@ -1245,12 +1253,13 @@ module sol_val
 		real(dp), intent(out) :: gwork_dif
 		real(dp), intent(out) :: Vout, VWout
 		real(dp), intent(in) :: VU(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
-		real(dp) :: Vc1,utilhere,chere,Vtest1,Vtest2,VWhere,VUhere,smthV, yL, yH
+		real(dp) :: Vc1,utilhere,chere,Vtest1,Vtest2,VWhere,VUhere,smthV, vL, vH, uL, uH
 		integer :: iw, iaa,iaai,izz,idd
 
 		iw = 2 ! working
 		Vtest1= -1.e6_dp ! just to initialize, does not matter
 		apol = iaa0
+		
 		!Find saving Policy
 		do iaa=iaa0,iaaA
 			!Continuation value if don't go on disability
@@ -1258,15 +1267,23 @@ module sol_val
 			if (chere >0.) then
 				Vc1 = 0.
 				do izz  = 1,nz	 !Loop over z'
-				do iaai = 1,nal  !Loop over alpha_i'
+				do iaai = iaaL,nal  !Loop over alpha_i'
 				do idd  = 1,nd	 !Loop over d'
 					!Linearly interpolating on e'
-					yL = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee1,iaa,izz,it+1) & 
-						& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee1,iaa,izz,it)
-					yH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee2,iaa,izz,it+1) & 
-						& +ptau(it)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee2,iaa,izz,it)
+					vL = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee1,iaa,izz,it+1) & 
+						& +ptau(it)  *V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee1,iaa,izz,it)
+					vH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee2,iaa,izz,it+1) & 
+						& +ptau(it)  *V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee2,iaa,izz,it)
+					!if become unemployed here - 
+					uL = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,idd,iee1,iaa,izz,it+1) & 
+						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,idd,iee1,iaa,izz,it)
+					uH = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,idd,iee2,iaa,izz,it+1) & 
+						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,idd,iee2,iaa,izz,it)	
+						
+						
 					Vc1 = piz(iz,izz)*pialf(ial,iaai)*pid(id,idd,idi,it) &
-						& * (yH*(1._dp - iee1wt) + yL*iee1wt )&
+						& * (  (1.-seprisk(iz,ij))*(vH*(1._dp - iee1wt) + vL*iee1wt) &
+							+  seprisk(iz,ij)*     (uH*(1._dp - iee1wt) + uL*iee1wt) ) &
 						& + Vc1
 				enddo
 				enddo
@@ -1807,7 +1824,7 @@ module sol_val
 						ia = 1
 						iaa0 = 1
 						iaaA = na
-						call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vtest1)
+						call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0, iaa0,iaaA,apol,Vtest1)
 						V_m(ia) = Vtest1
 						aa_m(ia) = apol !agrid(apol)
 						iaN = iaN+1
@@ -1816,7 +1833,7 @@ module sol_val
 						ia = na
 						iaa0 = aa_m(1)
 						iaaA = na
-						call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vtest1)
+						call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0, iaa0,iaaA,apol,Vtest1)
 						V_m(ia) = Vtest1
 						aa_m(ia) = apol !agrid(apol)
 						iaN = iaN+1
@@ -1839,7 +1856,7 @@ module sol_val
 								ia = aa_u(iaa_k)
 								iaa0 = aa_m( aa_l(iaa_k-1) )
 								iaaA = aa_m( aa_u(iaa_k-1) )
-								call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,V0, iaa0,iaaA,apol,Vtest1)
+								call maxVU(ij,ibi,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0, iaa0,iaaA,apol,Vtest1)
 								V_m(ia) = Vtest1
 								aa_m(ia) = apol !agrid(apol)
 								iaN = iaN+1
@@ -3535,6 +3552,7 @@ module find_params
 
 	integer :: mod_ij_obj, mod_it
 	type(val_struct), pointer :: mod_vfs
+	type(pol_struct), pointer :: mod_pfs
 	type(hist_struct), pointer :: mod_hst
 	type(shocks_struct), pointer :: mod_shk
 	real(dp) :: mod_prob_target
@@ -3682,8 +3700,8 @@ module find_params
 	end function obj_zj_wrap
 
 	subroutine scaleTFPgrid(zgrid_in, zscale_in, zgrid_out,vfs,pfs)
-		real(dp), intent(in)  :: zgrid_in (:)
-		real(dp), intent(out) :: zgrid_out(:)
+		real(dp), intent(in)  :: zgrid_in (:,:)
+		real(dp), intent(out) :: zgrid_out(:,:)
 		real(dp), intent(in)  :: zscale_in(:)
 		type(val_struct) :: vfs
 		type(pol_struct) :: pfs
@@ -3695,13 +3713,14 @@ module find_params
 		integer :: zj_lo, zj_hi
 
 		zgrid_out = zgrid_in
+		call mat2csv(zgrid_in,"zgrid_in.csv")
 		! apply shift
 		do ij=1,nj
-			z_max = maxval(zgrid_in(nz/2+1:nz,ij))
-			z_min = minval(zgrid_in(nz/2+1:nz,ij))
+			!z_max = maxval(zgrid_in(nz/2+1:nz,ij))
+			!z_min = minval(zgrid_in(nz/2+1:nz,ij))
 			do iz=1,nz
 			
-				if(iz>nz/2 .and. z_regimes .eqv. .true.) then !don't shift around the mean
+				if(iz>=nz/2+1 .and. z_regimes .eqv. .true.) then !don't shift around the mean
 					zgrid_out(iz,ij) = (zgrid_in(iz,ij) - zshift(ij))/zscale(ij)*zscale_in(ij)+zshift(ij)
 				else
 					zgrid_out(iz,ij) = zgrid_in(iz,ij)/zscale(ij)*zscale_in(ij)
@@ -3709,6 +3728,7 @@ module find_params
 			enddo
 		enddo
 
+		call mat2csv(zgrid_out,"zgrid_out.csv")
 		! interpolate V and pols
 		beti = 1
 		do ij=1,nj
@@ -3723,14 +3743,14 @@ module find_params
 		!and will extrapolate for the top and bottom points (problematic?)
 		do iz=1,nz
 			zj_here   = zgrid_out(iz,ij)
-			if( iz<= nz) then
-				zj_lo	  = finder(zgrid_in(1:nz/2,ij),zj_here) 
-				zj_lo	  = min( max(zj_lo,1), nz/2-1)
-				zj_hi	  = min(zj_lo +1,nz/2)
-			else
+			if( iz >= nz/2+1 .and. z_regimes .eqv. .true.) then
 				zj_lo	  = finder(zgrid_in(nz/2+1:nz,ij),zj_here) + nz/2
 				zj_lo	  = min( max(zj_lo,nz/2+1), nz-1)
 				zj_hi	  = min(zj_lo +1,nz)
+			else
+				zj_lo	  = finder(zgrid_in(1:nz/2,ij),zj_here) 
+				zj_lo	  = min( max(zj_lo,1), nz/2-1)
+				zj_hi	  = min(zj_lo +1,nz/2)
 			endif
 			zjwt 	  = (zgrid_in(zj_hi,ij) - zj_here)/(zgrid_in(zj_hi,ij) - zgrid_in(zj_lo,ij))
 			if(zj_lo == zj_hi) zjwt = 1.
@@ -3774,6 +3794,7 @@ module find_params
 			p_val_hi = pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
 			pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
 				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+			
 			if(pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) > 0) then
 				pfs%gapp((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 1
 			else
@@ -3793,15 +3814,17 @@ module find_params
 	end subroutine scaleTFPgrid
 
 
-	subroutine shiftTFPgrid(zgrid_in, zshift_in, zgrid_out,vfs)
+	subroutine shiftTFPgrid(zgrid_in, zshift_in, zgrid_out,vfs,pfs)
 		real(dp), intent(in)	:: zgrid_in(:,:)
 		real(dp), intent(out)	:: zgrid_out(:,:)
 		real(dp), intent(in)	:: zshift_in(:)
 		type(val_struct)	:: vfs
+		type(pol_struct)	:: pfs
 
 		integer :: iz,i,ij,beti,idi,ial,id,ie,ia,it
 		real(dp) :: z_min,z_max,zjwt, zj_here
 		real(dp) :: j_val_lo,j_val_hi
+		real(dp) :: p_val_lo,p_val_hi		
 		integer :: zj_lo, zj_hi
 
 		zgrid_out = zgrid_in
@@ -3839,6 +3862,48 @@ module find_params
 			j_val_hi  = vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
 			vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,iz,it) =  &
 				& zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi
+
+
+			!now do this for a bunch of policies:
+			p_val_lo = pfs%aW((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%aW((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%aW((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+				
+			p_val_lo = pfs%aU((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%aU((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%aU((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+			
+			p_val_lo = pfs%aN((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%aN((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%aN((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+			
+			! DO not do aD, or aR.  They don't depend on z: aR( d_hr,ei_hr,ai_hr ) and aD( d_hr,ei_hr,ai_hr,age_hr )
+			
+			p_val_lo = pfs%gwork_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%gwork_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%gwork_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+			
+			if(pfs%gwork_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) > 0) then
+				pfs%gwork((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 1
+			else
+				pfs%gwork((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 0
+			endif
+				
+			p_val_lo = pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
+			p_val_hi = pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
+			pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
+				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
+			
+			if(pfs%gapp_dif((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) > 0) then
+				pfs%gapp((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 1
+			else
+				pfs%gapp((ij-1)*nbi+beti,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 0
+			endif
+	
 			
 		enddo
 
@@ -3989,11 +4054,12 @@ module find_params
 		
 	end subroutine
 
-	subroutine iter_zproc(vfs, hst,shk)
+	subroutine iter_zproc(vfs, pfs, hst,shk)
 		integer :: it=1, ij=1, ziter=1
 		type(val_struct), target :: vfs
 		type(hist_struct), target:: hst
 		type(shocks_struct), target:: shk
+		type(pol_struct), target :: pfs
 
 		real(dp) :: zj_here=1., zshift_mean=1.,zshift_mean1=1.
 		real(dp) :: dummy_params(3)
@@ -4008,6 +4074,7 @@ module find_params
 		allocate(zgrid0(nz,nj))
 		allocate(zgrid1(nz,nj))
 		mod_vfs => vfs
+		mod_pfs => pfs
 		mod_hst => hst
 		mod_shk => shk
 		zshift1 = 0.
@@ -4064,7 +4131,7 @@ module find_params
 			enddo
 
 			! this will reassign the grid using zshift
-			call shiftTFPgrid(zgrid0,zshift,zgrid1, vfs)
+			call shiftTFPgrid(zgrid0,zshift,zgrid1, vfs,pfs)
 			if(print_lev>=2) call mat2csv(zgrid1,"zgrid1.csv")
 			zgrid = zgrid1
 
@@ -4131,7 +4198,8 @@ module find_params
 		endif
 			
 		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
-		call iter_zproc(vfs, hst,shk)
+		! COMMENT THIS OUT FOR NOW!
+		!call iter_zproc(vfs,pfs, hst,shk)
 		!after iter_zproc, I should cycle and re-solve it all
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -4206,43 +4274,45 @@ module find_params
 
 		type(hist_struct):: hst
 		type(moments_struct):: moments_sim
-		real(dp) :: condstd_tsemp,totdi_rt
+		real(dp) :: zscale_here(nj)
+		real(dp) :: zgrid_in(nz,nj), zgrid_here(nz,nj)
 		integer :: ij=1,t0tT(2),it
 
+
+		zgrid_in = zgrid
 		!paramvec is a vector off occupation loadings on zj
+		do ij = 1,nj
+			zscale_here(ij) = paramvec(ij)
 		
+		enddo
+		
+		call scaleTFPgrid(zgrid_in, zscale_here, zgrid_here,vfs_pfs_shk%vfs_ptr,vfs_pfs_shk%pfs_ptr)
 		
 		call alloc_hist(hst)
 		
 		if(verbose >2) print *, "Simulating the model"	
-		call sim(vfs_pfs_shk%vfs, vfs_pfs_shk%pfs, hst,vfs_pfs_shk%shk)
+		call sim(vfs_pfs_shk%vfs_ptr, vfs_pfs_shk%pfs_ptr, hst,vfs_pfs_shk%shk_ptr)
 		if(verbose >2) print *, "Computing moments"
-		call moments_compute(hst,moments_sim,vfs_pfs_shkshk)
+		call moments_compute(hst,moments_sim,vfs_pfs_shk%shk_ptr)
 
-
-		totdi_rt = 0.
-		do it=1,(TT-1)
-			totdi_rt = prob_age(it)*moments_sim%di_rate(it) + totdi_rt
+		do ij = 1,nj
+			errvec(ij) =  moments_sim%ts_emp_coefs(ij+1) - occZload(ij)
 		enddo
-		totdi_rt = totdi_rt/(1- prob_age(TT))
 
-		errvec(1) =  moments_sim%ts_emp_coefs(1) - emp_persist! auto-correlation
-		errvec(2) =  condstd_tsemp - emp_std
-		errvec(3) =  totdi_rt - 0.045
-		call dealloc_hst(hst)
+		call dealloc_hist(hst)
 
 	end subroutine zjload_dist
 
-	subroutine zjload_dist_nloptwrap(fval, nparam, paramvec, gradvec, need_grad, shk)
+	subroutine zjload_dist_nloptwrap(fval, nparam, paramvec, gradvec, need_grad, vfs_pfs_shk)
 
 		real(8) :: fval, paramvec(:),gradvec(:)
 		integer :: nparam,need_grad
-		type(shocks_struct) :: shk
+		type(val_pol_shocks_struct) :: vfs_pfs_shk
 		real(8) :: errvec(nparam),paramwt(nparam),paramvecH(nparam),errvecH(nparam),paramvecL(nparam),errvecL(nparam),gradstep(nparam)
 		integer :: i
 		
 
-		call cal_dist(paramvec, errvec,shk)
+		call zjload_dist(paramvec, errvec,vfs_pfs_shk)
 
 		paramwt = 1./dble(nparam)		! equal weight
 		fval = 0.
@@ -4255,11 +4325,11 @@ module find_params
 				gradstep (i) = min( dabs( paramvec(i)*(5.e-5_dp) ) ,5.e-5_dp)
 				paramvecH(i) = paramvec(i) + gradstep(i)
 			enddo
-			call cal_dist(paramvecH, errvecH,shk)
+			call zjload_dist(paramvecH, errvecH,vfs_pfs_shk)
 			do i=1,nparam
 				paramvecL(i) = paramvec(i) - gradstep(i)
 			enddo
-			call cal_dist(paramvecL, errvecL,shk)
+			call zjload_dist(paramvecL, errvecL,vfs_pfs_shk)
 			do i=1,nparam
 				gradvec(i) = (errvecH(i) - errvecL(i))/(2._dp * gradstep(i))
 			enddo
@@ -4305,19 +4375,21 @@ program V0main
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: id=1, it=1, ij=1, ibi=1, ial=1, iz=1, narg_in=1, wo=1, status=1
+		integer  :: id=1, it=1, ij=1, ibi=1, ial=1, iz=1, narg_in=1, wo=1, status=1,t0tT(2)
 
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(3)=1.,err0(3)=1.
+		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(3)=1.,err0(3)=1.,param1(nj),err1(nj)
 	!************************************************************************************************!
 	! Structure to communicate everything
-		type(val_struct) :: vfs
-		type(pol_struct) :: pfs
+		type(val_struct), target :: vfs
+		type(pol_struct), target :: pfs
 		type(hist_struct):: hst
-		type(shocks_struct) :: shk
+		type(shocks_struct), target :: shk
 		type(moments_struct):: moments_sim
+
+		type(val_pol_shocks_struct) :: vfs_pfs_shk
 		
 	! Timers
 		integer :: c1=1,c2=1,cr=1,cm=1
@@ -4409,12 +4481,46 @@ program V0main
 	
 	call draw_shocks(shk)
 
+	! try calibrating loading factors
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	call alloc_econ(vfs,pfs,hst)
+
+	! set up economy and solve it
+
+	call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
 	
-	param0 = (/zrho,zsig,nu /)
-	err0 = 0.
-	call cal_dist(param0,err0,shk)
+	if(verbose >2) print *, "Solving the model"	
+	call sol(vfs,pfs)
+	if(verbose >2) print *, "Solving for z process"
+
+	call vscale_set(vfs, hst, shk, vscale)
+	if(dabs(vscale)<1) then 
+		vscale = 1.
+		if( verbose >1 ) print *, "reset vscale to 1"
+	endif
+	t0tT = (/1,1/)
+	call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
+	if(j_regimes .eqv. .true.) then
+		t0tT = (/ struc_brk*itlen,  Tsim/)
+		call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift(:,2))
+	else
+		jshift(:,2) = jshift(:,1)
+	endif
+	
+	vfs_pfs_shk%vfs_ptr => vfs
+	vfs_pfs_shk%pfs_ptr => pfs
+	vfs_pfs_shk%shk_ptr => shk
+	
+!	param1 = 1.
+!	call zjload_dist(param1, err1,vfs_pfs_shk)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!	print *, err1
+!	param0 = (/zrho,zsig,nu /)
+!	err0 = 0.
+!	call cal_dist(param0,err0,shk)
 	
 	call dealloc_shocks(shk)
+	call dealloc_econ(vfs,pfs,hst)
 	
 	!************************************************************************************************!
 	! Allocate phat matrices

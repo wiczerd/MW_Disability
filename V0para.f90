@@ -64,11 +64,11 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &!3		    !Number of individual disability risk types
-			nj  = 2,  &		        !Number of occupations (downward TFP risk variation)
+			nj  = 1,  &		        !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 40, &!100	        !Points on assets grid
-			nz  = 6,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
+			nz  = 4,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &!2000	!Tolerance parameter	
 			Nsim = 5000, & !5000         !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
@@ -83,8 +83,8 @@ integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types
 logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
 					  zj_contin	 = .true.,& !make zj draws continous
-					  z_regimes	 = .true.,& !different z regimes?
-					  j_regimes  = .false.,&!different pref shifts
+					  z_regimes	 = .false.,&!different z regimes?
+					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .false. 	! randomly assign j, or let choose.
 			
 
@@ -123,7 +123,10 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		hazborn_t(Tsim), &	!hazard of being born at each point t
 		occprbrk(nj), & 	!Fraction choosing occupation after break
 		occsz0(nj),&		!Fraction in each occupation
-		jshift(nj,2)			!Preference shift to ensure proper proportions, 2 regimes
+		occZload(nj), &		!Factor loading for each ccupation
+		jshift(nj,2),&		!Preference shift to ensure proper proportions, 2 regimes
+		seprisk(nz,nj),&	!occupation-cycle specific job separation
+		fndrate(nz,nj)		!occupation-cycle specific job finding rates
 		
 integer :: 	dgrid(nd), &		! just enumerate the d states
 		agegrid(TT)		! the mid points of the ages
@@ -162,10 +165,12 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3
 		smthELPM = 1.		!Smoothing for the LPM
+		
+! some handy programming terms
 integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
-			Tblock_sim = struc_brk		!The actual time before structural change (years)
-
-
+			Tblock_sim = struc_brk,&		!The actual time before structural change (years)
+			iaaU	= 1 ,&		! the index of alpha that signifies an exogenously displaced worker
+			iaaL	= 2
 
 !**** calibration targets
 real(8) :: emp_persist = 0.98 ,&
@@ -223,20 +228,32 @@ subroutine setparams()
 		if(summy /=1 ) pialf(i,2:nal)=pialf(i,2:nal)/summy !this is just numerical error
 	enddo
 
-	! value of alfgrid(1) chosen later
-	pialf(1,1) = (1-srho)
-	pialf(1,2:nal) = srho/dble(nal - 1)
-	pialf(2:nal,1) = xsep
-	forall(i=2:nal,k=2:nal) pialf(i,k) = pialf(i,k)*(1-xsep)
-
 	ergpialf = 0.
-	ergpialf(1) = xsep
+	ergpialf(1) = 0.
 	do i=2,(nal-1)
-		ergpialf(i) = (1.-xsep)*( &
+		ergpialf(i) = ( &
 			&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.-alfmu) /alfsig,.false.)- &
 			&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.-alfmu) /alfsig,.false.) )
 	enddo
-	ergpialf(nal) = 1.-sum(ergpialf(1:(nal-1)))
+	ergpialf(nal) = 1.-sum(ergpialf(2:(nal-1)))
+
+	! the probabilities associated with going into the alpha term that is unemployment go to zero.
+	pialf(1,1) = 0.
+	pialf(1,2:nal) = ergpialf(2:nal)
+	pialf(2:nal,1) = 0. !exogenous separation is not built into alpha transitions
+	!pialf(2:nal,1) = xsep
+	!forall(i=2:nal,k=2:nal) pialf(i,k) = pialf(i,k)*(1.-xsep)
+
+
+	!will read these numberrs in.
+	seprisk = 0.
+	fndrate = 0.
+	do i =1,nz
+		do j=1,nj
+			fndrate(i,j) = srho
+			seprisk(i,j) = xsep
+		enddo
+	enddo
 
 	forall(i=1:nd) dgrid(i) = i
 
@@ -468,7 +485,7 @@ subroutine settfp()
 	zcondsig = ((zsig**2)*(1.-zrho**2))**(0.5)
 	zcondsigt = ((zsigt**2)*(1.-zrhot**2))**(0.5)
 	!first set transition probabilities at an annual basis
-	call rouwenhorst(nz/2,zmu,zrho,zcondsig,zgrid(1:nzblock,1),piz(1:nzblock,1:nzblock))
+	call rouwenhorst(nzblock,zmu,zrho,zcondsig,zgrid(1:nzblock,1),piz(1:nzblock,1:nzblock))
 
 	if(z_regimes .eqv. .true.) then
 		!adjust the mean for after the transition
