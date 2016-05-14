@@ -4466,7 +4466,13 @@ program V0main
 		integer :: c1=1,c2=1,cr=1,cm=1
 		real(dp) :: t1=1.,t2=1.
 		
-	
+	! NLopt stuff
+		integer(8) :: calopt,ires
+		real(dp) :: lb(1),ub(1),parvec(1), erval
+	!	external cal_dist_nloptwrap
+		
+		
+		include 'nlopt.f'
 
 	moments_sim%alloced = 0
 
@@ -4604,6 +4610,22 @@ program V0main
 		print *, "   CPU Time", (t2-t1)
 	endif
 	
+	call nlo_create(calopt,NLOPT_LD_MMA,1)
+	lb = 0._dp
+	call nlo_set_lower_bounds(ires,calopt,lb)
+	ub = 1._dp
+	call nlo_set_upper_bounds(ires,calopt,ub)
+	call nlo_set_xtol_abs(ires, calopt, 0.005) !integer problem, so it is not very sensitive
+	call nlo_set_ftol_abs(ires,calopt, 0.001)  ! ditto 
+	call nlo_set_maxeval(ires,calopt,1000)
+	
+	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+	
+	parvec(1) = nu
+	call nlo_optimize(ires, calopt, parvec, erval)
+	
+	
+	call nlo_destroy(calopt)
 !	call dealloc_econ(vfs,pfs,hst)
 	
 	!************************************************************************************************!
