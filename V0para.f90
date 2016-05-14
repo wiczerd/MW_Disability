@@ -64,11 +64,11 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &!3		    !Number of individual disability risk types
-			nj  = 1,  &		        !Number of occupations (downward TFP risk variation)
+			nj  = 2,  &		        !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 40, &!100	        !Points on assets grid
-			nz  = 4,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
+			na  = 100, &!100	        !Points on assets grid
+			nz  = 2,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &!2000	!Tolerance parameter	
 			Nsim = 5000, & !5000         !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
@@ -133,14 +133,14 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start)
-		nu = 0.05, &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 0.2, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
 		alfsig = 0.015**0.5,&	!Unconditional StdDev of Alpha_i type (Normal)
 		b = 0.05,&		!Home production income
-		lrho = 0.2,&		!Probability of finding a job when long-term unemployed (David)
+		lrho = 0.5,&		!Discount in the probability of finding a job when long-term unemployed (David)
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
 		xsep = 0.015, &		!Separation probability into unemployment
@@ -227,6 +227,7 @@ subroutine setparams()
 		summy = sum(pialf(i,2:nal))
 		if(summy /=1 ) pialf(i,2:nal)=pialf(i,2:nal)/summy !this is just numerical error
 	enddo
+	alfgrid(1) = alfmu - 4*alfsig !aribtrary... meant to be small
 
 	ergpialf = 0.
 	ergpialf(1) = 0.
