@@ -2919,7 +2919,7 @@ module sim_hists
 		logical :: ptrsuccess=.false.
 		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1),d_var(TT-1),&
 				& a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
-				& s_mean(TT-1),s_mean_liter(TT-1)
+				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj)
 	
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., ziwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
@@ -3547,32 +3547,32 @@ module sim_hists
 		enddo
 		occsize_jt(:,it) = occsize_jt(:,it) / Nworkt
 
-		! omp parallel do private(it,Nworkt,i,ij)
+		!$omp parallel do private(it,Nworkt,i,ij,occgrow_hr,occsize_hr,occshrink_hr)
 		do it = 2,Tsim
 			Nworkt = 0.
-			occgrow_jt  (:,it) = 0.
-			occshrink_jt(:,it) = 0.
-			occsize_jt  (:,it) = 0.
+			occgrow_hr   = 0.
+			occshrink_hr = 0.
+			occsize_hr   = 0.
 			do i=1,Nsim
 				if((status_it(i,it) <= 2 .and. status_it(i,it)>=1) .and. age_it(i,it) > 0 ) Nworkt = 1._dp + Nworkt !labor force in this period
-				do ij =1,nj
-					if(j_i(i) ==ij .and. born_it(i,it) == 1 ) &
-						& occgrow_jt(ij,it) = 1._dp + occgrow_jt(ij,it)
-					if(j_i(i) ==ij .and. status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
-						& occgrow_jt(ij,it) = 1._dp + occgrow_jt(ij,it) !wasn't working last period
-					if(j_i(i) ==ij .and. status_it(i,it-1) == 1 .and. status_it(i,it) > 1) &
-						& occshrink_jt(ij,it) = 1._dp + occshrink_jt(ij,it)
-					if(j_i(i) ==ij .and. status_it(i,it) == 1) &
-						& occsize_jt(ij,it) = 1._dp + occsize_jt(ij,it)
-				enddo
+				ij =j_i(i)
+				if(born_it(i,it) == 1 ) &
+					& occgrow_hr(ij) = 1._dp + occgrow_hr(ij)
+				if(status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
+					& occgrow_hr(ij) = 1._dp + occgrow_hr(ij) !wasn't working last period
+				if(status_it(i,it-1) == 1 .and. status_it(i,it) > 1) &
+					& occshrink_hr(ij) = 1._dp + occshrink_hr(ij)
+				if(status_it(i,it) == 1) &
+					& occsize_hr(ij) = 1._dp + occsize_hr(ij)
+				
 			enddo
 			do ij =1,nj
-				occgrow_jt(ij,it) = occgrow_jt(ij,it)/occsize_jt(ij,it)
-				occshrink_jt(ij,it) = occshrink_jt(ij,it)/occsize_jt(ij,it)
+				occgrow_jt(ij,it) = occgrow_hr(ij)/occsize_hr(ij)
+				occshrink_jt(ij,it) = occshrink_hr(ij)/occsize_hr(ij)
 			enddo
-			forall(ij=1:nj) occsize_jt(ij,it) = occsize_jt(ij,it)/Nworkt
+			occsize_jt(:,it) = occsize_hr/Nworkt
 		enddo
-		! omp end parallel do
+		!$omp end parallel do
 		
 		if(print_lev > 1)then
 				call mat2csv (e_it,"e_it.csv")
@@ -3625,7 +3625,9 @@ module find_params
 	type(pol_struct), pointer :: mod_pfs
 	type(hist_struct), pointer :: mod_hst
 	type(shocks_struct), pointer :: mod_shk
+	type(shocks_struct) :: glb_shk
 	real(dp) :: mod_prob_target
+	
 
 	contains
 
@@ -4237,10 +4239,10 @@ module find_params
 		real(dp) :: condstd_tsemp,totdi_rt
 		integer :: ij=1,t0tT(2),it
 
-		zrho = paramvec(1)
-		zsig = paramvec(2)
-
-		nu   = paramvec(3)
+		!zrho = paramvec(1)
+		!zsig = paramvec(2)
+		print *, paramvec(1)
+		nu   = paramvec(1)
 
 		
 		call alloc_econ(vfs,pfs,hst)
@@ -4281,28 +4283,29 @@ module find_params
 		do ij = 1,nj
 			condstd_tsemp = moments_sim%ts_emp_coefs(ij+1) *occsz0(ij)+ condstd_tsemp
 		enddo
-		totdi_rt = 0.
-		do it=1,(TT-1)
-			totdi_rt = prob_age(it)*moments_sim%di_rate(it) + totdi_rt
-		enddo
-		totdi_rt = totdi_rt/(1- prob_age(TT))
+		!totdi_rt = 0.
+		!do it=1,(TT-1)
+		!	totdi_rt = prob_age(it)*moments_sim%di_rate(it) + totdi_rt
+		!enddo
+		!totdi_rt = totdi_rt/(1- prob_age(TT))
 
-		errvec(1) =  moments_sim%ts_emp_coefs(1) - emp_persist! auto-correlation
-		errvec(2) =  condstd_tsemp - emp_std
-		errvec(3) =  totdi_rt - 0.045
+		!errvec(1) =  moments_sim%ts_emp_coefs(1) - emp_persist! auto-correlation
+		!errvec(2) =  condstd_tsemp - emp_std
+		errvec(1) =  moments_sim%avg_di - 0.045
 		call dealloc_econ(vfs,pfs,hst)
 
 	end subroutine cal_dist
 
 	subroutine cal_dist_nloptwrap(fval, nparam, paramvec, gradvec, need_grad, shk)
 
-		real(8) :: fval, paramvec(:),gradvec(:)
 		integer :: nparam,need_grad
+		real(8) :: fval, paramvec(nparam),gradvec(nparam)
 		type(shocks_struct) :: shk
 		real(8) :: errvec(nparam),paramwt(nparam),paramvecH(nparam),errvecH(nparam),paramvecL(nparam),errvecL(nparam),gradstep(nparam)
 		integer :: i
 		
-
+		print *, shk%age_hist(nsim,tsim)
+		
 		call cal_dist(paramvec, errvec,shk)
 
 		paramwt = 1./dble(nparam)		! equal weight
@@ -4457,7 +4460,7 @@ program V0main
 		type(val_struct), target :: vfs
 		type(pol_struct), target :: pfs
 		type(hist_struct):: hst
-		type(shocks_struct), target :: shk
+		type(shocks_struct) :: shk
 		type(moments_struct):: moments_sim
 
 		type(val_pol_shocks_struct) :: vfs_pfs_shk
@@ -4586,7 +4589,7 @@ program V0main
 	
 	vfs_pfs_shk%vfs_ptr => vfs
 	vfs_pfs_shk%pfs_ptr => pfs
-	vfs_pfs_shk%shk_ptr => shk
+!	vfs_pfs_shk%shk_ptr => shk
 	
 !	param1 = 1.
 !	call zjload_dist(param1, err1,vfs_pfs_shk)
@@ -4597,11 +4600,9 @@ program V0main
 	!	zsig = paramvec(2)
 	!	amenityscale = paramvec(3)
 
-	param0 = (/zrho,zsig,nu /)
+	parvec(1) = nu
 	err0 = 0.
-	call cal_dist(param0,err0,shk)
-	
-	call dealloc_shocks(shk)
+!	call cal_dist(parvec,err0,shk)
 	
 	if(verbose > 2) then
 		call CPU_TIME(t2)
@@ -4610,7 +4611,7 @@ program V0main
 		print *, "   CPU Time", (t2-t1)
 	endif
 	
-	call nlo_create(calopt,NLOPT_LD_MMA,1)
+	call nlo_create(calopt,NLOPT_LN_NELDERMEAD,1)
 	lb = 0._dp
 	call nlo_set_lower_bounds(ires,calopt,lb)
 	ub = 1._dp
@@ -4622,10 +4623,13 @@ program V0main
 	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 	
 	parvec(1) = nu
+	print *, parvec
 	call nlo_optimize(ires, calopt, parvec, erval)
 	
 	
 	call nlo_destroy(calopt)
+	call dealloc_shocks(shk)
+	
 !	call dealloc_econ(vfs,pfs,hst)
 	
 	!************************************************************************************************!
