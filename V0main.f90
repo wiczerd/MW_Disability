@@ -2985,14 +2985,16 @@ module sim_hists
 		occgrow_jt  => hst%occgrow_jt
 		occshrink_jt=> hst%occshrink_jt
 		occsize_jt  => hst%occsize_jt
-
-		ptrsuccess = associated(d_it,hst%d_hist)
-		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate d_it"
-		ptrsuccess = associated(age_it,shk%age_hist)
-		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate age_it"
-		ptrsuccess = associated(V,vfs%V)
-		if(verbose>1 .and. ptrsuccess .eqv. .false. ) print *, "failed to associate V"
 		
+		ptrsuccess = associated(d_it,hst%d_hist)
+		if(verbose>1) then
+			if(ptrsuccess .eqv. .false. ) print *, "failed to associate d_it"
+			ptrsuccess = associated(age_it,shk%age_hist)
+			if(ptrsuccess .eqv. .false. ) print *, "failed to associate age_it"
+			ptrsuccess = associated(V,vfs%V)
+			if(ptrsuccess .eqv. .false. ) print *, "failed to associate V"
+		endif
+
 		hst%wage_hist = 0.
 		Tret = (Longev - youngD - oldD*oldN)*tlen
 		work_dif_it = 0.
@@ -4241,7 +4243,6 @@ module find_params
 
 		!zrho = paramvec(1)
 		!zsig = paramvec(2)
-		print *, paramvec(1)
 		nu   = paramvec(1)
 
 		
@@ -4301,34 +4302,46 @@ module find_params
 		integer :: nparam,need_grad
 		real(8) :: fval, paramvec(nparam),gradvec(nparam)
 		type(shocks_struct) :: shk
-		real(8) :: errvec(nparam),paramwt(nparam),paramvecH(nparam),errvecH(nparam),paramvecL(nparam),errvecL(nparam),gradstep(nparam)
-		integer :: i
+		real(8) :: errvec(nparam),paramwt(nparam),paramvecH(nparam),errvecH(nparam),paramvecL(nparam),errvecL(nparam),gradstep(nparam), fvalH,fvalL
+		integer :: i, ii,print_lev_old, verbose_old
 		
-		print *, shk%age_hist(nsim,tsim)
+		
+		print_lev_old = print_lev 
+		verbose_old = verbose
+		print_lev = 0
+		verbose = 1
+
+		if(verbose_old >=1) print *, "test parameter vector", paramvec
 		
 		call cal_dist(paramvec, errvec,shk)
+
+		if(verbose_old >=1) print *, "         error vector", errvec
 
 		paramwt = 1./dble(nparam)		! equal weight
 		fval = 0.
 		do i = 1,nparam
-			fval = paramvec(i)*paramwt(i) + fval
+			fval = errvec(i)**2*paramwt(i) + fval
 		enddo
 		if( need_grad .ne. 0) then
 
 			do i=1,nparam
 				gradstep (i) = min( dabs( paramvec(i)*(5.e-5_dp) ) ,5.e-5_dp)
 				paramvecH(i) = paramvec(i) + gradstep(i)
+				call cal_dist(paramvecH, errvecH,shk)	
+				paramvecL(i) = paramvec(i) - gradstep(i)	
+				call cal_dist(paramvecL, errvecL,shk)	
+				fvalH = 0.
+				fvalL = 0.
+				do ii =1,nparam
+					fvalH = paramwt(ii)*errvecH**2 + fvalH
+					fvalL = paramwt(ii)*errvecL**2 + fvalL
+				enddo
+				gradvec(i) =  (fvalH - fvalL)/(2._dp * gradstep(i))
 			enddo
-			call cal_dist(paramvecH, errvecH,shk)
-			do i=1,nparam
-				paramvecL(i) = paramvec(i) - gradstep(i)
-			enddo
-			call cal_dist(paramvecL, errvecL,shk)
-			do i=1,nparam
-				gradvec(i) = (errvecH(i) - errvecL(i))/(2._dp * gradstep(i))
-			enddo
+			
 		endif
-		
+		print_lev = print_lev_old
+		verbose = verbose_old	
 
 	end subroutine cal_dist_nloptwrap
 
@@ -4391,7 +4404,7 @@ module find_params
 		paramwt = 1./dble(nparam)		! equal weight
 		fval = 0.
 		do i = 1,nparam
-			fval = paramvec(i)*paramwt(i) + fval
+			fval = errvec(i)**2*paramwt(i) + fval
 		enddo
 		if( need_grad .ne. 0) then
 
@@ -4611,7 +4624,7 @@ program V0main
 		print *, "   CPU Time", (t2-t1)
 	endif
 	
-	call nlo_create(calopt,NLOPT_LN_NELDERMEAD,1)
+	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
 	lb = 0._dp
 	call nlo_set_lower_bounds(ires,calopt,lb)
 	ub = 1._dp

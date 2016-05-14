@@ -231,11 +231,14 @@ subroutine setparams()
 
 	ergpialf = 0.
 	ergpialf(1) = 0.
-	do i=2,(nal-1)
-		ergpialf(i) = ( &
-			&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.-alfmu) /alfsig,.false.)- &
-			&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.-alfmu) /alfsig,.false.) )
-	enddo
+	ergpialf(2) = alnorm( ((alfgrid(3)+alfgrid(2))/2.-alfmu) /alfsig,.false.)
+	if( nal > 3) then
+		do i=3,(nal-1)
+			ergpialf(i) = ( &
+				&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.-alfmu) /alfsig,.false.)- &
+				&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.-alfmu) /alfsig,.false.) )
+		enddo
+	endif
 	ergpialf(nal) = 1.-sum(ergpialf(2:(nal-1)))
 
 	! the probabilities associated with going into the alpha term that is unemployment go to zero.
