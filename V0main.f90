@@ -3169,6 +3169,11 @@ module sim_hists
 					!set the state
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
+					if( w_strchng .eqv. .true.) then
+						al_hr = max(al_hr - wage_trend(it,j_hr), alfgrid(2))
+						ali_hr = finder(alfgrid,al_hr)
+						if( alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr) .and. ali_hr <nal ) ali_hr = ali_hr+1
+					endif
 
 					
 					status_hr = status_it(i,it)
@@ -4333,8 +4338,8 @@ module find_params
 				fvalH = 0.
 				fvalL = 0.
 				do ii =1,nparam
-					fvalH = paramwt(ii)*errvecH**2 + fvalH
-					fvalL = paramwt(ii)*errvecL**2 + fvalL
+					fvalH = paramwt(ii)*errvecH(ii)**2 + fvalH
+					fvalL = paramwt(ii)*errvecL(ii)**2 + fvalL
 				enddo
 				gradvec(i) =  (fvalH - fvalL)/(2._dp * gradstep(i))
 			enddo
@@ -4615,7 +4620,7 @@ program V0main
 
 	parvec(1) = nu
 	err0 = 0.
-!	call cal_dist(parvec,err0,shk)
+	call cal_dist(parvec,err0,shk)
 	
 	if(verbose > 2) then
 		call CPU_TIME(t2)

@@ -61,10 +61,10 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 		dRiskH	= 1.05		!Upper bound on occupation-related extra disability risk (mult factor)
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 4,  &!11		!Number of individual alpha types 
+integer, parameter ::	nal = 11,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &!3		    !Number of individual disability risk types
-			nj  = 2,  &		        !Number of occupations (downward TFP risk variation)
+			nj  = 16,  &	        !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 100, &!100	        !Points on assets grid
@@ -85,8 +85,9 @@ logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupa
 					  zj_contin	 = .true.,& !make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
 					  j_regimes  = .true.,& !different pref shifts
-					  j_rand     = .false. 	! randomly assign j, or let choose.
-			
+					  j_rand     = .false.,&! randomly assign j, or let choose.
+					  w_strchng	 = .true.
+
 
 real(8), parameter ::   Vtol = 1e-6, & 	!Tolerance on V-dist
 !		beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
@@ -126,7 +127,10 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		occZload(nj), &		!Factor loading for each ccupation
 		jshift(nj,2),&		!Preference shift to ensure proper proportions, 2 regimes
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
-		fndrate(nz,nj)		!occupation-cycle specific job finding rates
+		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
+		wage_trend(Tsim,nj),&!trend in wages
+		occpr_trend(Tsim,nj)!trend in occupation choice
+		
 		
 integer :: 	dgrid(nd), &		! just enumerate the d states
 		agegrid(TT)		! the mid points of the ages
@@ -199,18 +203,62 @@ subroutine setparams()
 		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim)
+	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), &
+		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,nj)
+	
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	verbose = 3
 	print_lev = 2
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!	
+	! Read things in:
+	
+	
 
-	!Individual- Specific Things
+	!Read in the occupation size among the young.
+	open(unit=fread, file="hpShareO.csv")
+	do t=1,Tsim
+		read(fread,*) occbody_trend_read(t,:)
+	enddo
+	close(fread)
+
+	!read initial distributions of age X occ
+	open(unit= fread, file = "initial_AGE_OCC.csv")
+	do i=1,6
+		read(fread,*) age_occ_read(i,:)
+	enddo
+	close(fread)
+
+	open(unit= fread, file = "wageTrend.csv")
+	do t=1,Tsim
+		read(fread,*) wage_trend_read(t,:)
+	enddo
+	close(fread)
+	
+	!Read in the disability means by occuaption
+	open(unit= fread, file="occupation_del.csv")
+	do j=1,nj
+		read(fread, *,iostat=k) occdel(j)
+	enddo
+	close(fread)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!Earnings
+	
+	
 	!Individual exposure to TFP shocks (beta)
 	beti(1) = 1.0
 	!beti(2) = 1.2 
+
+
+	do t=1,Tsim
+		do i=1,nj
+			wage_trend(t,i) = wage_trend_read(t,i+1)
+		enddo
+	enddo
+
 
 	!Individual Wage component (alpha)- grid= 2 std. deviations
 	alfrhot = alfrho**(1./tlen)
@@ -269,12 +317,7 @@ subroutine setparams()
 	else
 		delgrid(1) = 0.5*(dRiskH + dRiskL)
 	endif
-	!Read in the means by occuaption
-	open(unit= fread, file="occupation_del.csv")
-	do j=1,nj
-		read(fread, *,iostat=k) occdel(j)
-	enddo
-	close(fread)
+
 	!ensure its mean is 1
 	summy = 0.
 	do j=1,nj
@@ -290,22 +333,9 @@ subroutine setparams()
 
 	call settfp()
 
-	!Read in the sizes by occuaption later
-	open(unit= fread, file="occupation_pr1.csv")
-	do j=1,nj
-		read(fread, *,iostat=k) occprbrk(j)
-	enddo
-	close(fread)
-	!ensure it adds to 1
-	summy = 0.
-	do j=1,nj
-		summy = occprbrk(j) + summy
-	enddo
-	forall(j=1:nj) occprbrk(j) = occprbrk(j)/summy
-
-
 	
-	!Age-Specific Things
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!	
+	!Demographics
 
 	! age grid building
 	agegrid(1) = youngD/2
@@ -329,15 +359,14 @@ subroutine setparams()
 	! rate exit retirement (only one way to go.... down)
 	ptau(TT) = 1-((Longev-(youngD+oldN*oldD))*tlen)**(-1)
 
-
-	! BALANCED AGES:
 	!initial age structure
-	prob_age(1) = youngD/Longev
+	prob_age(TT) = (Longev- (youngD+oldN*oldD))/Longev ! balanced fraction of retirees to begin
+	prob_age(1) = age_occ_read(1,nj+1)/100./(1.-prob_age(TT) ) ! balanced : youngD/Longev
 	do i=2,TT-1
-		prob_age(i) = oldD/Longev
+		prob_age(i) = age_occ_read(i,nj+1)/100. /(1.-prob_age(TT) )
 	enddo
-	prob_age(TT) = (Longev- (youngD+oldN*oldD))/Longev
-	prob_age = prob_age/sum(prob_age) !just to be sure
+	
+	prob_age = prob_age/sum(prob_age) !just to be sure it adds to 1
 	pop_size(1) = sum(prob_age(1:TT-1))
 	!evolution of age-structure
 	prob_age_tsim(:,1) = prob_age
@@ -361,13 +390,55 @@ subroutine setparams()
 		cumprnborn_t(t) = (1.-prborn_t(t))*cumprnborn_t(t-1)
 	enddo
 
-	!DATA AGES: 
-	
 	!Age-related disability risk
 	dtau(1) = 0.5	!Young's Risk
 	do i=2,TT-1
 		dtau(i) = dexp(ageD*dble(i)*oldD)	!Old (exponential)
 	enddo
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+!	occupation structure
+	summy = 0.
+	do j=1,nj
+		occpr_trend(1,j) = occbody_trend_read( 1,j+1 )
+		summy = occpr_trend(1,j) + summy
+	enddo
+	occpr_trend(1,:) = occpr_trend(1,:)/summy
+	do t=2,Tsim
+		summy = 0.
+		do j=1,nj
+			occpr_trend(t,j) = (occbody_trend_read( t,j+1 ) - occbody_trend_read(t-1,j+1 )*(1.-ptau(1)))/prborn_t(t)
+			summy = occpr_trend(t,j) + summy
+		enddo
+		occpr_trend(t,:) = occpr_trend(t,:)/summy
+	enddo
+	summy = 0.
+	do j=1,nj
+		occprbrk(j) = 0.
+		do t=(struc_brk*itlen),Tsim
+			occprbrk(j) = occpr_trend(t,j)/dble(Tsim - struc_brk*itlen +1)+ occprbrk(j)
+		enddo
+		summy = occprbrk(j)+summy
+	enddo
+	forall(j=1:nj) occprbrk(j) = occprbrk(j)/summy
+
+
+! Initial distribution (just for debugging) of people across occupations
+	!occsz0(1) = 0.5
+	!if(nj>1) then
+	do j=1,nj
+		occsz0(j) = age_occ_read(6,j+1)/100.
+		jshift(j,:) = 0.
+	enddo
+	!endif
+	!ensure it sums to 1
+	summy =0.
+	do j=1,nj
+		summy = occsz0(j) + summy
+	enddo
+	occsz0(j) = occsz0(j)/summy
+
 
 	!Disability Extent-Specific Things
 	!Wage Penalty 
@@ -399,6 +470,10 @@ subroutine setparams()
 		xi(3,5) = xi2O
 	endif
 	
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!
+! 	Asset/SSDI wealth things:
+
 	!set alfgrid(1) now that everything else is known, -1 just for good measure, so they really don't want to work
 	alfgrid(1) = (beti(1)*minval(zgrid)+(alfgrid(2))+wtau(1)+wd(nd))-1.
 
@@ -437,28 +512,6 @@ subroutine setparams()
 		pid(3,3,j,i) = 1.
 	enddo
 	enddo
-		
-	! Initial distribution (just for debugging) of people across occupations
-	!occsz0(1) = 0.5
-	!if(nj>1) then
-	do j=1,nj
-		occsz0(j) = 1./dble(nj)
-		jshift(j,:) = 0.
-	enddo
-	!endif
-	!Read in the sizes by occuaption
-	open(unit= fread, file="occupation_sz0.csv")
-	do j=1,nj
-		read(fread, *,iostat=k) occsz0(j)
-	enddo
-	close(fread)
-	!ensure it sums to 1
-	summy =0.
-	do j=1,nj
-		summy = occsz0(j) + summy
-	enddo
-	occsz0(j) = occsz0(j)/summy
-
 
 
 end subroutine setparams
