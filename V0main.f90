@@ -244,8 +244,11 @@ module helper_funs
 		real(dp), intent(in)	:: biin, aiin, zin
 		integer, intent(in)	:: din, tin
 		real(dp)			:: wage
-
-		wage = dexp( aiin+wd(din)+wtau(tin) ) 
+		if( z_flowrts .eqv. .true.) then
+			wage = dexp( aiin+wd(din)+wtau(tin) ) 
+		else 
+			wage = dexp( aiin+wd(din)+wtau(tin) + zin ) 
+		endif
 
 	end function
 

@@ -82,6 +82,7 @@ integer, parameter ::	nal = 11,  &!11		!Number of individual alpha types
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
 logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
+					  z_flowrts	 = .true.,& !make zj just control flow rates and not productivity (makes the next irrelevant)
 					  zj_contin	 = .true.,& !make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
 					  j_regimes  = .true.,& !different pref shifts
@@ -204,7 +205,7 @@ subroutine setparams()
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
 	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), &
-		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,nj)
+		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,nj), UE_occ_read(nj,nz),EU_occ_read(nj,nz)
 	
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -223,6 +224,19 @@ subroutine setparams()
 		read(fread,*) occbody_trend_read(t,:)
 	enddo
 	close(fread)
+	
+	!Read in the occupation finding and separation rates.
+	open(unit=fread, file="UE_occ.csv")
+	do t=1,nz
+		read(fread,*) UE_occ_read(t,:)
+	enddo
+	close(fread)
+	open(unit=fread, file="EU_occ.csv")
+	do t=1,nz
+		read(fread,*) EU_occ_read(t,:)
+	enddo
+	close(fread)
+	
 
 	!read initial distributions of age X occ
 	open(unit= fread, file = "initial_AGE_OCC.csv")
@@ -297,13 +311,13 @@ subroutine setparams()
 	!forall(i=2:nal,k=2:nal) pialf(i,k) = pialf(i,k)*(1.-xsep)
 
 
-	!will read these numberrs in.
+	!read these numberrs in already
 	seprisk = 0.
 	fndrate = 0.
 	do i =1,nz
 		do j=1,nj
-			fndrate(i,j) = srho
-			seprisk(i,j) = xsep
+			fndrate(i,j) = UE_occ_read(i,j)
+			seprisk(i,j) = EU_occ_read(i,j)
 		enddo
 	enddo
 
@@ -537,49 +551,70 @@ subroutine settfp()
 	allocate(ergpi1(nzblock,nzblock))
 	allocate(ergpi2(nzblock,nzblock))
 
-	zrhot = zrho**(1./tlen)
-	zsigt = zsig**(1/tlen)
-	zcondsig = ((zsig**2)*(1.-zrho**2))**(0.5)
-	zcondsigt = ((zsigt**2)*(1.-zrhot**2))**(0.5)
-	!first set transition probabilities at an annual basis
-	call rouwenhorst(nzblock,zmu,zrho,zcondsig,zgrid(1:nzblock,1),piz(1:nzblock,1:nzblock))
+	if( nz>2 ) then !just taking nber probabilities then
 
-	if(z_regimes .eqv. .true.) then
-		!adjust the mean for after the transition
-		do j=2,nj
-			zgrid(1:nz/2,j) = zgrid(1:nz/2,1)
-		enddo
-		do j=1,nj
-			do i=(nz/2+1),nz
-				zgrid(i,j) = zshift(j) + zgrid(i-nz/2,j)
+		zrhot = zrho**(1./tlen)
+		zsigt = zsig**(1/tlen)
+		zcondsig = ((zsig**2)*(1.-zrho**2))**(0.5)
+		zcondsigt = ((zsigt**2)*(1.-zrhot**2))**(0.5)
+		!first set transition probabilities at an annual basis
+		call rouwenhorst(nzblock,zmu,zrho,zcondsig,zgrid(1:nzblock,1),piz(1:nzblock,1:nzblock))
+
+		if(z_regimes .eqv. .true.) then
+			!adjust the mean for after the transition
+			do j=2,nj
+				zgrid(1:nz/2,j) = zgrid(1:nz/2,1)
 			enddo
-		enddo
-		!adjust transition probabilities to come only ever tlen periods
-		do i=1,nz/2
-			piz(i,i) = piz(i,i)**(1./tlen)
-			do k=1,nz/2
-				if(k /= i) piz(i,k) = 1.-(1.-piz(i,k))**(1./tlen)
+			do j=1,nj
+				do i=(nz/2+1),nz
+					zgrid(i,j) = zshift(j) + zgrid(i-nz/2,j)
+				enddo
 			enddo
-			summy = sum(piz(i,1:nzblock))
-			if(summy /= 1) piz(i,1:nzblock) = piz(i,1:nzblock)/summy !this is correcting numerical error
-		enddo
+			!adjust transition probabilities to come only ever tlen periods
+			do i=1,nz/2
+				piz(i,i) = piz(i,i)**(1./tlen)
+				do k=1,nz/2
+					if(k /= i) piz(i,k) = 1.-(1.-piz(i,k))**(1./tlen)
+				enddo
+				summy = sum(piz(i,1:nzblock))
+				if(summy /= 1) piz(i,1:nzblock) = piz(i,1:nzblock)/summy !this is correcting numerical error
+			enddo
 
-		piz(nz/2+1:nz,nz/2+1:nz)= piz(1:nz/2,1:nz/2)
-		piz(1:nz/2,nz/2+1:nz) 	= 1./(dble(Tblock_exp)*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! struct change
-		piz(1:nz/2,1:nz/2) = (1.-1./(dble(Tblock_exp)*tlen))*piz(1:nz/2,1:nz/2) ! make it markov
-		piz(nz/2+1:nz,1:nz/2) = 1./(dble(Tblock_exp)*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! go back
-		piz(nz/2+1:nz,1+nz/2:nz) = (1.-1./(dble(Tblock_exp)*tlen))*piz(nz/2+1:nz,1+nz/2:nz) ! go back
+			piz(nz/2+1:nz,nz/2+1:nz)= piz(1:nz/2,1:nz/2)
+			piz(1:nz/2,nz/2+1:nz) 	= 1./(dble(Tblock_exp)*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! struct change
+			piz(1:nz/2,1:nz/2) = (1.-1./(dble(Tblock_exp)*tlen))*piz(1:nz/2,1:nz/2) ! make it markov
+			piz(nz/2+1:nz,1:nz/2) = 1./(dble(Tblock_exp)*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! go back
+			piz(nz/2+1:nz,1+nz/2:nz) = (1.-1./(dble(Tblock_exp)*tlen))*piz(nz/2+1:nz,1+nz/2:nz) ! go back
 
-		piblock = piz(1:nz/2,1:nz/2)
-		
+			piblock = piz(1:nz/2,1:nz/2)
+			
+		else
+			piblock= piz
+			Zzgrid = zgrid(:,1)
+			do j=1,nj
+				zgrid(:,j) = Zzgrid*zscale(j)
+			enddo
+		endif
+
 	else
-		piblock= piz
-		Zzgrid = zgrid(:,1)
-		do j=1,nj
-			zgrid(:,j) = Zzgrid*zscale(j)
-		enddo
+		! probability of exit from recession 4/(6+16+8+8+18) = 0.071428571
+		! probability of entering recession  4/(58+12+92+120+73) = 0.011267606
+		piz(2) = 4./(58.+12.+92.+120.+73.)
+		piz(1) = 1.-piz(2)
+		piz(3) = 4./(6.+16.+8.+8.+18.)
+		piz(4) = 1.-piz(3)
+		piblock = piz
+		if( z_flowrts .eqv. .true.) then
+			Zzzgrid = 0.
+			zgrid = 0.
+		else
+			Zzgrid  = (/ zmu-zsig, zmu+zsig/)
+			do j=1,nj
+					zgrid(:,j) = Zzgrid*zscale(j)
+			enddo
+		endif
 	endif
-	!DGEMM('N','N',  M,  N,    K, ALPHA,  A,     M,    B,       K,  BETA,     C,       M)
+		!DGEMM('N','N',  M,  N,    K, ALPHA,  A,     M,    B,       K,  BETA,     C,       M)
 	call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, piblock, nzblock, 0._dp, ergpi1,nzblock)
 	do i=1,10000
 			call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, ergpi1, nzblock, 0._dp, ergpi2,nzblock)
@@ -594,7 +629,7 @@ subroutine settfp()
 		ergpiz = ergpi1(1,:)
 	endif
 	deallocate(ergpi1,ergpi2,piblock)
-	
+		
 end subroutine settfp
 
 !****************************************************************************************************************************************!
