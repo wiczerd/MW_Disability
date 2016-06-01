@@ -5,7 +5,7 @@
 ! @ David Wiczer, v2: 03/31/2015
 !-----------------------------------------------------
 !************************************************************************************************!
-! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -o V0main.out  
+! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -lnlopt -o V0main.out  
 ! val grind line: valgrind --leak-check=yes --error-limit=no --track-origins=yes --log-file=V0valgrind.log ./V0main_dbg.out &
 module helper_funs
 	
@@ -145,14 +145,14 @@ module helper_funs
 		real(dp), intent(in)	:: ein
 		real(dp) 		:: SSDI
 		!Follows Pistafferi & Low '12
-		IF (ein<DItest1) then
+		IF (ein<DItest1*wmean) then
 			SSDI = 0.9*ein
-		ELSEIF (ein<DItest2) then
-			SSDI = 0.9*DItest1 + 0.32*(ein-DItest1)
-		ELSEIF (ein<DItest3) then
-			SSDI = 0.9*DItest1 + 0.32*(ein-DItest1)+0.15*(ein-DItest2)
+		ELSEIF (ein<DItest2*wmean) then
+			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)
+		ELSEIF (ein<DItest3*wmean) then
+			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1)+0.15*(ein-DItest2*wmean)
 		ELSE
-			SSDI = 0.9*DItest1 + 0.32*(ein-DItest1)+0.15*(DItest3-DItest2)
+			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(DItest3*wmean-DItest2*wmean)
 		END IF
 
 	end function
@@ -166,14 +166,14 @@ module helper_funs
 		real(dp)			:: SSI
 		
 		!Follows Pistafferi & Low '15
-		IF (ein<DItest1) then
+		IF (ein<DItest1*wmean) then
 			SSI = 0.9*ein
-		ELSEIF (ein<DItest2) then
-			SSI = 0.9*DItest1 + 0.32*(ein-DItest1)
-		ELSEIF (ein<DItest3) then
-			SSI = 0.9*DItest1 + 0.32*(ein-DItest1)+0.15*(ein-DItest2)
+		ELSEIF (ein<DItest2*wmean) then
+			SSI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)
+		ELSEIF (ein<DItest3*wmean) then
+			SSI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(ein-DItest2*wmean)
 		ELSE
-			SSI = 0.9*DItest1 + 0.32*(ein-DItest1)+0.15*(DItest3-DItest2)
+			SSI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(DItest3*wmean-DItest2*wmean)
 		END IF
 
 	end function
@@ -4246,8 +4246,8 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		type(moments_struct):: moments_sim
-		real(dp) :: condstd_tsemp,totdi_rt
-		integer :: ij=1,t0tT(2),it
+		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app
+		integer :: ij=1,t0tT(2),it,i
 
 		!zrho = paramvec(1)
 		!zsig = paramvec(2)
@@ -4286,21 +4286,29 @@ module find_params
 		call sim(vfs, pfs, hst,shk)
 		if(verbose >2) print *, "Computing moments"
 		call moments_compute(hst,moments_sim,shk)
-		if(verbose >2) print *, "DI rate" , moments_sim%avg_di
+		if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+		
+		
 		
 		condstd_tsemp = 0.
 		do ij = 1,nj
 			condstd_tsemp = moments_sim%ts_emp_coefs(ij+1) *occsz0(ij)+ condstd_tsemp
 		enddo
-		!totdi_rt = 0.
-		!do it=1,(TT-1)
-		!	totdi_rt = prob_age(it)*moments_sim%di_rate(it) + totdi_rt
-		!enddo
-		!totdi_rt = totdi_rt/(1- prob_age(TT))
+		totapp_dif_hist = 0.
+		ninsur_app = 0.
+		do i =1,Nsim
+			do it=1,Tsim
+				if(hst%status_hist(i,it)<=3) ninsur_app = 1.+ninsur_app
+				if(hst%status_hist(i,it)==3) &
+				&	totapp_dif_hist = exp(hst%app_dif_hist(i,it))/(1. + exp(hst%app_dif_hist(i,it))) + totapp_dif_hist
+			enddo
+		enddo
+		totapp_dif_hist = totapp_dif_hist/ninsur_app
+		if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
+		
 
-		!errvec(1) =  moments_sim%ts_emp_coefs(1) - emp_persist! auto-correlation
-		!errvec(2) =  condstd_tsemp - emp_std
-		errvec(1) =  moments_sim%avg_di - 0.045
+		
+		errvec(1) =  totapp_dif_hist - apprt_target
 		call dealloc_econ(vfs,pfs,hst)
 
 	end subroutine cal_dist
@@ -4526,6 +4534,11 @@ program V0main
 			enddo
 		enddo
 
+		call mat2csv(wage_trend,"wage_trend.csv")
+		call vec2csv(occsz0, "occsz0.csv")
+		call vec2csv(prob_age, "prob_age.csv")
+		call mat2csv(occpr_trend,"occpr_trend.csv")
+
 		open(1, file="wage_dist.csv")
 		ibi = 1
 		iz  = 3
@@ -4584,42 +4597,52 @@ program V0main
 	
 	call draw_shocks(shk)
 
-!	call alloc_econ(vfs,pfs,hst)
+	!solve it once
+		call alloc_econ(vfs,pfs,hst)
 
-!	! set up economy and solve it
+		! set up economy and solve it
 
-!	call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
-	
-!	if(verbose >2) print *, "Solving the model"	
-!	call sol(vfs,pfs)
-!	if(verbose >2) print *, "Solving for z process"
+		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
+		
+		if(verbose >2) print *, "Solving the model"	
+		call sol(vfs,pfs)
+		if(verbose >2) print *, "Solving for z process"
 
-!	call vscale_set(vfs, hst, shk, vscale)
-!	if(dabs(vscale)<1) then 
-!		vscale = 1.
-!		if( verbose >1 ) print *, "reset vscale to 1"
-!	endif
-!	t0tT = (/1,1/)
-!	call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
-!	if(j_regimes .eqv. .true.) then
-!		t0tT = (/ struc_brk*itlen,  Tsim/)
-!		call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift(:,2))
-!	else
-!		jshift(:,2) = jshift(:,1)
-!	endif
-	
-	vfs_pfs_shk%vfs_ptr => vfs
-	vfs_pfs_shk%pfs_ptr => pfs
-!	vfs_pfs_shk%shk_ptr => shk
-	
-!	param1 = 1.
-!	call zjload_dist(param1, err1,vfs_pfs_shk)
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!	print *, err1
-	! will have to change these with actual targets!!!!!
-	!	zrho = paramvec(1)
-	!	zsig = paramvec(2)
-	!	amenityscale = paramvec(3)
+		call vscale_set(vfs, hst, shk, vscale)
+		if(dabs(vscale)<1) then 
+			vscale = 1.
+			if( verbose >1 ) print *, "reset vscale to 1"
+		endif
+		t0tT = (/1,1/)
+		call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
+		if(j_regimes .eqv. .true.) then
+			t0tT = (/ struc_brk*itlen,  Tsim/)
+			call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift(:,2))
+		else
+			jshift(:,2) = jshift(:,1)
+		endif
+			
+		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
+
+		if(verbose >2) print *, "Simulating the model"	
+		call sim(vfs, pfs, hst,shk)
+		if(verbose >2) print *, "Computing moments"
+		call moments_compute(hst,moments_sim,shk)
+		if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+
+!	set mean wage:
+	wmean = 0.
+	junk = 0.
+	do i=1,Nsim
+		do it=1,Tsim
+			wagehere = hst%wage_hist(i,it)
+			if( wagehere > 0. ) then
+				wmean = wagehere + wmean
+				junk = junk+1.
+			endif
+		enddo
+	enddo
+	wmean = wmean/junk
 
 	parvec(1) = nu
 	err0 = 0.

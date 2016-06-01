@@ -61,7 +61,7 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 		dRiskH	= 1.05		!Upper bound on occupation-related extra disability risk (mult factor)
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 11,  &!11		!Number of individual alpha types 
+integer, parameter ::	nal = 7,  &!11		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &!3		    !Number of individual disability risk types
 			nj  = 16,  &	        !Number of occupations (downward TFP risk variation)
@@ -70,7 +70,7 @@ integer, parameter ::	nal = 11,  &!11		!Number of individual alpha types
 			na  = 100, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &!2000	!Tolerance parameter	
-			Nsim = 5000, & !5000         !how many agents to draw
+			Nsim = 16000, & !1000*nj         !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
@@ -83,11 +83,11 @@ integer, parameter ::	nal = 11,  &!11		!Number of individual alpha types
 logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
 					  z_flowrts	 = .true.,& !make zj just control flow rates and not productivity (makes the next irrelevant)
-					  zj_contin	 = .true.,& !make zj draws continous
+					  zj_contin	 = .false.,& !make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .false.,&! randomly assign j, or let choose.
-					  w_strchng	 = .true.
+					  w_strchng	 = .true. ! w gets fed a structural change sequence
 
 
 real(8), parameter ::   Vtol = 1e-6, & 	!Tolerance on V-dist
@@ -153,6 +153,8 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		zrho	= 0.95,	&	!Persistence of the AR process
 		zmu		= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.15**0.5,&	!Unconditional standard deviation of AR process
+		
+		wmean	= 1.		! to set the average wage on which disability stuff is set
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
@@ -169,7 +171,10 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		DItest1 = 1.0, &	!Earnings Index threshold 1 (These change based on the average wage)
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3
-		smthELPM = 1.		!Smoothing for the LPM
+		smthELPM = 1., &	!Smoothing for the LPM
+		apprt_target = .01	!target for application rates (to be filled below)
+!		
+		
 		
 ! some handy programming terms
 integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
@@ -204,8 +209,8 @@ subroutine setparams()
 		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), &
-		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,nj), UE_occ_read(nj,nz),EU_occ_read(nj,nz)
+	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), &
+		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,nj), UE_occ_read(nz,nj),EU_occ_read(nz,nj),apprt_read(50,2)
 	
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -244,6 +249,10 @@ subroutine setparams()
 		read(fread,*) age_occ_read(i,:)
 	enddo
 	close(fread)
+	!read initial distribution of age 
+	open(unit= fread, file = "AGES_80.csv")
+	read(fread,*) age_read(:)
+	close(fread)
 
 	open(unit= fread, file = "wageTrend.csv")
 	do t=1,Tsim
@@ -257,7 +266,15 @@ subroutine setparams()
 		read(fread, *,iostat=k) occdel(j)
 	enddo
 	close(fread)
-
+	!Read in the disability application rates
+	open(unit= fread, file="Annual_apprt.csv")
+	do t=1,50
+		read(fread, *,iostat=k) apprt_read(t,:)
+	enddo
+	close(fread)
+	
+	
+	
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!Earnings
 	
@@ -374,11 +391,12 @@ subroutine setparams()
 	ptau(TT) = 1-((Longev-(youngD+oldN*oldD))*tlen)**(-1)
 
 	!initial age structure
-	prob_age(TT) = (Longev- (youngD+oldN*oldD))/Longev ! balanced fraction of retirees to begin
-	prob_age(1) = age_occ_read(1,nj+1)/100./(1.-prob_age(TT) ) ! balanced : youngD/Longev
-	do i=2,TT-1
-		prob_age(i) = age_occ_read(i,nj+1)/100. /(1.-prob_age(TT) )
-	enddo
+	prob_age = age_read
+	!prob_age(TT) = 1. - (youngD+oldN*oldD)/Longev ! balanced fraction of retirees to begin
+	!prob_age(1) = age_occ_read(1,nj+1)/100./(1.-prob_age(TT) ) ! balanced : youngD/Longev
+	!do i=2,TT-1
+	!	prob_age(i) = age_occ_read(i,nj+1)/100. /(1.-prob_age(TT) )
+	!enddo
 	
 	prob_age = prob_age/sum(prob_age) !just to be sure it adds to 1
 	pop_size(1) = sum(prob_age(1:TT-1))
@@ -484,6 +502,11 @@ subroutine setparams()
 		xi(3,5) = xi2O
 	endif
 	
+	!DI applications target.  Average of 1980-1985
+	apprt_target = 0.
+	do t=1,50
+		if(apprt_read(t,1)>=1980 .and. apprt_read(t,1)<=1985 )  apprt_target = apprt_read(t,2)/6. + apprt_target
+	enddo
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!
 ! 	Asset/SSDI wealth things:
@@ -599,13 +622,13 @@ subroutine settfp()
 	else
 		! probability of exit from recession 4/(6+16+8+8+18) = 0.071428571
 		! probability of entering recession  4/(58+12+92+120+73) = 0.011267606
-		piz(2) = 4./(58.+12.+92.+120.+73.)
-		piz(1) = 1.-piz(2)
-		piz(3) = 4./(6.+16.+8.+8.+18.)
-		piz(4) = 1.-piz(3)
+		piz(1,2) = 4./(58.+12.+92.+120.+73.)
+		piz(1,1) = 1.-piz(1,2)
+		piz(2,1) = 4./(6.+16.+8.+8.+18.)
+		piz(2,2) = 1.-piz(2,1)
 		piblock = piz
 		if( z_flowrts .eqv. .true.) then
-			Zzzgrid = 0.
+			Zzgrid = 0.
 			zgrid = 0.
 		else
 			Zzgrid  = (/ zmu-zsig, zmu+zsig/)
