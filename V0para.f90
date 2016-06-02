@@ -154,7 +154,7 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		zmu		= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.15**0.5,&	!Unconditional standard deviation of AR process
 		
-		wmean	= 1.		! to set the average wage on which disability stuff is set
+		wmean	= 1.,&		! to set the average wage on which disability stuff is set
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
@@ -209,7 +209,7 @@ subroutine setparams()
 		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), &
+	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(nj),avgADL, &
 		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,nj), UE_occ_read(nz,nj),EU_occ_read(nz,nj),apprt_read(50,2)
 	
 
@@ -261,9 +261,9 @@ subroutine setparams()
 	close(fread)
 	
 	!Read in the disability means by occuaption
-	open(unit= fread, file="occupation_del.csv")
+	open(unit= fread, file="maxADL.csv")
 	do j=1,nj
-		read(fread, *,iostat=k) occdel(j)
+		read(fread, *,iostat=k) maxADL_read(j)
 	enddo
 	close(fread)
 	!Read in the disability application rates
@@ -338,26 +338,7 @@ subroutine setparams()
 		enddo
 	enddo
 
-	forall(i=1:nd) dgrid(i) = i
-
-	!Extra disability risk (uniformly spaced)
-	if(ndi>1) then
-		do i=1,ndi
-			delgrid(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
-		enddo
-	else
-		delgrid(1) = 0.5*(dRiskH + dRiskL)
-	endif
-
-	!ensure its mean is 1
-	summy = 0.
-	do j=1,nj
-		summy = occdel(j) + summy
-	enddo
-	forall(j=1:nj) occdel(j) = occdel(j) - summy/nj + 1.
-	delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
-		
-
+	
 	! TFP
 	zshift = 0. 
 	zscale = 1. 
@@ -456,7 +437,7 @@ subroutine setparams()
 	forall(j=1:nj) occprbrk(j) = occprbrk(j)/summy
 
 
-! Initial distribution (just for debugging) of people across occupations
+! Initial distribution of people across occupations
 	!occsz0(1) = 0.5
 	!if(nj>1) then
 	do j=1,nj
@@ -471,7 +452,36 @@ subroutine setparams()
 	enddo
 	occsz0(j) = occsz0(j)/summy
 
+! Disability stuff	
+	forall(i=1:nd) dgrid(i) = i
 
+	!occupation-specific factor
+	avgADL = 0.
+	do j=1,nj
+		avgADL = maxADL_read(j)*occsz0(j) + avgADL
+	enddo
+	!make mean 1 for occdel:
+	summy = 1.-(1.-avgADL)**(1./Longev)
+	
+	do j=1,nj
+		occdel(j) = (1.-(1.-maxADL_read(j))**(1./Longev)) / summy
+	enddo
+	!will set this in draw_del
+	delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
+		
+
+	!Extra disability risk (uniformly spaced)
+	dRiskH = max(dRiskH, maxval(occdel))
+	dRiskL = min(dRiskL, minval(occdel))
+	if(ndi>1) then
+		do i=1,ndi
+			delgrid(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
+		enddo
+	else
+		delgrid(1) = 0.5*(dRiskH + dRiskL)
+	endif
+
+		
 	!Disability Extent-Specific Things
 	!Wage Penalty 
 	wd(1) = 0		!Healthy, no penalty

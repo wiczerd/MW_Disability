@@ -1140,55 +1140,14 @@ module sol_val
 		real(dp), intent(out) :: gapp_dif
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:)
-		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, maxVNV0
+		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, maxVNV0, minvalVD
 		integer :: iw, iaa,iaai,izz,aapp,aNapp
 
 		iw = 1 ! not working
-		!**********Value if apply for DI 
-		Vtest1 = -1e6
-		apol = iaa0
-		do iaa = iaa0,iaaA
-			chere = b+R*agrid(ia)-agrid(iaa)
-			if(chere >0.) then
-				Vtest2 = 0.
-				!Continuation if apply for DI
-				do izz = 1,nz	 !Loop over z'
-				do iaai = iaaL,nal !Loop over alpha_i'
-					Vc1 = (1-ptau(it))*((1-xi(id,it))* &
-						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1)  &
-						& +xi(id,it)*VD0(id,ie,iaa,it+1)) !Age and might go on DI
-					Vc1 = Vc1 + ptau(it)*((1-xi(id,it))* &
-						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)  &
-						& +xi(id,it)*VD0(id,ie,iaa,it))     !Don't age, might go on DI		
-					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
-				enddo
-				enddo
-				Vtest2 = util(chere,id,iw) + Vtest2 &
-					& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) ) !<-- application cost
-				
-				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then	
-					apol = iaa
-					Vtest1 = Vtest2
-				elseif(simp_concav .eqv. .true.) then
-					exit
-				endif
-
-			else
-				exit
-			endif
-		enddo !iaa
-		Vapp = Vtest1
-		aapp = apol !agrid(apol)					
-
-		if(Vapp <-1e5) then
-			write(*,*) "ruh roh!"
-			write(*,*) "Vapp, aapp: ", Vapp, aapp
-			write(*,*) "VD: ",id,ie,iaa,it
-			write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,it
-		endif
 
 		!*******************************************
 		!**************Value if do not apply for DI
+		
 		Vtest1 = -1e6
 		apol = iaa0
 		do iaa = iaa0,iaaA
@@ -1231,6 +1190,52 @@ module sol_val
 			write(*,*) "Vnapp, aNapp: ", Vnapp, aNapp
 			write(*,*) "VD: ",id,ie,iaa,it
 			write(*,*) "VN: ",ij,ibi,idi,ial,id,ie,ia,iz,it
+		endif
+	
+	
+	
+		!**********Value if apply for DI 
+		minvalVD = min( minval(VD0(id,ie,:,it)), 0.)
+		Vtest1 = -1e6
+		apol = iaa0
+		do iaa = iaa0,iaaA
+			chere = b+R*agrid(ia)-agrid(iaa)
+			if(chere >0.) then
+				Vtest2 = 0.
+				!Continuation if apply for DI
+				do izz = 1,nz	 !Loop over z'
+				do iaai = iaaL,nal !Loop over alpha_i'
+					Vc1 = (1-ptau(it))*((1-xi(id,it))* &
+						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1)  &
+						& +xi(id,it)*VD0(id,ie,iaa,it+1)) !Age and might go on DI
+					Vc1 = Vc1 + ptau(it)*((1-xi(id,it))* &
+						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)  &
+						& +xi(id,it)*VD0(id,ie,iaa,it))     !Don't age, might go on DI		
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
+				enddo
+				enddo
+				Vtest2 = util(chere,id,iw) + Vtest2 &
+					!& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) ) !<-- application cost (was nu * VN0)
+					&  - nu*(VD0(id,ie,iaa,it) - minvalVD)
+				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then	
+					apol = iaa
+					Vtest1 = Vtest2
+				elseif(simp_concav .eqv. .true.) then
+					exit
+				endif
+
+			else
+				exit
+			endif
+		enddo !iaa
+		Vapp = Vtest1
+		aapp = apol !agrid(apol)					
+
+		if(Vapp <-1e5) then
+			write(*,*) "ruh roh!"
+			write(*,*) "Vapp, aapp: ", Vapp, aapp
+			write(*,*) "VD: ",id,ie,iaa,it
+			write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,it
 		endif
 
 		!******************************************************
@@ -2920,8 +2925,8 @@ module sim_hists
 					gwork(:,:,:,:,:,:,:)
 
 		logical :: ptrsuccess=.false.
-		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1),d_var(TT-1),&
-				& a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
+		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),pialf_conddist(nal), cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1), &
+				& d_var(TT-1),a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
 				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj)
 	
 		! Other
@@ -3120,14 +3125,26 @@ module sim_hists
 								else
 									zi_hr = z_jt_macroint(it)
 								endif
+								if(it==1 .or. w_strchng .eqv. .false.) then
+									pialf_conddist = ergpialf
+								else
+									al_hr	= al_it(i,it)
+									ali_hr	= al_it_int(i,it)
+									al_hr = max(al_hr - wage_trend(it,ij), alfgrid(2))
+									ali_hr = finder(alfgrid,al_hr)
+									if( alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr) .and. ali_hr <nal ) ali_hr = ali_hr+1
+									pialf_conddist = pialf(ali_hr,:)
+								endif
+								
+								
 								do idi = 1,ndi !expectations over delta and alpha
 								do ali_hr = 1,nal
 									if( zj_contin .eqv. .true. ) then
-										j_val_ij = ziwt     * V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*ergpialf(ali_hr) + &
-												& (1.-ziwt) * V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr)*delwt(idi,ij)*ergpialf(ali_hr) + &
+										j_val_ij = ziwt     * V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
+												& (1.-ziwt) * V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
 												&	j_val_ij
 									else
-										j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*ergpialf(ali_hr)+j_val_ij
+										j_val_ij = V((ij-1)*nbi+beti,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr)+j_val_ij
 									endif
 								enddo
 								enddo
@@ -4053,10 +4070,11 @@ module find_params
 		real(dp), intent(in) :: probj_in(:)
 		integer,  intent(in) :: t0tT(:) ! should have the start and end periods during which people are born
 		real(dp), intent(out):: jshift_out(:)
-		real(dp) :: jshift_prratio=1.,cumval=1.,updjscale=1.,distshift=1.,ziwt=1.,z_hr=1.,nborn=0.
-		real(dp) :: jshift0(nj)
+		real(dp) :: jshift_prratio=1.,cumval=1.,updjscale=1.,distshift=1.,ziwt=1.,z_hr=1.,nborn=0., al_hr=0.
+		real(dp) :: jshift0(nj),pialf_conddist(nal)
 		integer  :: ij=1, ik=1, iter=1
-		integer :: age_hr=1,d_hr=1,ai_hr=1,ali=1,ei_hr=1,i=1,ii=1,idi=1, it=1, beti=1, ziH=1,zi_hr=1
+		integer :: age_hr=1,d_hr=1,ai_hr=1,ali=1,ali_hr=1, &
+					& ei_hr=1,i=1,ii=1,idi=1, it=1, beti=1, ziH=1,zi_hr=1
 		real(dp), allocatable :: j_val_ij(:,:)
 
 		allocate(j_val_ij(Nsim,nj))
@@ -4089,16 +4107,26 @@ module find_params
 							ziwt = (zgrid(ziH,ij)- z_hr)/( zgrid(ziH,ij) -   zgrid(zi_hr,ij) )
 							if(ziH == zi_hr) ziwt=1.
 						endif
-						
+						if(it==1 .or. w_strchng .eqv. .false.) then
+							pialf_conddist = ergpialf
+						else
+							al_hr	= shk%al_hist(i,it)
+							ali_hr	= shk%al_int_hist(i,it)
+
+							al_hr = max(al_hr - wage_trend(it,ij), alfgrid(2))
+							ali_hr = finder(alfgrid,al_hr)
+							if( alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr) .and. ali_hr <nal ) ali_hr = ali_hr+1
+							pialf_conddist = pialf(ali_hr,:)
+						endif
 						do idi = 1,ndi ! expectation over delta and alpha
 						do ali = 1,nal
 							if(zj_contin .eqv. .true.) then
 								j_val_ij(i,ij) =( ziwt    * vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,zi_hr,age_hr) &
 										&	+	 (1.-ziwt)* vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,ziH  ,age_hr) ) &
-										&	*  delwt(idi,ij)*ergpialf(ali) + j_val_ij(i,ij)
+										&	*  delwt(idi,ij)*pialf_conddist(ali) + j_val_ij(i,ij)
 							else
 								j_val_ij(i,ij) = vfs%V((ij-1)*nbi+beti,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr, &
-											& hst%z_jt_macroint(it),age_hr)*delwt(idi,ij)*ergpialf(ali) + j_val_ij(i,ij)
+											& hst%z_jt_macroint(it),age_hr)*delwt(idi,ij)*pialf_conddist(ali) + j_val_ij(i,ij)
 							endif
 						enddo
 						enddo
@@ -4298,7 +4326,7 @@ module find_params
 		ninsur_app = 0.
 		do i =1,Nsim
 			do it=1,Tsim
-				if(hst%status_hist(i,it)<=3) ninsur_app = 1.+ninsur_app
+				if(hst%status_hist(i,it)<=3 .and. mod(it,itlen) .eq. 0) ninsur_app = 1.+ninsur_app ! only count the body once every year, comparable to data
 				if(hst%status_hist(i,it)==3) &
 				&	totapp_dif_hist = exp(hst%app_dif_hist(i,it))/(1. + exp(hst%app_dif_hist(i,it))) + totapp_dif_hist
 			enddo
@@ -4478,12 +4506,12 @@ program V0main
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: id=1, it=1, ij=1, ibi=1, ial=1, iz=1, narg_in=1, wo=1, status=1,t0tT(2)
+		integer  :: id=1, it=1, ij=1, ibi=1, ial=1, iz=1, i=1,narg_in=1, wo=1, status=1,t0tT(2)
 
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(dp)	:: wagehere=1.,utilhere=1., junk=1., param0(3)=1.,err0(3)=1.,param1(nj),err1(nj)
+		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(3)=1.,err0(3)=1.,param1(nj),err1(nj)
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct), target :: vfs
@@ -4536,6 +4564,7 @@ program V0main
 
 		call mat2csv(wage_trend,"wage_trend.csv")
 		call vec2csv(occsz0, "occsz0.csv")
+		call vec2csv(occdel, "occdel.csv")
 		call vec2csv(prob_age, "prob_age.csv")
 		call mat2csv(occpr_trend,"occpr_trend.csv")
 
@@ -4643,10 +4672,22 @@ program V0main
 		enddo
 	enddo
 	wmean = wmean/junk
-
+	if(verbose >1) print *, "average wage:", wmean
+		totapp_dif_hist = 0.
+		ninsur_app = 0.
+		do i =1,Nsim
+			do it=1,Tsim
+				if(hst%status_hist(i,it)<=3 .and. mod(it,itlen) .eq. 0) ninsur_app = 1.+ninsur_app ! only count the body once every year, comparable to data
+				if(hst%status_hist(i,it)==3) &
+				&	totapp_dif_hist = exp(hst%app_dif_hist(i,it))/(1. + exp(hst%app_dif_hist(i,it))) + totapp_dif_hist
+			enddo
+		enddo
+		totapp_dif_hist = totapp_dif_hist/ninsur_app
+	if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
+		
 	parvec(1) = nu
 	err0 = 0.
-	call cal_dist(parvec,err0,shk)
+	!call cal_dist(parvec,err0,shk)
 	
 	if(verbose > 2) then
 		call CPU_TIME(t2)
