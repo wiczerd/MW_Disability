@@ -61,36 +61,37 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 		dRiskH	= 1.05		!Upper bound on occupation-related extra disability risk (mult factor)
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 7,  &!11		!Number of individual alpha types 
+integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &!3		    !Number of individual disability risk types
-			nj  = 16,  &	        !Number of occupations (downward TFP risk variation)
+			nj  = 2, &!16          !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 100, &!100	        !Points on assets grid
+			na  = 40, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
-			maxiter = 2000, &!2000	!Tolerance parameter	
-			Nsim = 16000, & !1000*nj         !how many agents to draw
+			maxiter = 2000, &		!Tolerance parameter	
+			Nsim = 16000, & !1000*nj!how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
-			fread = 10, &
-			NBER_tseq = 0			!just feed in NBER recessions?
+			fread = 10
+			
 
 
 ! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
-logical, parameter :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
+logical            :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
 					  z_flowrts	 = .true.,& !make zj just control flow rates and not productivity (makes the next irrelevant)
 					  zj_contin	 = .false.,& !make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .false.,&! randomly assign j, or let choose.
-					  w_strchng	 = .true. ! w gets fed a structural change sequence
+					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
+					  NBER_tseq  = .true.	!just feed in NBER recessions?
 
 
-real(8), parameter ::   Vtol = 1e-6, & 	!Tolerance on V-dist
+real(8), parameter ::   Vtol = 6e-5, & 	!Tolerance on V-dist
 !		beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
 !		beti_sig = 0.0,    & 	!Var of beta_i wage parameter (Log Normal)
 !		di_lambd = 1.0,    &	!Shape of disability dist. (Exponential)
@@ -138,7 +139,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start)
-		nu = 0.2, &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 0.1, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -210,7 +211,7 @@ subroutine setparams()
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
 	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(nj),avgADL, &
-		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,nj), UE_occ_read(nz,nj),EU_occ_read(nz,nj),apprt_read(50,2)
+		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,17), UE_occ_read(nz,nj),EU_occ_read(nz,nj),apprt_read(50,2)
 	
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -333,8 +334,9 @@ subroutine setparams()
 	fndrate = 0.
 	do i =1,nz
 		do j=1,nj
-			fndrate(i,j) = UE_occ_read(i,j)
-			seprisk(i,j) = EU_occ_read(i,j)
+			k = 3-i !flip, recession is 1 and expansion is 2 in markov chain
+			fndrate(i,j) = UE_occ_read(k,j)
+			seprisk(i,j) = EU_occ_read(k,j)
 		enddo
 	enddo
 
@@ -488,7 +490,7 @@ subroutine setparams()
 	wd(2) = -0.2973112	!Partially Disabled, small penalty	
 	wd(3) = -0.50111	!Full Disabled, large penalty
 
-	!DI Acceptance probability for each z status
+	!DI Acceptance probability for each d,t status
 
 	xi(1,1) = xi0Y
 	xi(2,1) = xi1Y
@@ -583,6 +585,10 @@ subroutine settfp()
 	allocate(piblock(nzblock,nzblock))
 	allocate(ergpi1(nzblock,nzblock))
 	allocate(ergpi2(nzblock,nzblock))
+	piblock = 0.
+	ergpi1  = 0.
+	ergpi2  = 0.
+
 
 	if( nz>2 ) then !just taking nber probabilities then
 
@@ -630,11 +636,11 @@ subroutine settfp()
 		endif
 
 	else
-		! probability of exit from recession 4/(6+16+8+8+18) = 0.071428571
 		! probability of entering recession  4/(58+12+92+120+73) = 0.011267606
-		piz(1,2) = 4./(58.+12.+92.+120.+73.)
+		piz(2,1) = 4./(58.+12.+92.+120.+73.)
+		! probability of exit from recession 4/(6+16+8+8+18) = 0.071428571
+		piz(1,2) = 4./(6.+16.+8.+8.+18.)
 		piz(1,1) = 1.-piz(1,2)
-		piz(2,1) = 4./(6.+16.+8.+8.+18.)
 		piz(2,2) = 1.-piz(2,1)
 		piblock = piz
 		if( z_flowrts .eqv. .true.) then
