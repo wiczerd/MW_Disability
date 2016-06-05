@@ -64,7 +64,7 @@ real(8) ::	pid1	= 0.074, &	!Probability d0->d1
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &!3		    !Number of individual disability risk types
-			nj  = 2, &!16          !Number of occupations (downward TFP risk variation)
+			nj  = 16, &!16          !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 40, &!100	        !Points on assets grid
@@ -79,19 +79,23 @@ integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types
 			
 
 
-! thse relate to how we compute it, i.e. what's continuous, what's endogenous, etc. 
-logical            :: del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
-					  al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
+! thse relate to how we compute it
+logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
 					  z_flowrts	 = .true.,& !make zj just control flow rates and not productivity (makes the next irrelevant)
 					  zj_contin	 = .false.,& !make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
+					  ineligNoNu = .false.,&! do young ineligable also pay the nu cost when they are ineligable?
+					  
+! these relate to what's changing over the simulation/across occupation
+logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .false.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
 					  NBER_tseq  = .true.	!just feed in NBER recessions?
+					  
 
 
-real(8), parameter ::   Vtol = 6e-5, & 	!Tolerance on V-dist
+real(8), parameter ::   Vtol = 5e-5, & 	!Tolerance on V-dist
 !		beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
 !		beti_sig = 0.0,    & 	!Var of beta_i wage parameter (Log Normal)
 !		di_lambd = 1.0,    &	!Shape of disability dist. (Exponential)
@@ -389,7 +393,8 @@ subroutine setparams()
 	!prob of getting born
 	do t=2,Tsim
 		i=1
-		prborn_t(t) = prob_age_tsim(TT-1,t-1)*(1.-ptau(TT-1)) !keeps const labor force.  Otherwise =>0.01/tlen 1% population growth per year
+		prborn_t(t) = 1.-(1.-0.01)**(1./tlen) !1% per year
+		!prborn_t(t) = prob_age_tsim(TT-1,t-1)*(1.-ptau(TT-1)) !keeps const labor force.  
 		prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prborn_t(t)
 		do i = 2,TT
 			prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prob_age_tsim(i-1,t-1)*(1.-ptau(i-1))

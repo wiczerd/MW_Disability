@@ -185,9 +185,13 @@ module helper_funs
 		real(dp), intent(in):: zin
 		integer, intent(in):: idin,itin
 		real(dp) :: xifun
-		!if(itin < 4) then
+		if(itin>1 .or. ineligNoNu .eqv. .true.)then
 			xifun = 1._dp-(1._dp-xi(idin,itin))**(1._dp/tlen) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
-		!else 
+		else !itin ==1 & ineligNoNu == F
+			xifun = 1._dp-(1._dp-xi(idin,itin)*eligY)**(1._dp/tlen)
+		endif
+		
+		!if itin==4 
 		!	xifun = xi(idin,itin) + (1._dp - xi(idin,itin))*(xizcoef*zin + 0.124)
 		!endif
 		
@@ -963,7 +967,7 @@ module model_data
 			endif
 		enddo
 		forall(it=1:TT-1) workdif_age(it) = workdif_age(it)/dble(totage(it)-totD(it))
-		forall(ial=1:nal) 
+		do ial=1,nal
 			if(tot3al(ial) >0 ) then
 				alappdif(ial) = alappdif(ial)/dble(tot3al(ial))
 			else
@@ -1207,7 +1211,7 @@ module sol_val
 	
 	
 		!**********Value if apply for DI 
-		minvalVD = minval(VD0(id,ie,:,it))
+		minvalVD = minval(VD0)
 		minvalVN = minval(VN0((ij-1)*nbi+ibi,((idi-1)*nal+1):(idi*nal),:,:,:,:,it))
 		Vtest1 = -1e6
 		apol = iaa0
@@ -1229,8 +1233,9 @@ module sol_val
 				enddo
 				Vtest2 = util(chere,id,iw) + Vtest2 &
 					!& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) ) !<-- application cost (was nu * VN0)
-					!& - nu*(VD0(id,ie,iaa,it) - minvalVD)
-					 - nu*(VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) - minvalVN)
+					& - nu*(VD0(id,ie,iaa,it) - minvalVD)
+					!& - nu*(VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) - minvalVN)
+					! & - nu*max(VD0(id,ie,iaa,it),0)
 				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then	
 					apol = iaa
 					Vtest1 = Vtest2
@@ -1269,10 +1274,10 @@ module sol_val
 
 		gapp_dif = Vapp - Vnapp
 		if(verbose .gt. 4) print *, Vapp - Vnapp
-		if(it>1) then
-			Vout = smthV*Vnapp + (1._dp - smthV)*Vapp
-		else
+		if(it == 1 .and. ineligNoNu) then
 			Vout = smthV*Vnapp + (1._dp - smthV)*(eligY*Vapp + (1._dp- eligY)*Vnapp)
+		else
+			Vout = smthV*Vnapp + (1._dp - smthV)*Vapp
 		endif
 
 	end subroutine maxVN
@@ -2470,10 +2475,11 @@ module sim_hists
 			alf_i = min(alf_i,alfgrid_maxE)
 			alfgrid_int = finder(alfgrid,alf_i)
 			! round up or down:
-			if( (alf_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
+			
 			if(al_contin .eqv. .true.) then
 				al_it(i,t) = alf_i ! log of wage shock
 			else
+				if( (alf_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
 				al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
 				alfgrid_i = alf_i
 			endif
@@ -2950,6 +2956,8 @@ module sim_hists
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
 			& beti=1, status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0
+			
+		logical :: w_strchng_old = .false., final_iter = .false.
 		!************************************************************************************************!
 		! Allocate things
 		!************************************************************************************************!
@@ -3074,7 +3082,9 @@ module sim_hists
 		bet_hr = 1._dp
 		
 		if(verbose >2) print *, "Simulating"
-		
+		w_strchng_old = w_strchng
+		w_strchng = .false.
+		final_iter = .false.
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,iter_draws
 			if(verbose >3) print *, "iter: ", iter
@@ -3102,9 +3112,9 @@ module sim_hists
 				endif
 			enddo !i=1:Nsim
 
-	!		!$OMP  parallel do &
-	!		!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
-	!		!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,ii,sepi,fndi,invol_un,status_tmrw) 
+!			!$OMP  parallel do &
+!			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
+!			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,ii,sepi,fndi,invol_un,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3234,9 +3244,9 @@ module sim_hists
 					if( w_strchng .eqv. .true.) then
 						if( ali_hr>1 ) al_hr = max(al_hr - wage_trend(it,j_hr), alfgrid(2))
 						do ali_hr = nal,2,-1
-							if(al_hr < alfgrid(ali_hr)) exit
+							if(alfgrid(ali_hr)<al_hr) exit
 						enddo
-						if( alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr) .and. ali_hr <nal ) ali_hr = ali_hr+1
+					!	if( alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr) .and. ali_hr < nal ) ali_hr = ali_hr+1
 					endif
 
 					!figure out where to evaluate alpha
@@ -3244,11 +3254,13 @@ module sim_hists
 						iiH  = min(ali_hr+1,nal)
 						if(ali_hr>1) then 
 							iiwt = (alfgrid(iiH)- al_hr)/( alfgrid(iiH) -   alfgrid(ali_hr) )
-						else
-							iiwt = 0.
+						else !unemp
+							iiwt = 1.
 						endif
 						if( iiH == ali_hr ) iiwt = 1.
-						if(verbose >1 .and. (iiwt >1. .or. iiwt<0.)) print *, "iiwt=", iiwt, " (i,t,alpha)=", i, Tsim, ali_hr
+					!	if(verbose >1 .and. (iiwt >1. .or. iiwt<0.)) then
+					!		print *, "iiwt=", iiwt, " (i,t,alpha)=", i, it, ali_hr
+					!	endif
 					endif
 					!figure out where to evaluate z
 
@@ -3370,7 +3382,8 @@ module sim_hists
 									! choose to apply
 									app_it(i,it) = 1
 									! eligible to apply?
-									if(age_hr > 1 .or. (age_hr ==1 .and. status_it_innov(i,min(it+1,Tsim))<eligY )) then !status_it_innov(i,it+1) is an independent draw
+									if(age_hr > 1 .or. ineligNoNu .eqv. .false. &
+										& .or. (age_hr ==1 .and. status_it_innov(i,min(it+1,Tsim))<eligY )) then !status_it_innov(i,it+1) is an independent draw
 										!applying, do you get it?
 										if(status_it_innov(i,it) < xifun(d_hr,z_hr,age_hr)) then 
 											status_tmrw = 4
@@ -3488,9 +3501,7 @@ module sim_hists
 							! assign to grid points by nearest neighbor
 							! ei_hr = finder(egrid,e_it(i,it+1)) <- relatively short, but not thread safe
 							do ei_hr = ne,1,-1
-								if( ep_hr > egrid(ei_hr) ) then
-									exit
-								endif
+								if( ep_hr > egrid(ei_hr) ) exit
 							enddo
 							ei_hr = max(ei_hr,1) !just to be sure we take base 1
 							if(ei_hr < ne) then
@@ -3528,7 +3539,7 @@ module sim_hists
 				endif ! age_it(i,it)>0
 				enddo !1,Tsim
 			enddo! 1,Nsim
-	!		!$OMP  end parallel do 
+!			!$OMP  end parallel do 
 
 			if(print_lev >=3)then
 				call vec2csv(val_hr_it,"val_hr.csv")
@@ -3571,6 +3582,7 @@ module sim_hists
 				d_var(age_hr) = d_var(age_hr)/junk
 
 			enddo
+			if( final_iter .eqv. .true. ) exit
 			if((sum((a_mean - a_mean_liter)**2) + sum((s_mean - s_mean_liter)**2) + sum((d_mean - d_mean_liter)**2))<1.e-5_dp ) then
 				if(verbose >=2 ) then
 					print *, "done simulating after convergence in", iter
@@ -3582,7 +3594,12 @@ module sim_hists
 					print *, "status mean", sum(s_mean)
 					print *,  "-------------------------------"
 				endif
-				exit
+				
+				if( w_strchng_old .eqv. .true. ) then
+					final_iter = .true.
+				else 
+					exit
+				endif
 			else
 				if(verbose >=4 .or. (verbose >=2 .and. mod(iter,100) == 0)) then
 					print *, "iter:", iter
@@ -4676,7 +4693,11 @@ program V0main
 	
 	call draw_shocks(shk)
 
+	!************************************************************************************************!
 	!solve it once
+
+	! Allocate phat matrices
+	!************************************************************************************************!
 		call alloc_econ(vfs,pfs,hst)
 
 		! set up economy and solve it
@@ -4764,48 +4785,21 @@ program V0main
 	print *, parvec
 !	call nlo_optimize(ires, calopt, parvec, erval)
 	
+	!****************************************************************************!
+	! IF you love something.... 
+	!****************************************************************************!
 	
 	call nlo_destroy(calopt)
 	call dealloc_shocks(shk)
 	
-!	call dealloc_econ(vfs,pfs,hst)
+	call dealloc_econ(vfs,pfs,hst)
 	
-	!************************************************************************************************!
-	! Allocate phat matrices
-	!************************************************************************************************!
-!	call alloc_econ(vfs,pfs,hst)
-
-!	if(verbose >2) print *, "Solving the model"
-!	if(verbose >2) then
-!		call system_clock(count_rate=cr)
-!		call system_clock(count_max=cm)
-!		call CPU_TIME(t1)
-!		call SYSTEM_CLOCK(c1)
-!	endif
-!	call sol(vfs,pfs)
-!	if(verbose > 2) then
-!		call CPU_TIME(t2)
-!		call SYSTEM_CLOCK(c2)
-!		print *, "System Time", dble(c2-c1)/dble(cr)
-!		print *, "   CPU Time", (t2-t1)
-!	endif
-
-	
-!	if(verbose >2) print *, "Simulating the model"	
-!	call sim(vfs, pfs, hst)
-!	if(verbose >2) print *, "Computing moments"
-!	call moments_compute(hst,moments_sim)
-
 
 !    .----.   @   @
 !   / .-"-.`.  \v/
 !   | | '\ \ \_/ )
 ! ,-\ `-.' /.'  /
 !'---`----'----'
-	!****************************************************************************!
-	! IF you love something.... 
-	!****************************************************************************!
-!	call dealloc_econ(vfs,pfs,hst)
 
 End PROGRAM
 
