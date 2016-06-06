@@ -103,8 +103,8 @@ module helper_funs
 		
 		real(dp), allocatable    :: status_it_innov(:,:)
 		real(dp), allocatable    :: jshock_ij(:,:)
-		integer,  allocatable    :: drawi_ititer(:)
-		integer,  allocatable    :: drawt_ititer(:)
+		integer,  allocatable    :: drawi_ititer(:,:)
+		integer,  allocatable    :: drawt_ititer(:,:)
 		
 		integer :: alloced
 		integer :: drawn
@@ -578,8 +578,8 @@ module helper_funs
 		allocate(shk%del_i_int(Nsim), stat=shk%alloced)
 		allocate(shk%del_i(Nsim), stat=shk%alloced)
 		!this must be big enough that we are sure it's big enough that can always find a worker
-		allocate(shk%drawi_ititer(Nsim*10)) 
-		allocate(shk%drawt_ititer(Nsim*10))
+		allocate(shk%drawi_ititer(Nsim,100)) 
+		allocate(shk%drawt_ititer(Nsim,100))
 		allocate(shk%j_i(Nsim), stat=shk%alloced)
 		allocate(shk%jshock_ij(Nsim,nj), stat=shk%alloced)
 		allocate(shk%status_it_innov(Nsim,Tsim), stat=shk%alloced)
@@ -1156,7 +1156,7 @@ module sol_val
 		real(dp), intent(out) :: gapp_dif
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:)
-		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, maxVNV0, minvalVD,minvalVN
+		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, maxVNV0, minvalVD,minvalVN, xihr
 		integer :: iw, iaa,iaai,izz,aapp,aNapp
 
 		iw = 1 ! not working
@@ -1211,6 +1211,7 @@ module sol_val
 	
 	
 		!**********Value if apply for DI 
+		xihr = xifun(id,1._dp,it)
 		minvalVD = minval(VD0)
 		minvalVN = minval(VN0((ij-1)*nbi+ibi,((idi-1)*nal+1):(idi*nal),:,:,:,:,it))
 		Vtest1 = -1e6
@@ -1222,12 +1223,12 @@ module sol_val
 				!Continuation if apply for DI
 				do izz = 1,nz	 !Loop over z'
 				do iaai = iaaL,nal !Loop over alpha_i'
-					Vc1 = (1-ptau(it))*((1-xi(id,it))* &
+					Vc1 = (1-ptau(it))*((1-xihr)* &
 						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1)  &
-						& +xi(id,it)*VD0(id,ie,iaa,it+1)) !Age and might go on DI
-					Vc1 = Vc1 + ptau(it)*((1-xi(id,it))* &
+						& + xihr*VD0(id,ie,iaa,it+1)) !Age and might go on DI
+					Vc1 = Vc1 + ptau(it)*((1-xihr)* &
 						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)  &
-						& +xi(id,it)*VD0(id,ie,iaa,it))     !Don't age, might go on DI		
+						& + xihr*VD0(id,ie,iaa,it))     !Don't age, might go on DI		
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
 				enddo
 				enddo
@@ -1274,7 +1275,7 @@ module sol_val
 
 		gapp_dif = Vapp - Vnapp
 		if(verbose .gt. 4) print *, Vapp - Vnapp
-		if(it == 1 .and. ineligNoNu) then
+		if(it == 1 .and. ineligNoNu .eqv. .true.) then
 			Vout = smthV*Vnapp + (1._dp - smthV)*(eligY*Vapp + (1._dp- eligY)*Vnapp)
 		else
 			Vout = smthV*Vnapp + (1._dp - smthV)*Vapp
@@ -2725,8 +2726,8 @@ module sim_hists
 		integer,intent(out) :: success
 		integer,intent(in) :: age_it(:,:)
 		integer, allocatable :: bdayseed(:)
-		integer,intent(out) :: drawi_ititer(:),drawt_ititer(:)
-		integer :: i,it,ii,m,ss=1,drawt,drawi,ndraw
+		integer,intent(out) :: drawi_ititer(:,:),drawt_ititer(:,:)
+		integer :: i,it,ii,id,m,ss=1,drawt,drawi,ndraw,Ncols
 		real(dp) :: junk
 
 		call random_seed(size = ss)
@@ -2734,26 +2735,29 @@ module sim_hists
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 
-		Ndraw = size(drawi_ititer)
+		Ndraw = size(drawi_ititer,1)
+		Ncols = size(drawi_ititer,2)
 		!need to draw these from age-specific distributions for iterations > 1
-		do i=1,Ndraw
-			it=1
-			if(age_it(i,it) > 0 )then
-				ageloop: do 
-					call random_number(junk)
-					drawi = max(1,idnint(junk*Nsim))
-					call random_number(junk)
-					drawt = max(1,idnint(junk*(dble(Tblock_sim)*tlen)-1))
-					if((age_it(drawi,drawt) .eq. age_it(i,it))) then
-						exit ageloop
-					endif
-				end do ageloop
-				drawi_ititer(i) = drawi
-				drawt_ititer(i) = drawt
-			else
-				drawi_ititer(i) = i
-				drawt_ititer(i) = it
-			endif
+		do id = 1,Ncols
+			do i=1,Ndraw
+				it=1
+				if(age_it(i,it) > 0 )then
+					ageloop: do 
+						call random_number(junk)
+						drawi = max(1,idnint(junk*Nsim))
+						call random_number(junk)
+						drawt = max(1,idnint(junk*Tsim)) !max(1,idnint(junk*(dble(Tblock_sim)*tlen)-1))
+						if(age_it(drawi,drawt) .eq. age_it(i,it)) then
+							exit ageloop
+						endif
+					end do ageloop
+					drawi_ititer(i,id) = drawi
+					drawt_ititer(i,id) = drawt
+				else
+					drawi_ititer(i,id) = i
+					drawt_ititer(i,id) = it
+				endif
+			enddo
 		enddo
 		deallocate(bdayseed)
 		success = 0
@@ -2790,14 +2794,14 @@ module sim_hists
 
 		! check the distributions
 		if(print_lev > 1 ) then
-			call mat2csv(shk%jshock_ij,"jshock_ij.csv")
-			call vec2csv(shk%del_i,"del_i.csv")
-			call veci2csv(shk%j_i,"j_i.csv")
-			call mat2csv(shk%al_hist,"al_it.csv")
-			call vec2csv(shk%z_jt_innov,"z_jt_innov.csv")
-			call mati2csv(shk%al_int_hist,"al_it_int.csv")
-			call mati2csv(shk%age_hist,"age_it.csv")
-			call veci2csv(shk%drawi_ititer,"drawi.csv")
+			call mat2csv(shk%jshock_ij,"jshock_ij_hist.csv")
+			call vec2csv(shk%del_i,"del_i_hist.csv")
+			call veci2csv(shk%j_i,"j_i_hist.csv")
+			call mat2csv(shk%al_hist,"al_it_hist.csv")
+			call vec2csv(shk%z_jt_innov,"z_jt_innov_hist.csv")
+			call mati2csv(shk%al_int_hist,"al_int_it_hist.csv")
+			call mati2csv(shk%age_hist,"age_it_hist.csv")
+			call mati2csv(shk%drawi_ititer,"drawi_hist.csv")
 		endif
 		
 	end subroutine draw_shocks
@@ -2899,7 +2903,7 @@ module sim_hists
 
 
 		integer :: i=1, ii=1, iter=1, it=1, it_old=1, ij=1, idi=1, id=1, Tret=1, &
-			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5
+			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5,Ncol=100
 
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
@@ -2927,8 +2931,8 @@ module sim_hists
 		real(dp), pointer    ::	al_it(:,:)	! individual shocks
 		real(dp), pointer    :: status_it_innov(:,:)
 		real(dp), pointer    :: jshock_ij(:,:)
-		integer,  pointer    :: drawi_ititer(:)
-		integer,  pointer    :: drawt_ititer(:)
+		integer,  pointer    :: drawi_ititer(:,:)
+		integer,  pointer    :: drawt_ititer(:,:)
 
 		real(dp), pointer	 :: z_jt_innov(:)
 		real(dp), pointer	 :: z_jt_select(:)
@@ -2962,7 +2966,7 @@ module sim_hists
 		! Allocate things
 		!************************************************************************************************!
 
-		iter_draws = maxiter !globally set variable
+		iter_draws = min(maxiter,100) !globally set variable
 		
 		allocate(a_it_int(Nsim,Tsim))		
 		allocate(e_it(Nsim,Tsim))
@@ -3030,7 +3034,7 @@ module sim_hists
 		Tret = (Longev - youngD - oldD*oldN)*tlen
 		work_dif_it = 0.
 		app_dif_it = 0.
-
+		Ncol = size(drawi_ititer,2)
 
 		if(shk%drawn /= 1 )then
 			call draw_shocks(shk)
@@ -3094,17 +3098,29 @@ module sim_hists
 			do i =1,Nsim
 				!for the population that is pre-existing in the first period 
 				!need to draw these from age-specific distributions for iterations > 1
+				ii = 1
 				if(iter>1 .and. age_it(i,it)  > 0 ) then
-					drawi = drawi_ititer(i)!iter-1
-					drawt = drawt_ititer(i)!iter-1
+					!use status_it_innov(i,Tsim) to identify the d status, along with age of this guy
+					if( status_it_innov(i,Tsim) < PrD3age(age_it(i,it)) ) then
+						do ii=1,Ncol
+							drawi = drawi_ititer(i,ii)!iter-1
+							drawt = drawt_ititer(i,ii)!iter-1
+							if( d_it(drawi,drawt) .eq. 3) exit
+						enddo
+					else	
+						do ii=1,Ncol
+							drawi = drawi_ititer(i,ii)!iter-1
+							drawt = drawt_ititer(i,ii)!iter-1
+							if( d_it(drawi,drawt) .lt. 3) exit
+						enddo
+					endif
 					status_it(i,it) = status_it(drawi,drawt)
 					d_it(i,it) = d_it(drawi,drawt)
 					a_it(i,it) = a_it(drawi,drawt)
 					e_it(i,it) = e_it(drawi,drawt)
 					e_it_int(i,it) = e_it_int(drawi,drawt)
 					a_it_int(i,it) = a_it_int(drawi,drawt)
-					ii =ii +1
-
+					
 					if(ii> size(drawi_ititer) ) then
 						if(verbose >2) print *, "Make drawi_ititer larger, ran out of workers"
 						ii = 1 !should never happen
@@ -3112,9 +3128,9 @@ module sim_hists
 				endif
 			enddo !i=1:Nsim
 
-!			!$OMP  parallel do &
-!			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
-!			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,ii,sepi,fndi,invol_un,status_tmrw) 
+			!$OMP  parallel do &
+			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
+			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,ii,sepi,fndi,invol_un,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3158,17 +3174,19 @@ module sim_hists
 								endif
 								al_hr	= al_it(i,it)
 								ali_hr	= al_it_int(i,it)
-								if(it==1 .or. w_strchng .eqv. .false.) then
-									pialf_conddist = ergpialf
-								else ! adjust for wage trend
+								
+								if(w_strchng .eqv. .true.) then ! adjust for wage trend
 									if(ali_hr > 1) al_hr = max(al_hr - wage_trend(it,ij), alfgrid(2))
 									do ali_hr = nal,2,-1
 										if( alfgrid(ali_hr)< al_hr) exit
 									enddo
 									if( alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr) .and. ali_hr <nal ) ali_hr = ali_hr+1
+								endif
+								if(it==1 ) then
+									pialf_conddist = ergpialf
+								else
 									pialf_conddist = pialf(ali_hr,:)
 								endif
-								
 								
 								do idi = 1,ndi !expectations over delta and alpha
 								do ali_hr = 1,nal
@@ -3382,7 +3400,7 @@ module sim_hists
 									! choose to apply
 									app_it(i,it) = 1
 									! eligible to apply?
-									if(age_hr > 1 .or. ineligNoNu .eqv. .false. &
+									if(age_hr > 1 .or. (ineligNoNu .eqv. .false. .and. age_hr==1)&
 										& .or. (age_hr ==1 .and. status_it_innov(i,min(it+1,Tsim))<eligY )) then !status_it_innov(i,it+1) is an independent draw
 										!applying, do you get it?
 										if(status_it_innov(i,it) < xifun(d_hr,z_hr,age_hr)) then 
@@ -3539,7 +3557,7 @@ module sim_hists
 				endif ! age_it(i,it)>0
 				enddo !1,Tsim
 			enddo! 1,Nsim
-!			!$OMP  end parallel do 
+			!$OMP  end parallel do 
 
 			if(print_lev >=3)then
 				call vec2csv(val_hr_it,"val_hr.csv")
@@ -3582,8 +3600,11 @@ module sim_hists
 				d_var(age_hr) = d_var(age_hr)/junk
 
 			enddo
-			if( final_iter .eqv. .true. ) exit
-			if((sum((a_mean - a_mean_liter)**2) + sum((s_mean - s_mean_liter)**2) + sum((d_mean - d_mean_liter)**2))<1.e-5_dp ) then
+			if( final_iter .eqv. .true. ) then 
+				exit
+			endif
+			if( (sum((a_mean - a_mean_liter)**2) + sum((s_mean - s_mean_liter)**2) + sum((d_mean - d_mean_liter)**2))<1.e-5_dp .or. &
+			&	iter .ge. iter_draws-1 ) then
 				if(verbose >=2 ) then
 					print *, "done simulating after convergence in", iter
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
@@ -3596,12 +3617,13 @@ module sim_hists
 				endif
 				
 				if( w_strchng_old .eqv. .true. ) then
+					w_strchng = .true.
 					final_iter = .true.
 				else 
 					exit
 				endif
 			else
-				if(verbose >=4 .or. (verbose >=2 .and. mod(iter,100) == 0)) then
+				if(verbose >=4 .or. (verbose >=2 .and. mod(iter,10) == 0)) then
 					print *, "iter:", iter
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
 					print *, "a mean, a var",  sum(a_mean), sum(a_var)
@@ -3661,20 +3683,19 @@ module sim_hists
 		!$omp end parallel do
 		
 		if(print_lev > 1)then
-				call mat2csv (e_it,"e_it.csv")
-				call mat2csv (a_it,"a_it.csv")
-				call mati2csv(a_it_int,"a_it_int.csv")
-				call mati2csv(status_it,"status_it.csv")
-				call mati2csv(d_it,"d_it.csv")
-				call veci2csv(j_i,"j_i.csv")
-				call veci2csv(z_jt_macroint,"z_jt.csv")
-				call mat2csv(z_jt_panel,"z_jt_panel.csv") 
-				call mat2csv (occsize_jt,"occsize_jt.csv")
-				call mat2csv (occgrow_jt,"occgrow_jt.csv")
-				call mat2csv (occshrink_jt,"occshrink_jt.csv")
-				call mat2csv (hst%wage_hist,"wage_hist.csv")
-				call mat2csv (hst%app_dif_hist,"app_dif_hist.csv")
-				call mat2csv (hst%work_dif_hist,"work_dif_hist.csv")
+				call mat2csv (e_it,"e_it_hist.csv")
+				call mat2csv (a_it,"a_it_hist.csv")
+				call mati2csv(a_it_int,"a_int_it_hist.csv")
+				call mati2csv(status_it,"status_it_hist.csv")
+				call mati2csv(d_it,"d_it_hist.csv")
+				call veci2csv(j_i,"j_i_hist.csv")
+				call veci2csv(z_jt_macroint,"z_jt_hist.csv")
+				call mat2csv (occsize_jt,"occsize_jt_hist.csv")
+				call mat2csv (occgrow_jt,"occgrow_jt_hist.csv")
+				call mat2csv (occshrink_jt,"occshrink_jt_hist.csv")
+				call mat2csv (hst%wage_hist,"wage_it_hist.csv")
+				call mat2csv (hst%app_dif_hist,"app_dif_it_hist.csv")
+				call mat2csv (hst%work_dif_hist,"work_dif_it_hist.csv")
 		endif
 
 		
@@ -4166,17 +4187,18 @@ module find_params
 							ziwt = (zgrid(ziH,ij)- z_hr)/( zgrid(ziH,ij) -   zgrid(zi_hr,ij) )
 							if(ziH == zi_hr) ziwt=1.
 						endif
-						if(it==1 .or. w_strchng .eqv. .false.) then
-							pialf_conddist = ergpialf
-						else
-							al_hr	= shk%al_hist(i,it)
-							ali_hr	= shk%al_int_hist(i,it)
-
+						al_hr	= shk%al_hist(i,it)
+						ali_hr	= shk%al_int_hist(i,it)
+						if(w_strchng .eqv. .true.) then
 							if(ali_hr>1) al_hr = max(al_hr - wage_trend(it,ij), alfgrid(2))
 							do ali_hr = nal,2,-1
 								if(alfgrid(ali_hr)<ali_hr) exit
 							enddo
 							if( alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr) .and. ali_hr <nal ) ali_hr = ali_hr+1
+						endif
+						if(it==1 ) then
+							pialf_conddist = ergpialf
+						else
 							pialf_conddist = pialf(ali_hr,:)
 						endif
 						do idi = 1,ndi ! expectation over delta and alpha
@@ -4486,10 +4508,11 @@ module find_params
 		call sim(vfs_pfs_shk%vfs_ptr, vfs_pfs_shk%pfs_ptr, hst,vfs_pfs_shk%shk_ptr)
 		if(verbose >2) print *, "Computing moments"
 		call moments_compute(hst,moments_sim,vfs_pfs_shk%shk_ptr)
-
-		do ij = 1,nj
-			errvec(ij) =  moments_sim%ts_emp_coefs(ij+1) - occZload(ij)
-		enddo
+		
+		errvec = 0
+		!do ij = 1,nj
+		!	errvec(ij) =  moments_sim%ts_emp_coefs(ij+1) - occZload(ij)
+		!enddo
 
 		call dealloc_hist(hst)
 

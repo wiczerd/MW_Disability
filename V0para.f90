@@ -34,31 +34,6 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
 		itlen = 12		! just an integer version of tlen so I don't have to keep casting
 !----------------------------------------------------------------------------!
-	
- !Transition probabilities ----------------------------------------------------!
- !Baseline transition probabilities
- !Disability
- !	  1          2          3	
- !   1 (1-pid1)     pid1        0
- !   2    0       (1-pid2)     pid2
- !   3    0          0          1          
- !Technology
- !	Blocks (PiY1, PiY2) discretize AR process given (zrho,zmu,zsig) such as:
- !  PiYY =
- !	  z1YY	   z2YY
- ! z1YY	  piz11	  (1-piz11)
- ! z2YY	(1-piz22)  piz22
- ! Block transition is at rate 1/Tblock
- ! Pi =
- ! 	  zzY1	   zzY2
- ! zzY1   PiYY 	 1/Tblock*PiYY
- ! zzY2	   0	    PiYY
-! annual probabilities
-real(8) ::	pid1	= 0.074, &	!Probability d0->d1
-		pid2	= 0.014, &  	!Probability d1->d2
-		pid0	= 0.587, &	!Probability d1->d0
-		dRiskL	= 0.95,&		!Lower bound on occupation-related extra disability risk (mult factor)
-		dRiskH	= 1.05		!Upper bound on occupation-related extra disability risk (mult factor)
 
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
@@ -67,7 +42,7 @@ integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types
 			nj  = 16, &!16          !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 40, &!100	        !Points on assets grid
+			na  = 50, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000, & !1000*nj!how many agents to draw
@@ -84,7 +59,7 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  z_flowrts	 = .true.,& !make zj just control flow rates and not productivity (makes the next irrelevant)
 					  zj_contin	 = .false.,& !make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
-					  ineligNoNu = .false.,&! do young ineligable also pay the nu cost when they are ineligable?
+					  ineligNoNu = .false.  ! do young ineligable also pay the nu cost when they are ineligable?
 					  
 ! these relate to what's changing over the simulation/across occupation
 logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
@@ -125,12 +100,14 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		piz(nz,nz),&		!TFP transition matrix
 		ergpiz(nz),& !ergodic TFP distribution
 		pid(nd,nd,ndi,TT-1),&	!Disability transition matrix
+!
 		prob_age(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
 		hazborn_t(Tsim), &	!hazard of being born at each point t
+		PrD3age(TT-1), &		!Fraction of D2 at each age
 		occprbrk(nj), & 	!Fraction choosing occupation after break
 		occsz0(nj),&		!Fraction in each occupation
-		occZload(nj), &		!Factor loading for each ccupation
+
 		jshift(nj,2),&		!Preference shift to ensure proper proportions, 2 regimes
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
@@ -158,7 +135,10 @@ real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start
 		zrho	= 0.95,	&	!Persistence of the AR process
 		zmu		= 0.,	&	!Drift of the AR process, should always be 0
 		zsig	= 0.15**0.5,&	!Unconditional standard deviation of AR process
-		
+! 	Health risk grid
+		dRiskL	= 0.95,&	!Lower bound on occupation-related extra disability risk (multiplicative)
+		dRiskH	= 1.05,&		!Upper bound on occupation-related extra disability risk
+
 		wmean	= 1.,&		! to set the average wage on which disability stuff is set
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
@@ -215,7 +195,7 @@ subroutine setparams()
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
 	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(nj),avgADL, &
-		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,17), UE_occ_read(nz,nj),EU_occ_read(nz,nj),apprt_read(50,2)
+		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,17), UE_occ_read(nz,nj),EU_occ_read(nz,nj),apprt_read(50,2), pid_tmp(nd,nd+1,TT-1)
 	
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -410,12 +390,6 @@ subroutine setparams()
 		cumprnborn_t(t) = (1.-prborn_t(t))*cumprnborn_t(t-1)
 	enddo
 
-	!Age-related disability risk
-	dtau(1) = 0.5	!Young's Risk
-	do i=2,TT-1
-		dtau(i) = dexp(ageD*dble(i)*oldD)	!Old (exponential)
-	enddo
-
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 !	occupation structure
@@ -468,18 +442,24 @@ subroutine setparams()
 		avgADL = maxADL_read(j)*occsz0(j) + avgADL
 	enddo
 	!make mean 1 for occdel:
-	summy = 1.-(1.-avgADL)**(1./Longev)
+	summy = 1.-(1.-avgADL)**(1./(youngD+oldN*oldD))
 	
 	do j=1,nj
-		occdel(j) = (1.-(1.-maxADL_read(j))**(1./Longev)) / summy
+		occdel(j) = (1.-(1.-maxADL_read(j))**(1./(youngD+oldN*oldD))) / summy
 	enddo
 	!will set this in draw_del
 	delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
 		
 
 	!Extra disability risk (uniformly spaced)
-	dRiskH = max(dRiskH, maxval(occdel))
-	dRiskL = min(dRiskL, minval(occdel))
+	if( maxval(occdel) > dRiskH ) then
+		dRiskH = maxval(occdel)
+!		dRiskL = 1. - (dRiskH-1.)
+	endif
+	if(dRiskL > minval(occdel)) then
+		dRiskL = minval(occdel)
+!		dRiskH = 1+( 1.-dRiskL )
+	endif
 	if(ndi>1) then
 		do i=1,ndi
 			delgrid(i) = dRiskL +dble(i-1)*(dRiskH-dRiskL)/dble(ndi-1)
@@ -487,7 +467,7 @@ subroutine setparams()
 	else
 		delgrid(1) = 0.5*(dRiskH + dRiskL)
 	endif
-
+	if(del_by_occ .eqv. .false.) delgrid = 1.
 		
 	!Disability Extent-Specific Things
 	!Wage Penalty 
@@ -548,26 +528,61 @@ subroutine setparams()
 		agrid(i)=agrid(i)**2*(amax-amin)+amin
 	enddo
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!Make Markov transition matrices with all wierd invidual stuff
 	!Disability: pid(id,id';i,t) <---indv. type and age specific
-	do j=1,ndi
+	!  					& 0 & 1 & 2 & dead\\
+    pid_tmp(1,:,1) = (/0.978 , 0.018 , 0.003 , 0.001/)
+    pid_tmp(2,:,1) = (/0.417 , 0.527 , 0.056 , 0.000/)
+    pid_tmp(3,:,1) = (/0.000 , 0.000 , 0.952 , 0.048/)
+    !\multicolumn{4}{c}{Age \quad 22-45}\\
+
+    pid_tmp(1,:,2) = (/0.960 , 0.024 , 0.014 , 0.002/)
+    pid_tmp(2,:,2) = (/0.305 , 0.603 , 0.071 , 0.022/)
+    pid_tmp(3,:,2) = (/0.000 , 0.000 , 0.950 , 0.050/)
+    
+    pid_tmp(1,:,3) = (/0.960 , 0.024 , 0.014 , 0.002/)
+    pid_tmp(2,:,3) = (/0.305 , 0.603 , 0.071 , 0.022/)
+    pid_tmp(3,:,3) = (/0.000 , 0.000 , 0.950 , 0.050/)
+    !\multicolumn{4}{c}{Age \quad 46-55}\\
+
+    pid_tmp(1,:,4) =  (/0.945 , 0.038 , 0.010 , 0.008/)
+    pid_tmp(2,:,4) =  (/0.375 , 0.455 , 0.134 , 0.037/)
+    pid_tmp(3,:,4) =  (/0.000 , 0.000 , 0.985 , 0.015/)
+    !\multicolumn{4}{c}{Age \quad 56-60}\\
+
+    pid_tmp(1,:,5) =  (/0.896 , 0.072 , 0.017 , 0.016/)
+    pid_tmp(2,:,5) =  (/0.174 , 0.692 , 0.089 , 0.045/)
+    pid_tmp(3,:,5) =  (/0.000 , 0.000 , 0.986 , 0.014/)
+    !\multicolumn{4}{c}{Age \quad 61-65}\\
+	
+	! make stochastic--minus that death probability
+	do t =1,TT-1
+		do i=1,3
+			pid_tmp(i,1:3,t) = pid_tmp(i,1:3,t)/(1. - pid_tmp(i,4,t))
+		enddo
+	enddo
+	
+	! convert to monthly and multiply by delgrid
 	do i=1,TT-1
-
-		pid(1,2,j,i) = 1.-max(1.-pid1*dtau(i)*delgrid(j),0.)&	!Partial Disability 
-				& **(1./tlen)	
-		pid(1,1,j,i) = 1.-pid(1,2,j,i)			!Stay healthy
-		pid(1,3,j,i) = 0.				!Full Disability
-		pid(2,1,j,i) = 1.-(1.-pid0)**(1./tlen)		!revert
-		pid(2,3,j,i) = 1.-max(1.-pid2*dtau(i)*delgrid(j),0.)&	!Full Disability
-					& **(1./tlen)	
-		pid(2,2,j,i) = 1.-pid(2,3,j,i)-pid(2,1,j,i)	!Stay Partial
-		pid(3,1,j,i) = 0.				!Full is absorbing State
-		pid(3,2,j,i) = 0.
+		do j=1,ndi
+		pid(1,2,j,i) = 1. - ( 1.-pid_tmp(1,2,i)*delgrid(j) )**(1./tlen)
+		pid(1,3,j,i) = 1. - ( 1.-pid_tmp(1,3,i)*delgrid(j) )**(1./tlen)
+		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
+		
+		pid(2,1,j,i) = 1. - ( 1.-pid_tmp(2,1,i) )**(1./tlen)
+		pid(2,3,j,i) = 1. - ( 1.-pid_tmp(2,3,i)*delgrid(j) )**(1./tlen)
+		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
+		
 		pid(3,3,j,i) = 1.
+		pid(3,1:2,j,i) = 0.
+		
+		enddo
 	enddo
-	enddo
-
-
+	
+	PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
+	
+	
 end subroutine setparams
 
 subroutine settfp()
@@ -1277,5 +1292,6 @@ end subroutine hptrend
 
 
 end module V0para
+
 
 
