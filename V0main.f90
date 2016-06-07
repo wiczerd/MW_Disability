@@ -2912,6 +2912,9 @@ module sim_hists
 		
 		! FOR DEBUGGING
 		real(dp), allocatable :: val_hr_it(:)
+		! because the actual alpha is endgoenous to unemployment and trend
+		real(dp), allocatable :: al_it_endog(:,:)
+		integer, allocatable  :: al_int_it_endog(:,:)
 		
 		! write to hst, get from shk
 		real(dp), pointer    :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
@@ -2973,6 +2976,9 @@ module sim_hists
 		allocate(e_it_int(Nsim,Tsim))		
 		allocate(work_it(Nsim,Tsim))
 		allocate(app_it(Nsim,Tsim))
+		allocate(al_int_it_endog(Nsim,Tsim))
+		allocate(al_it_endog(Nsim,Tsim))
+
 
 		!!!!!!!!!!!!!!! DEBUGGING
 		allocate(val_hr_it(Nsim))
@@ -3030,11 +3036,13 @@ module sim_hists
 			if(ptrsuccess .eqv. .false. ) print *, "failed to associate V"
 		endif
 
-		hst%wage_hist = 0.
+		hst%wage_hist    = 0.
 		Tret = (Longev - youngD - oldD*oldN)*tlen
-		work_dif_it = 0.
-		app_dif_it = 0.
+		work_dif_it      = 0.
+		app_dif_it       = 0.
 		Ncol = size(drawi_ititer,2)
+		al_int_it_endog  = 0
+		al_it_endog      = 0.
 
 		if(shk%drawn /= 1 )then
 			call draw_shocks(shk)
@@ -3499,6 +3507,9 @@ module sim_hists
 						if(it<Tsim) &
 						&	status_it(i,it+1) = status_hr
 					endif
+					al_int_it_endog(i,it) = ali_hr
+					al_it_endog(i,it)     = al_hr
+					
 					!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 					!push forward the state:
 					if(it<Tsim) then
@@ -3538,10 +3549,14 @@ module sim_hists
 
 						!push forward d 
 						if(status_hr .eq. 1 .and. d_hr<nd ) then !if working and not already in worst state
-							if( status_it_innov(i,it) < pid(d_hr,d_hr+1,del_hr,age_hr) ) then 
-								d_it(i,it+1) = d_hr+1 
-							else
+							if( d_hr == 1 .and. status_it_innov(i,it) <= cumpid(d_hr,2,del_hr,age_hr) ) then 
 								d_it(i,it+1) = d_hr
+							elseif(d_hr == 2 .and. status_it_innov(i,it) <= cumpid(d_hr,2,del_hr,age_hr)) then
+								d_it(i,it+1) = 1
+							elseif(d_hr == 2 .and. status_it_innov(i,it) <= cumpid(d_hr,3,del_hr,age_hr)) then
+								d_it(i,it+1) = 2
+							elseif(d_hr == 2 .and. status_it_innov(i,it) <= cumpid(d_hr,4,del_hr,age_hr)) then
+								d_it(i,it+1) = 3
 							endif
 						else 
 							d_it(i,it+1) = d_hr
@@ -3696,9 +3711,11 @@ module sim_hists
 				call mat2csv (hst%wage_hist,"wage_it_hist.csv")
 				call mat2csv (hst%app_dif_hist,"app_dif_it_hist.csv")
 				call mat2csv (hst%work_dif_hist,"work_dif_it_hist.csv")
+				call mati2csv(al_int_it_endog,"al_int_endog_hist.csv")
+				call mat2csv (al_it_endog,"al_endog_hist.csv")
 		endif
 
-		
+		deallocate(al_int_it_endog,al_it_endog)
 		deallocate(e_it)
 		deallocate(a_it_int,e_it_int)
 		deallocate(app_it,work_it)

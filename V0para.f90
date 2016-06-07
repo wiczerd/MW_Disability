@@ -307,7 +307,7 @@ subroutine setparams()
 
 	! the probabilities associated with going into the alpha term that is unemployment go to zero.
 	pialf(1,1) = 0.
-	pialf(1,2:nal) = ergpialf(2:nal)
+	pialf(1,2:nal) = pialf(2,2:nal) !come back as if on the lowest rung of the ladder.
 	pialf(2:nal,1) = 0. !exogenous separation is not built into alpha transitions
 	!pialf(2:nal,1) = xsep
 	!forall(i=2:nal,k=2:nal) pialf(i,k) = pialf(i,k)*(1.-xsep)
