@@ -39,10 +39,10 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &!3		    !Number of individual disability risk types
-			nj  = 16, &!16          !Number of occupations (downward TFP risk variation)
+			nj  = 2, &!16          !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 3, &!10	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 50, &!100	        !Points on assets grid
+			ne  = 2, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			na  = 35, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000, & !1000*nj!how many agents to draw

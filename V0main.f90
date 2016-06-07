@@ -2902,7 +2902,7 @@ module sim_hists
 		
 
 
-		integer :: i=1, ii=1, iter=1, it=1, it_old=1, ij=1, idi=1, id=1, Tret=1, &
+		integer :: i=1, ii=1, iter=1, it=1, it_old=1, ij=1, idi=1, id=1, Tret=1,wo=1, &
 			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5,Ncol=100
 
 
@@ -3049,17 +3049,18 @@ module sim_hists
 		endif		
 
 		!set up cumpid,cumptau
+		wo = 0
 		cumpid = 0.
 		cumptau = 0.
 		do idi=1,ndi
 		do it =1,TT-1
-		do id =1,nd
-			i=1
-			cumpid(id,i+1,idi,it) = pid(id,i,idi,it)
-			do i =2,nd
-				cumpid(id,i+1,idi,it) = pid(id,i,idi,it)+cumpid(id,i,idi,it)
+			do id =1,nd
+				do i =1,nd
+					cumpid(id,i+1,idi,it) = pid(id,i,idi,it)+cumpid(id,i,idi,it)
+				enddo
 			enddo
-		enddo
+			call mat2csv(cumpid(:,:,idi,it), "cumpid.csv",wo )
+			wo=1
 		enddo
 		enddo
 		it = 1
@@ -3136,9 +3137,9 @@ module sim_hists
 				endif
 			enddo !i=1:Nsim
 
-			!$OMP  parallel do &
-			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
-			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,ii,sepi,fndi,invol_un,status_tmrw) 
+!			!$OMP  parallel do &
+!			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
+!			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,ii,sepi,fndi,invol_un,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3549,15 +3550,12 @@ module sim_hists
 
 						!push forward d 
 						if(status_hr .eq. 1 .and. d_hr<nd ) then !if working and not already in worst state
-							if( d_hr == 1 .and. status_it_innov(i,it) <= cumpid(d_hr,2,del_hr,age_hr) ) then 
-								d_it(i,it+1) = d_hr
-							elseif(d_hr == 2 .and. status_it_innov(i,it) <= cumpid(d_hr,2,del_hr,age_hr)) then
-								d_it(i,it+1) = 1
-							elseif(d_hr == 2 .and. status_it_innov(i,it) <= cumpid(d_hr,3,del_hr,age_hr)) then
-								d_it(i,it+1) = 2
-							elseif(d_hr == 2 .and. status_it_innov(i,it) <= cumpid(d_hr,4,del_hr,age_hr)) then
-								d_it(i,it+1) = 3
-							endif
+							do ii=1,nd
+								if(status_it_innov(i,it) < cumpid(d_hr,ii+1,del_hr,age_hr) ) then
+									d_it(i,it+1) = ii
+									exit
+								endif
+							enddo
 						else 
 							d_it(i,it+1) = d_hr
 						endif
@@ -3572,7 +3570,7 @@ module sim_hists
 				endif ! age_it(i,it)>0
 				enddo !1,Tsim
 			enddo! 1,Nsim
-			!$OMP  end parallel do 
+!			!$OMP  end parallel do 
 
 			if(print_lev >=3)then
 				call vec2csv(val_hr_it,"val_hr.csv")
@@ -4607,12 +4605,12 @@ program V0main
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: id=1, it=1, ij=1, ibi=1, ial=1, iz=1, i=1,narg_in=1, wo=1, status=1,t0tT(2)
+		integer  :: id=1, it=1, ij=1, ibi=1, ial=1, iz=1, i=1,narg_in=1, wo=1, idi, status=1,t0tT(2)
 		character(len=32) :: arg_in
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(3)=1.,err0(3)=1.,param1(nj),err1(nj)
+		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(3)=1.,err0(3)=1.,param1(nj),err1(nj), cumpid(nd,nd+1,ndi,TT-1)
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct), target :: vfs
@@ -4660,15 +4658,27 @@ program V0main
 		call veci2csv(agegrid,'agegrid.csv',wo)		
 		call mat2csv(piz(:,:),"piz.csv",wo)
 		call mat2csv(pialf,"pial.csv",wo)
-		
+		cumpid = 0.
+		do idi=1,ndi
+		do it =1,TT-1
+		do id =1,nd
+			do i =1,nd
+				cumpid(id,i+1,idi,it) = pid(id,i,idi,it)+cumpid(id,i,idi,it)
+			enddo
+		enddo
+		enddo
+		enddo
+				
 		wo=0
 		do it = 1,TT-1
 			do ij = 1,ndi
 				call mat2csv(pid(:,:,ij,it),"pid.csv",wo)
+				call mat2csv(cumpid(:,:,ij,it),"cumpid.csv",wo)
+				
 				if(wo==0) wo =1
 			enddo
 		enddo
-
+		
 		call mat2csv(wage_trend,"wage_trend.csv")
 		call vec2csv(occsz0, "occsz0.csv")
 		call vec2csv(occdel, "occdel.csv")
@@ -4732,7 +4742,7 @@ program V0main
 	call alloc_shocks(shk)
 	
 	call draw_shocks(shk)
-
+	call mat2csv(shk%status_it_innov,"status_it_innov.csv")
 	!************************************************************************************************!
 	!solve it once
 
