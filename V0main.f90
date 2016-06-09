@@ -2263,11 +2263,11 @@ module sol_val
 
 			do id  = 1,nd
 			do ie  = 1,ne
-				call mati2csv(aD(id,ie,:,:),"aD.csv",wo)
-				call mat2csv (VD(id,ie,:,:),"VD.csv",wo)
+				call mati2csv(aD(id,ie,:,:),"aD"//trim(caselabel)//".csv",wo)
+				call mat2csv (VD(id,ie,:,:),"VD"//trim(caselabel)//".csv",wo)
 
-				call veci2csv(aR(id,ie,:),"aR.csv",wo)
-				call vec2csv (VR(id,ie,:),"VR.csv",wo)
+				call veci2csv(aR(id,ie,:),"aR"//trim(caselabel)//".csv",wo)
+				call vec2csv (VR(id,ie,:),"VR"//trim(caselabel)//".csv",wo)
 				if(wo == 0) wo =1
 			enddo
 			enddo
@@ -2279,22 +2279,22 @@ module sol_val
 			do iz=1,nz	!Loop over TFP
 				do it = TT-1,1,-1
 					! matrix in disability and assets
-					call mat2csv(V((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"V.csv",wo)
+					call mat2csv(V((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"V"//trim(caselabel)//".csv",wo)
 
-					call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VW.csv",wo)
-					call mati2csv(aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aW.csv",wo)
+					call mat2csv(VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VW"//trim(caselabel)//".csv",wo)
+					call mati2csv(aW((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aW"//trim(caselabel)//".csv",wo)
 
-					call mat2csv(VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VU.csv",wo)
-					call mati2csv(aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aU.csv",wo)
+					call mat2csv(VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VU"//trim(caselabel)//".csv",wo)
+					call mati2csv(aU((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aU"//trim(caselabel)//".csv",wo)
 
-					call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VN.csv",wo)
-					call mati2csv(aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aN.csv",wo)
+					call mat2csv(VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VN"//trim(caselabel)//".csv",wo)
+					call mati2csv(aN((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aN"//trim(caselabel)//".csv",wo)
 
-					call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork.csv",wo)
-					call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_dif.csv",wo)
+					call mati2csv(gwork((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork"//trim(caselabel)//".csv",wo)
+					call mat2csv(gwork_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_dif"//trim(caselabel)//".csv",wo)
 
-					call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp.csv",wo)
-					call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_dif.csv",wo)
+					call mati2csv(gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp"//trim(caselabel)//".csv",wo)
+					call mat2csv(gapp_dif((ij-1)*nbi+ibi,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_dif"//trim(caselabel)//".csv",wo)
 
 					if(wo==0) wo =1
 				enddo !it
@@ -2794,14 +2794,14 @@ module sim_hists
 
 		! check the distributions
 		if(print_lev > 1 ) then
-			call mat2csv(shk%jshock_ij,"jshock_ij_hist.csv")
-			call vec2csv(shk%del_i,"del_i_hist.csv")
-			call veci2csv(shk%j_i,"j_i_hist.csv")
-			call mat2csv(shk%al_hist,"al_it_hist.csv")
-			call vec2csv(shk%z_jt_innov,"z_jt_innov_hist.csv")
-			call mati2csv(shk%al_int_hist,"al_int_it_hist.csv")
-			call mati2csv(shk%age_hist,"age_it_hist.csv")
-			call mati2csv(shk%drawi_ititer,"drawi_hist.csv")
+			call mat2csv(shk%jshock_ij,"jshock_ij_hist"//trim(caselabel)//".csv")
+			call vec2csv(shk%del_i,"del_i_hist"//trim(caselabel)//".csv")
+			call veci2csv(shk%j_i,"j_i_hist"//trim(caselabel)//".csv")
+			call mat2csv(shk%al_hist,"al_it_hist"//trim(caselabel)//".csv")
+			call vec2csv(shk%z_jt_innov,"z_jt_innov_hist"//trim(caselabel)//".csv")
+			call mati2csv(shk%al_int_hist,"al_int_it_hist"//trim(caselabel)//".csv")
+			call mati2csv(shk%age_hist,"age_it_hist"//trim(caselabel)//".csv")
+			call mati2csv(shk%drawi_ititer,"drawi_hist"//trim(caselabel)//".csv")
 		endif
 		
 	end subroutine draw_shocks
@@ -3049,7 +3049,6 @@ module sim_hists
 		endif		
 
 		!set up cumpid,cumptau
-		wo = 0
 		cumpid = 0.
 		cumptau = 0.
 		do idi=1,ndi
@@ -3059,8 +3058,6 @@ module sim_hists
 					cumpid(id,i+1,idi,it) = pid(id,i,idi,it)+cumpid(id,i,idi,it)
 				enddo
 			enddo
-			call mat2csv(cumpid(:,:,idi,it), "cumpid.csv",wo )
-			wo=1
 		enddo
 		enddo
 		it = 1
@@ -3130,10 +3127,6 @@ module sim_hists
 					e_it_int(i,it) = e_it_int(drawi,drawt)
 					a_it_int(i,it) = a_it_int(drawi,drawt)
 					
-					if(ii> size(drawi_ititer) ) then
-						if(verbose >2) print *, "Make drawi_ititer larger, ran out of workers"
-						ii = 1 !should never happen
-					endif
 				endif
 			enddo !i=1:Nsim
 
@@ -3252,16 +3245,16 @@ module sim_hists
 					if((age_hr .eq. TT) ) then
 						it_old = it_old + 1
 						if(it_old >  Tret ) then
-							age_it(i,it:Tsim) = -1
-							a_it(i,it:Tsim) = 0.
-							a_it_int(i,it:Tsim) = 0
-							d_it(i,it:Tsim) = 0
-							app_dif_it(i,it:Tsim) = 0.						
-							work_dif_it(i,it:Tsim) = 0.
-							status_it(i,it:Tsim) = -1
+							age_it(i,it) = -1
+							a_it(i,it) = 0.
+							a_it_int(i,it) = 0
+							d_it(i,it) = 0
+							app_dif_it(i,it) = 0.						
+							work_dif_it(i,it) = 0.
+							status_it(i,it) = -1
 							exit
 						else
-							status_it(i,it:Tsim) = 5
+							status_it(i,it) = 5
 						endif
 					endif 
 
@@ -3434,6 +3427,22 @@ module sim_hists
 									status_tmrw = status_hr
 								endif
 							end select
+							
+							if(status_hr <= 2 .and. print_lev >=2) then
+								!evaluate application choice (for diagnostics, would the workers want to apply?)
+								if(al_contin .eqv. .false. .and. zj_contin .eqv. .false. ) then
+									app_dif_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .false. ) then
+									app_dif_hr = iiwt    *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .true. ) then
+									app_dif_hr = ziwt    * iiwt    *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	 ziwt    *(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-ziwt)*  iiwt   *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
+											&	(1.-ziwt)*(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) 
+								endif
+								app_dif_it(i,it) = app_dif_hr
+							endif
 						
 						elseif(status_hr > 3 ) then !absorbing states of D,R
 							status_tmrw = status_hr
@@ -3503,6 +3512,7 @@ module sim_hists
 					! retired
 					elseif( (age_hr==TT) .and. (it_old <= Tret)) then
 						api_hr      = aR( d_hr,ei_hr,ai_hr )
+						apc_hr      = agrid(api_hr)
 						status_hr   = 5
 						status_tmrw = 5
 						if(it<Tsim) &
@@ -3510,7 +3520,6 @@ module sim_hists
 					endif
 					al_int_it_endog(i,it) = ali_hr
 					al_it_endog(i,it)     = al_hr
-					
 					!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 					!push forward the state:
 					if(it<Tsim) then
@@ -3696,21 +3705,21 @@ module sim_hists
 		!$omp end parallel do
 		
 		if(print_lev > 1)then
-				call mat2csv (e_it,"e_it_hist.csv")
-				call mat2csv (a_it,"a_it_hist.csv")
-				call mati2csv(a_it_int,"a_int_it_hist.csv")
-				call mati2csv(status_it,"status_it_hist.csv")
-				call mati2csv(d_it,"d_it_hist.csv")
-				call veci2csv(j_i,"j_i_hist.csv")
-				call veci2csv(z_jt_macroint,"z_jt_hist.csv")
-				call mat2csv (occsize_jt,"occsize_jt_hist.csv")
-				call mat2csv (occgrow_jt,"occgrow_jt_hist.csv")
-				call mat2csv (occshrink_jt,"occshrink_jt_hist.csv")
-				call mat2csv (hst%wage_hist,"wage_it_hist.csv")
-				call mat2csv (hst%app_dif_hist,"app_dif_it_hist.csv")
-				call mat2csv (hst%work_dif_hist,"work_dif_it_hist.csv")
-				call mati2csv(al_int_it_endog,"al_int_endog_hist.csv")
-				call mat2csv (al_it_endog,"al_endog_hist.csv")
+				call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
+				call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
+				call mati2csv(status_it,"status_it_hist"//trim(caselabel)//".csv")
+				call mati2csv(d_it,"d_it_hist"//trim(caselabel)//".csv")
+				call veci2csv(j_i,"j_i_hist"//trim(caselabel)//".csv")
+				call veci2csv(z_jt_macroint,"z_jt_hist"//trim(caselabel)//".csv")
+				call mat2csv (occsize_jt,"occsize_jt_hist"//trim(caselabel)//".csv")
+				call mat2csv (occgrow_jt,"occgrow_jt_hist"//trim(caselabel)//".csv")
+				call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
+				call mat2csv (hst%wage_hist,"wage_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (hst%app_dif_hist,"app_dif_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
+				call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
+				call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
 		endif
 
 		deallocate(al_int_it_endog,al_it_endog)
@@ -4426,7 +4435,7 @@ module find_params
 			do it=1,Tsim
 				if(hst%status_hist(i,it)<=3 .and. mod(it,itlen) .eq. 0) ninsur_app = 1.+ninsur_app ! only count the body once every year, comparable to data
 				if(hst%status_hist(i,it)==3) &
-				&	totapp_dif_hist = exp(hst%app_dif_hist(i,it))/(1. + exp(hst%app_dif_hist(i,it))) + totapp_dif_hist
+				&	totapp_dif_hist = exp(10.*hst%app_dif_hist(i,it))/(1. + exp(10.*hst%app_dif_hist(i,it))) + totapp_dif_hist
 			enddo
 		enddo
 		totapp_dif_hist = totapp_dif_hist/ninsur_app
@@ -4644,7 +4653,7 @@ program V0main
 		read( arg_in, * ) nu
 	endif
 
-
+	caselabel = ""
 	agrid(1) = .05*(agrid(1)+agrid(2))
 	if(print_lev >= 2) then
 		! plot out a bunch of arrays for analyzing VFs, etc
@@ -4740,9 +4749,8 @@ program V0main
 		call SYSTEM_CLOCK(c1)
 	endif
 	call alloc_shocks(shk)
-	
 	call draw_shocks(shk)
-	call mat2csv(shk%status_it_innov,"status_it_innov.csv")
+	call mat2csv(shk%status_it_innov,"status_it_innov"//trim(caselabel)//".csv")
 	!************************************************************************************************!
 	!solve it once
 
@@ -4775,7 +4783,7 @@ program V0main
 			jshift(:,2) = jshift(:,1)
 		endif
 			
-		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
+		if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -4803,7 +4811,7 @@ program V0main
 			do it=1,Tsim
 				if(hst%status_hist(i,it)<=3 .and. mod(it,itlen) .eq. 0) ninsur_app = 1.+ninsur_app ! only count the body once every year, comparable to data
 				if(hst%status_hist(i,it)==3) &
-				&	totapp_dif_hist = exp(hst%app_dif_hist(i,it))/(1. + exp(hst%app_dif_hist(i,it))) + totapp_dif_hist
+				&	totapp_dif_hist = exp(10.*hst%app_dif_hist(i,it))/(1. + exp(10.*hst%app_dif_hist(i,it))) + totapp_dif_hist
 			enddo
 		enddo
 		totapp_dif_hist = totapp_dif_hist/ninsur_app
@@ -4820,6 +4828,7 @@ program V0main
 		print *, "   CPU Time", (t2-t1)
 	endif
 	
+	
 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
 	lb = 0._dp
 	call nlo_set_lower_bounds(ires,calopt,lb)
@@ -4833,7 +4842,37 @@ program V0main
 	
 	parvec(1) = nu
 	print *, parvec
-!	call nlo_optimize(ires, calopt, parvec, erval)
+	call nlo_optimize(ires, calopt, parvec, erval)
+	nu = parvec(1) ! new optimum
+	
+!****************************************************************************
+!   Now run some experiments:
+
+	! without wage trend
+	caselabel = "wchng0"
+	w_strchng = .false.
+	
+	err0 = 0.
+	call cal_dist(parvec,err0,shk)
+	w_strchng = .true.
+
+	! without the correlation between delta and occupation
+	del_by_occ = .false.
+	caselabel = "deloc0"
+	call cal_dist(parvec,err0,shk)
+	
+	! without either the correlation between delta and occupation or wage trend
+	del_by_occ = .false.
+	caselabel = "wchng0deloc0"
+	call cal_dist(parvec,err0,shk)
+	
+	
+	
+	
+	
+	
+	
+	
 	
 	!****************************************************************************!
 	! IF you love something.... 

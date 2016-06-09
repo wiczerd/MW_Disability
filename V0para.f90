@@ -14,6 +14,7 @@ implicit none
 save
 !***Unit number***********************************!
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
+character(len=12) :: caselabel
 
 integer, parameter:: dp=kind(0.d0) ! double precision
 
@@ -38,11 +39,11 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
-			ndi = 3,  &!3		    !Number of individual disability risk types
-			nj  = 2, &!16          !Number of occupations (downward TFP risk variation)
+			ndi = 6,  &!6		    !Number of individual disability risk types
+			nj  = 16, &!16          !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 2, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 35, &!100	        !Points on assets grid
+			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			na  = 50, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000, & !1000*nj!how many agents to draw
@@ -504,6 +505,8 @@ subroutine setparams()
 	do t=1,50
 		if(apprt_read(t,1)>=1980 .and. apprt_read(t,1)<=1985 )  apprt_target = apprt_read(t,2)/6. + apprt_target
 	enddo
+
+
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!
 ! 	Asset/SSDI wealth things:
