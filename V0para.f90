@@ -39,11 +39,11 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
-			ndi = 6,  &!6		    !Number of individual disability risk types
-			nj  = 16, &!16          !Number of occupations (downward TFP risk variation)
+			ndi = 3,  &!6		    !Number of individual disability risk types
+			nj  = 2, &!16          !Number of occupations (downward TFP risk variation)
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 50, &!100	        !Points on assets grid
+			ne  = 2, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			na  = 35, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000, & !1000*nj!how many agents to draw
@@ -121,7 +121,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start)
-		nu = 0.1, &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 0.01117187475028913, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -182,7 +182,7 @@ real(8) :: 	gam	= 1.5, &	!IES
 		theta 	= -0.448		!Util cost of disability	
 
 integer :: print_lev, verbose
-logical :: simp_concav
+logical :: simp_concav = .false.
 		
 contains
 subroutine setparams()
@@ -485,9 +485,9 @@ subroutine setparams()
 	xi(2,2) = xi1M
 	xi(3,2) = xi2M
 	if(TT-1>=3) then
-		xi(1,2) = xi0M
-		xi(2,2) = xi1M
-		xi(3,2) = xi2M
+		xi(1,3) = xi0M
+		xi(2,3) = xi1M
+		xi(3,3) = xi2M
 	endif
 	if(TT-1>=4) then
 		xi(1,4) = xi0O
@@ -505,7 +505,9 @@ subroutine setparams()
 	do t=1,50
 		if(apprt_read(t,1)>=1980 .and. apprt_read(t,1)<=1985 )  apprt_target = apprt_read(t,2)/6. + apprt_target
 	enddo
-
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*****************************AD HOC
+	apprt_target = apprt_target*2.
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!

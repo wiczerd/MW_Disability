@@ -991,15 +991,15 @@ module model_data
 
 		if(print_lev >= 2) then
 			call veci2csv(totst,"pop_st.csv")
-			call vec2csv(a_age,"a_age.csv")
-			call vec2csv(a_t,"a_t.csv")
-			call vec2csv(moments_sim%di_rate,"di_age.csv")
-			call vec2csv(appdif_age, "appdif_age.csv")
-			call vec2csv(moments_sim%work_rate,"work_age.csv")
-			call vec2csv(workdif_age, "workdif_age.csv")
-			call vec2csv(alD,"alD.csv")
-			call mat2csv(alD_age,"alD_age.csv")
-			call mat2csv(status_Nt,"status_Nt.csv")
+			call vec2csv(a_age,"a_age"//trim(caselabel)//".csv")
+			call vec2csv(a_t,"a_t"//trim(caselabel)//".csv")
+			call vec2csv(moments_sim%di_rate,"di_age"//trim(caselabel)//".csv")
+			call vec2csv(appdif_age, "appdif_age"//trim(caselabel)//".csv")
+			call vec2csv(moments_sim%work_rate,"work_age"//trim(caselabel)//".csv")
+			call vec2csv(workdif_age, "workdif_age"//trim(caselabel)//".csv")
+			call vec2csv(alD,"alD"//trim(caselabel)//".csv")
+			call mat2csv(alD_age,"alD_age"//trim(caselabel)//".csv")
+			call mat2csv(status_Nt,"status_Nt"//trim(caselabel)//".csv")
 		endif
 
 !		call LPM_employment(hst,moments_sim,shk)
@@ -1223,20 +1223,30 @@ module sol_val
 				!Continuation if apply for DI
 				do izz = 1,nz	 !Loop over z'
 				do iaai = iaaL,nal !Loop over alpha_i'
-					Vc1 = (1-ptau(it))*((1-xihr)* &
-						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1)  &
-						& + xihr*VD0(id,ie,iaa,it+1)) !Age and might go on DI
-					Vc1 = Vc1 + ptau(it)*((1-xihr)* &
-						& VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)  &
-						& + xihr*VD0(id,ie,iaa,it))     !Don't age, might go on DI		
+					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
+							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1))
+					
+					Vc1 =   (1-ptau(it))*(1-xihr)*   &
+						&		((1-lrho*fndrate(iz,ij) )*VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)+lrho*fndrate(iz,ij)*maxVNV0)&
+						& + (1-ptau(it))*xihr* &
+						&		VD0(id,ie,iaa,it+1) !Age and might go on DI
+					
+					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
+							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
+					
+					Vc1 = Vc1+	ptau(it)*(1-xihr)* &
+						& ((1-lrho*fndrate(iz,ij))*VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it) +lrho*fndrate(iz,ij)*maxVNV0) &
+						& + 	ptau(it)*xihr* &
+						& VD0(id,ie,iaa,it)     !Don't age, might go on DI		
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
 				enddo
 				enddo
 				Vtest2 = util(chere,id,iw) + Vtest2 &
 					!& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) ) !<-- application cost (was nu * VN0)
-					& - nu*(VD0(id,ie,iaa,it) - minvalVD)
-					!& - nu*(VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) - minvalVN)
-					! & - nu*max(VD0(id,ie,iaa,it),0)
+					!& - nu*(VD0(id,ie,iaa,it) - minvalVD)
+					!& - nu*exp(VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it))/(1+exp(VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it)))
+					& - nu
+					!& - nu*max(VD0(id,ie,iaa,it),0)
 				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then	
 					apol = iaa
 					Vtest1 = Vtest2
@@ -1478,11 +1488,11 @@ module sol_val
 			call vec2csv(VR0(i,i,:),"VR0.csv",0)
 		endif		
 		iter = 1
-		simp_concav = .true. ! use simple concavity here
+!		simp_concav = .true. ! use simple concavity here
 		do while (iter<=maxiter)
 			summer = 0
-			id =1
-		  	do ie=1,ne
+			do id =1,nd
+		  	do ie =1,ne
 
 				iaN =0
 				ia = 1
@@ -1543,6 +1553,7 @@ module sol_val
 				enddo
 				VR0(id,ie,:) = VR(id,ie,:)
 			enddo !ie
+			enddo !id
 			if (summer < Vtol) then
 				exit	!Converged				
 			else
@@ -1594,7 +1605,7 @@ module sol_val
 		!a inR+	      	   :asset holdings
 		!t in[1,2...TT-1]  :age
 
-		simp_concav = .true.
+		!simp_concav = .true.
 		npara = nd*ne
 		!Work backwards from TT
 		do it = TT-1,1,-1
@@ -1726,37 +1737,6 @@ module sol_val
 		enddo
 
 
-	!initial guess for the value functions
-		do ij = 1,nj
-	! And betas
-		do ibi = 1,nbi 
-	! And individual disability type
-		do idi = 1,ndi
-	!************************************************************************************************!
-		do it=TT-1,1,-1
-			!----Initialize---!
-			do ial=1,nal
-			do id =1,nd
-			do ie =1,ne
-			do iz =1,nz
-			do ia =1,na
-				
-			!Guess once, then use next period same occupation/beta as guess
-			! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
-				VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
-				VU0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
-				VN0((ij-1)*nbi+ibi,(idi-1)*nal +ial,id,ie,ia,iz,it) = VN((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
-				V0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)= VW0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it)
-
-			enddo	!ia
-			enddo	!iz
-			enddo	!ie
-			enddo 	!id
-			enddo	!ial   
-		enddo
-		enddo
-		enddo
-		enddo
 		
 		! Begin loop over occupations
 		do ij = 1,nj
@@ -2237,8 +2217,8 @@ module sol_val
 				!Check |V-V0|<eps
 				!------------------------------------------------!
 				if(verbose > 3 .or. (verbose >1 .and. mod(iter,100).eq. 0)) then
-					write(*,*) summer, iter, ij, ibi, idi, it
-					write(*,*) maxer_v, maxer_i(1), maxer_i(2), maxer_i(3), maxer_i(4), maxer_i(5)
+					write(*,*) summer, iter, it, ij
+					write(*,*) maxer_v, maxer_i(1)
 				endif
 				if (summer < Vtol ) then
 					exit !Converged
@@ -3130,9 +3110,9 @@ module sim_hists
 				endif
 			enddo !i=1:Nsim
 
-!			!$OMP  parallel do &
-!			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
-!			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,ii,sepi,fndi,invol_un,status_tmrw) 
+			!$OMP  parallel do &
+			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
+			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,ii,sepi,fndi,invol_un,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3579,7 +3559,7 @@ module sim_hists
 				endif ! age_it(i,it)>0
 				enddo !1,Tsim
 			enddo! 1,Nsim
-!			!$OMP  end parallel do 
+			!$OMP  end parallel do 
 
 			if(print_lev >=3)then
 				call vec2csv(val_hr_it,"val_hr.csv")
@@ -4739,8 +4719,8 @@ program V0main
 		close(1)
 	endif
 	junk = junk/dble(2*nd*nal*(TT-1))
-	util_const = - junk - util_const
-
+	!util_const = - junk - util_const
+	print *, - junk - util_const
 
 	if(verbose >2) then
 		call system_clock(count_rate=cr)
@@ -4842,7 +4822,7 @@ program V0main
 	
 	parvec(1) = nu
 	print *, parvec
-	call nlo_optimize(ires, calopt, parvec, erval)
+!	call nlo_optimize(ires, calopt, parvec, erval)
 	nu = parvec(1) ! new optimum
 	
 !****************************************************************************
@@ -4853,24 +4833,18 @@ program V0main
 	w_strchng = .false.
 	
 	err0 = 0.
-	call cal_dist(parvec,err0,shk)
+!	call cal_dist(parvec,err0,shk)
 	w_strchng = .true.
 
 	! without the correlation between delta and occupation
 	del_by_occ = .false.
 	caselabel = "deloc0"
-	call cal_dist(parvec,err0,shk)
+!	call cal_dist(parvec,err0,shk)
 	
 	! without either the correlation between delta and occupation or wage trend
-	del_by_occ = .false.
+	w_strchng = .false.
 	caselabel = "wchng0deloc0"
-	call cal_dist(parvec,err0,shk)
-	
-	
-	
-	
-	
-	
+!	call cal_dist(parvec,err0,shk)
 	
 	
 	
