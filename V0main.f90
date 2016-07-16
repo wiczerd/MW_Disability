@@ -6,6 +6,7 @@
 !-----------------------------------------------------
 !************************************************************************************************!
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -lnlopt -o V0main.out  
+!       	     ifort -mkl -openmp -parallel -O3 V0para.f90 V0main.f90 -lnlopt -o V0main_dbg.out
 ! val grind line: valgrind --leak-check=yes --error-limit=no --track-origins=yes --log-file=V0valgrind.log ./V0main_dbg.out &
 module helper_funs
 	
@@ -150,7 +151,7 @@ module helper_funs
 		ELSEIF (ein<DItest2*wmean) then
 			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)
 		ELSEIF (ein<DItest3*wmean) then
-			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1)+0.15*(ein-DItest2*wmean)
+			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(ein-DItest2*wmean)
 		ELSE
 			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(DItest3*wmean-DItest2*wmean)
 		END IF
@@ -242,16 +243,16 @@ module helper_funs
 	!------------------------------------------------------------------------
 	! 6) Wage Function
 	!--------------------
-	function wage(biin,aiin,din,zin,tin)
+	function wage(levin,aiin,din,zin,tin)
 	!--------------------
 	
-		real(dp), intent(in)	:: biin, aiin, zin
+		real(dp), intent(in)	:: levin, aiin, zin
 		integer, intent(in)	:: din, tin
 		real(dp)			:: wage
 		if( z_flowrts .eqv. .true.) then
-			wage = dexp( aiin+wd(din)+wtau(tin) ) 
+			wage = dexp( levin + aiin+wd(din)+wtau(tin) ) 
 		else 
-			wage = dexp( aiin+wd(din)+wtau(tin) + zin ) 
+			wage = dexp( levin + aiin+wd(din)+wtau(tin) + zin ) 
 		endif
 
 	end function
@@ -1081,7 +1082,7 @@ module sol_val
 		do iaa=iaa0,iaaA
 			chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
 			if(chere >0.) then
-				Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa,it+1)+ptau(it)*VD0(id,ie,iaa,it))
+				Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa,it+1) + ptau(it)*VD0(id,ie,iaa,it))
 
 				Vtest2 = util(chere,id,iw)+ Vc1
 				if(Vtest2>Vtest1) then
@@ -1156,11 +1157,10 @@ module sol_val
 		real(dp), intent(out) :: gapp_dif
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:)
-		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, maxVNV0, minvalVD,minvalVN, xihr
+		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, VNhr, VDhr, maxVNV0, minvalVD,minvalVN, xihr,nuhr
 		integer :: iw, iaa,iaai,izz,aapp,aNapp
 
 		iw = 1 ! not working
-
 		!*******************************************
 		!**************Value if do not apply for DI
 		
@@ -1172,16 +1172,16 @@ module sol_val
 				Vtest2 = 0.
 				!Continuation if do not apply for DI
 				do izz = 1,nz	 !Loop over z'
-				do iaai = 1,nal !Loop over alpha_i'
+				do iaai = iaaL,nal !Loop over alpha_i'
 				
 					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
 							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1))
-					Vc1 = (1-ptau(it))*((1-lrho*fndrate(iz,ij) )* &
-							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1) +lrho*fndrate(iz,ij)*maxVNV0) !Age and might go on DI
+					VNhr    = VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)
+					Vc1 = (1-ptau(it))*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 ) !Age and might go on DI
 					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
 							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
-					Vc1 = Vc1+ptau(it)*((1-lrho*fndrate(iz,ij))* & 
-							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it) +lrho*fndrate(iz,ij)*maxVNV0)     !Don't age, might go on DI
+					VNhr    = VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it)
+					Vc1 = Vc1+ptau(it)*((1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0)     !Don't age, might go on DI
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
 				enddo
 				enddo
@@ -1212,6 +1212,8 @@ module sol_val
 	
 		!**********Value if apply for DI 
 		xihr = xifun(id,1._dp,it)
+		nuhr = nu
+		if(it== TT-1) nuhr = nu*(ptau(it)) !only pay nu for non-retired state
 		minvalVD = minval(VD0)
 		minvalVN = minval(VN0((ij-1)*nbi+ibi,((idi-1)*nal+1):(idi*nal),:,:,:,:,it))
 		Vtest1 = -1e6
@@ -1225,19 +1227,17 @@ module sol_val
 				do iaai = iaaL,nal !Loop over alpha_i'
 					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
 							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1))
-					
-					Vc1 =   (1-ptau(it))*(1-xihr)*   &
-						&		((1-lrho*fndrate(iz,ij) )*VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)+lrho*fndrate(iz,ij)*maxVNV0)&
-						& + (1-ptau(it))*xihr* &
-						&		VD0(id,ie,iaa,it+1) !Age and might go on DI
+					VNhr    = VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)
+					VDhr    = VD0(id,ie,iaa,it+1)
+					Vc1 =   (1-ptau(it))*(1-xihr)*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 )&
+						& + (1-ptau(it))*xihr    *VDhr !Age and might go on DI
 					
 					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
 							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
-					
-					Vc1 = Vc1+	ptau(it)*(1-xihr)* &
-						& ((1-lrho*fndrate(iz,ij))*VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it) +lrho*fndrate(iz,ij)*maxVNV0) &
-						& + 	ptau(it)*xihr* &
-						& VD0(id,ie,iaa,it)     !Don't age, might go on DI		
+					VNhr    = VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)
+					VDhr    = VD0(id,ie,iaa,it)
+					Vc1 = Vc1 +	    ptau(it)*(1-xihr)*((1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0) &
+						&     + 	ptau(it)*xihr    * VDhr     !Don't age, might go on DI		
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
 				enddo
 				enddo
@@ -1245,8 +1245,8 @@ module sol_val
 					!& - nu*dabs( VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it) ) !<-- application cost (was nu * VN0)
 					!& - nu*(VD0(id,ie,iaa,it) - minvalVD)
 					!& - nu*exp(VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it))/(1+exp(VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it)))
-					& - nu
-					!& - nu*max(VD0(id,ie,iaa,it),0)
+					& - nuhr
+					!& - nu*(VN0((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,iaa,iz,it)*(1.-beta)*(1-gam))**(1/(1-gam))
 				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then	
 					apol = iaa
 					Vtest1 = Vtest2
@@ -2074,7 +2074,7 @@ module sol_val
 					ial= mod(ipara-1,nz*ne*nd*nal)/(nz*ne*nd)+1
 
 					!Earnings evolution independent of choices.
-					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz,ij),it)
+					wagehere = wage(wage_lev(ij),alfgrid(ial),id,zgrid(iz,ij),it)
 					eprime = Hearn(it,ie,wagehere)
 					!linear interpolate for the portion that blocks off bounds on assets
 					if(eprime > emin .and. eprime < emax) then  ! this should be the same as if(eprime > minval(egrid) .and. eprime < maxval(egrid))
@@ -2238,7 +2238,7 @@ module sol_val
 		! this plots work-rest and di application on the cross product of alphai and deltai and di
 		if(print_lev >1) then
 			ibi = 1
-			ij  = 1
+			ij  = 2
 			wo  = 0
 
 			do id  = 1,nd
@@ -3202,7 +3202,7 @@ module sim_hists
 							endif
 							del_i_int(i) = del_hr
 							del_i(i)     = delgrid(del_hr)
-						endif
+						endif !choosing occupation j_i
 						if(it == 1) then !these were born, 
 							age_hr	= age_it(i,it)
 							d_hr	= d_it(i,it)
@@ -3277,7 +3277,7 @@ module sim_hists
 						if( ziH == zi_hr ) ziwt = 1.
 					endif
 
-					wage_hr	= wage(bet_hr,al_hr,d_hr,z_hr,age_hr)
+					wage_hr	= wage(wage_lev(j_hr),al_hr,d_hr,z_hr,age_hr)
 					hst%wage_hist(i,it) = wage_hr
 
 					!make decisions if not yet retired
@@ -3332,17 +3332,26 @@ module sim_hists
 							
 							case(2) 
 								! unemployed, may stay unemployed or become long-term unemployed
-								if(status_it_innov(i,it) <=pphi) status_tmrw = 3
-								if(status_it_innov(i,it) > pphi) status_tmrw = 2
-
+								if(status_it_innov(i,it) <=pphi) then
+									status_tmrw = 3
+									status_it(i,it) = 2	
+									if( invol_un ==1 ) then
+										ali_hr = 1
+										al_hr = alfgrid(ali_hr)
+										iiwt = 1.
+										iiH = 2
+									else 
+										ali_hr	= al_it_int(i,it)
+										al_hr = al_it(i,it)
+									endif
+								elseif( invol_un == 1  .and. status_it_innov(i,min(it+1,Tsim)) > fndi) then
 								!voluntary or involuntary?
-								if( invol_un == 1  .and. status_it_innov(i,it) > fndi) then
 									ali_hr = 1
 									al_hr = alfgrid(ali_hr)
 									iiwt = 1.
 									iiH = 2
 									status_it(i,it) = 2
-								elseif(invol_un == 1 .and. status_it_innov(i,it) <= fndi) then
+								elseif(invol_un == 1 .and. status_it_innov(i,min(it+1,Tsim)) <= fndi) then
 									invol_un = 0
 									ali_hr	= al_it_int(i,it)
 									al_hr = al_it(i,it)
@@ -3429,6 +3438,10 @@ module sim_hists
 							! just to fill in values
 							app_dif_it(i,it) = 0.
 							work_dif_it(i,it) = 0.
+							if( invol_un .eqv. .true.) then
+								ali_hr = 1
+								al_hr = alfgrid(ali_hr)
+							endif
 
 						endif
 
@@ -4680,7 +4693,7 @@ program V0main
 		do it = 1,TT-1
 			do ial =1,nal
 				do id = 1,nd-1
-					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz,ij),it)
+					wagehere = wage(0.,alfgrid(ial),id,zgrid(iz,ij),it)
 					write(1, "(G20.12)", advance='no') wagehere
 				enddo
 				id = nd
@@ -4697,7 +4710,7 @@ program V0main
 		do it = 1,TT-1
 			do ial =1,nal
 				do id = 1,nd-1
-					wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz,ij),it)
+					wagehere = wage(0.,alfgrid(ial),id,zgrid(iz,ij),it)
 					utilhere = util(wagehere,id,1)
 					write(1, "(G20.12)", advance='no') utilhere
 					junk = utilhere + junk
@@ -4720,7 +4733,7 @@ program V0main
 	endif
 	junk = junk/dble(2*nd*nal*(TT-1))
 	!util_const = - junk - util_const
-	print *, - junk - util_const
+	
 
 	if(verbose >2) then
 		call system_clock(count_rate=cr)
@@ -4737,7 +4750,7 @@ program V0main
 	! Allocate phat matrices
 	!************************************************************************************************!
 		call alloc_econ(vfs,pfs,hst)
-
+		Vtol = 5e-5
 		! set up economy and solve it
 
 		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
@@ -4797,9 +4810,11 @@ program V0main
 		totapp_dif_hist = totapp_dif_hist/ninsur_app
 	if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
 		
+	Vtol = 1e-6
+		
 	parvec(1) = nu
 	err0 = 0.
-!	call cal_dist(parvec,err0,shk)
+	call cal_dist(parvec,err0,shk)
 	
 	if(verbose > 2) then
 		call CPU_TIME(t2)

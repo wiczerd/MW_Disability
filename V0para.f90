@@ -28,7 +28,7 @@ real(8), parameter ::	youngD = 20., &	!Length of initial young period
 		ageD = 0.1, &		!Coefficient on Age over 45 in Disability hazard (exponential)
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.407,&	!Fraction young who are eligable
-		R =dexp(.03/tlen),&	!People can save
+		R =1.,&!dexp(.02/tlen),&	!People can save at 3% (not quite the rate they'd like)
 		upd_zscl = 0.1		! rate at which to update zshift
 
 integer, parameter :: oldN = 4,&	!4!Number of old periods
@@ -39,12 +39,12 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
-			ndi = 3,  &!6		    !Number of individual disability risk types
-			nj  = 2, &!16          !Number of occupations (downward TFP risk variation)
+			ndi = 3,  &		    !Number of individual disability risk types
+			nj  = 16, &!16          !Number of occupations
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 2, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 35, &!100	        !Points on assets grid
-			nz  = 2,  &		        !Number of Occ TFP Shocks (MUST BE multiple of 2)
+			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			na  = 50, &!100	        !Points on assets grid
+			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000, & !1000*nj!how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
@@ -71,12 +71,8 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  
 
 
-real(8), parameter ::   Vtol = 5e-5, & 	!Tolerance on V-dist
-!		beti_mu  = 0.0,    & 	!Mean of beta_i wage parameter (Log Normal)
-!		beti_sig = 0.0,    & 	!Var of beta_i wage parameter (Log Normal)
-!		di_lambd = 1.0,    &	!Shape of disability dist. (Exponential)
-		amax 	 = 10.0,   &	!Max on Asset Grid
-		amin = 0.0	   	!Min on Asset Grid
+real(8), parameter ::  amax 	 = 10.0,   &	!Max on Asset Grid
+					   amin = 0.0	   	!Min on Asset Grid
 
 
 !**To build***************************!
@@ -113,6 +109,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
 		wage_trend(Tsim,nj),&!trend in wages
+		wage_lev(nj),&		!occupation-specific differences in wage-level
 		occpr_trend(Tsim,nj)!trend in occupation choice
 		
 		
@@ -120,8 +117,8 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 		agegrid(TT)		! the mid points of the ages
 
 !***preferences and technologies that may change
-real(8) :: 	beta= 1./R,&	!People are impatient (3% annual discount rate to start)
-		nu = 0.01117187475028913, &		!Psychic cost of applying for DI - proportion of potential payout
+real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
+		nu = 5., &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -178,12 +175,14 @@ real(8) :: emp_persist = 0.98 ,&
 ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
 
 real(8) :: 	gam	= 1.5, &	!IES
-		eta 	= -0.185, &	!Util cost of participation
-		theta 	= -0.448		!Util cost of disability	
+		eta 	= -0.197, &	!Util cost of participation
+		theta 	= -0.224		!Util cost of disability	
 
 integer :: print_lev, verbose
 logical :: simp_concav = .false.
-		
+
+real(8) ::  Vtol = 5e-6 	!Tolerance on V-dist
+
 contains
 subroutine setparams()
 
@@ -196,7 +195,7 @@ subroutine setparams()
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
 	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(nj),avgADL, &
-		& occbody_trend_read(Tsim,nj+1), wage_trend_read(Tsim,17), UE_occ_read(nz,nj),EU_occ_read(nz,nj),apprt_read(50,2), pid_tmp(nd,nd+1,TT-1)
+		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(nj), UE_occ_read(nz,16),EU_occ_read(nz,16),apprt_read(50,2), pid_tmp(nd,nd+1,TT-1)
 	
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -245,6 +244,11 @@ subroutine setparams()
 		read(fread,*) wage_trend_read(t,:)
 	enddo
 	close(fread)
+	open(unit= fread, file = "wageLev.csv")
+	do j=1,nj
+		read(fread,*) wage_lev_read(j)
+	enddo
+	close(fread)
 	
 	!Read in the disability means by occuaption
 	open(unit= fread, file="maxADL.csv")
@@ -269,9 +273,9 @@ subroutine setparams()
 	beti(1) = 1.0
 	!beti(2) = 1.2 
 
-
-	do t=1,Tsim
-		do i=1,nj
+	do i=1,nj
+		wage_lev(i) = wage_lev_read(i)
+		do t=1,Tsim	
 			wage_trend(t,i) = wage_trend_read(t,i+1)
 		enddo
 	enddo
@@ -308,7 +312,10 @@ subroutine setparams()
 
 	! the probabilities associated with going into the alpha term that is unemployment go to zero.
 	pialf(1,1) = 0.
-	pialf(1,2:nal) = pialf(2,2:nal) !come back as if on the lowest rung of the ladder.
+	do i = nal,1,-1 !unemployed will have ~12% lower than average
+		if( alfgrid(i)<-0.12) exit
+	enddo
+	pialf(1,2:nal) = pialf(i,2:nal) !come back as if on the lowest rung of the ladder.
 	pialf(2:nal,1) = 0. !exogenous separation is not built into alpha transitions
 	!pialf(2:nal,1) = xsep
 	!forall(i=2:nal,k=2:nal) pialf(i,k) = pialf(i,k)*(1.-xsep)
@@ -347,7 +354,7 @@ subroutine setparams()
 	do i=1,TT-1							
 		wtau(i) = ageW*agegrid(i)+ageW2*agegrid(i)**2 !Old
 	enddo
-
+	
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
 	ptau(1) = 1-(tlen*youngD)**(-1)
@@ -499,6 +506,10 @@ subroutine setparams()
 		xi(2,5) = xi1O
 		xi(3,5) = xi2O
 	endif
+	! COME BACK TO THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!! (coming from old age effect in "Modeling SSA's Sequential Disability Determination Process Using SIPP)
+	xi(:,4:5) = xi(:,4:5)*(1.+ .124)
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	
 	!DI applications target.  Average of 1980-1985
 	apprt_target = 0.
@@ -586,7 +597,6 @@ subroutine setparams()
 	enddo
 	
 	PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
-	
 	
 end subroutine setparams
 
