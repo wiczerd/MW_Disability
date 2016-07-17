@@ -190,7 +190,8 @@ subroutine setparams()
 	integer:: i, j, k, t
 	real(8):: summy, emin, emax, step, &
 		  node, nodei,nodek,nodemidH,nodemidL, &
-		  alfcondsig,alfcondsigt,alfrhot,alfsigt
+		  alfcondsig,alfcondsigt,alfrhot,alfsigt, &
+		  mean_uloss,sd_uloss
 		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
@@ -312,13 +313,18 @@ subroutine setparams()
 
 	! the probabilities associated with going into the alpha term that is unemployment go to zero.
 	pialf(1,1) = 0.
-	do i = nal,1,-1 !unemployed will have ~12% lower than average
-		if( alfgrid(i)<-0.12) exit
+	mean_uloss = -0.154996  
+	!this comes from the SIPP, code in CVW: DTall[ lfstat_wave==1 & seam==T, mean(wavewage,na.rm = T)] - DTall[ lfstat_wave==1 & seam==T & shift(EU_wave,type="lag")==T, mean(wavewage,na.rm = T)]
+	sd_uloss   = (0.5888828)**0.5
+	
+	pialf(1,2) = alnorm( ((alfgrid(3)+alfgrid(2))/2.-mean_uloss) /sd_uloss,.false.)
+	do i= 3,(nal-1)
+		pialf(1,i) = ( &
+				&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.- mean_uloss ) /sd_uloss,.false.)- &
+				&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.- mean_uloss ) /sd_uloss,.false.) )
 	enddo
-	pialf(1,2:nal) = pialf(i,2:nal) !come back as if on the lowest rung of the ladder.
+	pialf(1,nal) = 1.-sum(pialf(1,2:(nal-1) ))
 	pialf(2:nal,1) = 0. !exogenous separation is not built into alpha transitions
-	!pialf(2:nal,1) = xsep
-	!forall(i=2:nal,k=2:nal) pialf(i,k) = pialf(i,k)*(1.-xsep)
 
 
 	!read these numberrs in already

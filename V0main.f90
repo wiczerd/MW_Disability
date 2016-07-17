@@ -4693,7 +4693,7 @@ program V0main
 		do it = 1,TT-1
 			do ial =1,nal
 				do id = 1,nd-1
-					wagehere = wage(0.,alfgrid(ial),id,zgrid(iz,ij),it)
+					wagehere = wage(0._dp,alfgrid(ial),id,zgrid(iz,ij),it)
 					write(1, "(G20.12)", advance='no') wagehere
 				enddo
 				id = nd
@@ -4710,7 +4710,7 @@ program V0main
 		do it = 1,TT-1
 			do ial =1,nal
 				do id = 1,nd-1
-					wagehere = wage(0.,alfgrid(ial),id,zgrid(iz,ij),it)
+					wagehere = wage(0._dp,alfgrid(ial),id,zgrid(iz,ij),it)
 					utilhere = util(wagehere,id,1)
 					write(1, "(G20.12)", advance='no') utilhere
 					junk = utilhere + junk
