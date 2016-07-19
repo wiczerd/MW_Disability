@@ -4848,13 +4848,13 @@ program V0main
 	w_strchng = .false.
 	
 	err0 = 0.
-!	call cal_dist(parvec,err0,shk)
+	call cal_dist(parvec,err0,shk)
 	w_strchng = .true.
 
 	! without the correlation between delta and occupation
 	del_by_occ = .false.
 	caselabel = "deloc0"
-!	call cal_dist(parvec,err0,shk)
+	call cal_dist(parvec,err0,shk)
 	
 	! without either the correlation between delta and occupation or wage trend
 	w_strchng = .false.
