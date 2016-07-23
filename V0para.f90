@@ -84,14 +84,14 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		dtau(TT-1), &		!Proportional age-related disability risk
 		delgrid(ndi), &		!Individual specific disability risk
 		delwt(ndi,nj),&		!The occupation-specific probability of getting a particular delta
-		delcumwt(ndi+1,nj),&	!cumulative dist
+		delcumwt(ndi+1,nj),&!cumulative dist
 		occdel(nj),&		!The occupation,specific mean delta
 		zshift(nj),&		!shifts occupation TFP in second period.  
 		zscale(nj),&		!scales occupation TFP relative to the aggregate shock.  
 		zgrid(nz,nj), &		!TFP shock grid
 		xi(nd,TT-1), &		!DI acceptance probability
-		agrid(na),&		!Assets grid
-		egrid(ne),&		!Earnings Index Grid
+		agrid(na),&			!Assets grid
+		egrid(ne),&			!Earnings Index Grid
 		pialf(nal,nal),&	!Alpha_i transition matrix
 		ergpialf(nal),&		!Alpha_i ergodic distribution
 		piz(nz,nz),&		!TFP transition matrix
@@ -105,7 +105,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		occprbrk(nj), & 	!Fraction choosing occupation after break
 		occsz0(nj),&		!Fraction in each occupation
 
-		jshift(nj,2),&		!Preference shift to ensure proper proportions, 2 regimes
+		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
 		wage_trend(Tsim,nj),&!trend in wages
@@ -150,7 +150,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		xi0O = 0.315, &		!Probability of DI accept for d=0, old
 		xi1O = 0.450, &		!Probability of DI accept for d=1, old
 		xi2O = 0.503, &		!Probability of DI accept for d=2, old
-		xizcoef = -2., &		!This targets the change from 1-30% -> 1-16% acceptance rate with z deterioration
+		xizcoef = 0., &		! -2 targets the change from 1-30% -> 1-16% acceptance rate with z deterioration
 		DItest1 = 1.0, &	!Earnings Index threshold 1 (These change based on the average wage)
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3

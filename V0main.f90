@@ -187,7 +187,7 @@ module helper_funs
 		integer, intent(in):: idin,itin
 		real(dp) :: xifun
 		if(itin>1 .or. ineligNoNu .eqv. .true.)then
-			xifun = 1._dp-(1._dp-xi(idin,itin))**(1._dp/tlen) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
+			xifun = 1._dp-(1._dp-xi(idin,itin)*zin**xizcoef)**(1._dp/tlen) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
 		else !itin ==1 & ineligNoNu == F
 			xifun = 1._dp-(1._dp-xi(idin,itin)*eligY)**(1._dp/tlen)
 		endif
@@ -2499,43 +2499,59 @@ module sim_hists
 		deallocate(bdayseed)
 	end subroutine draw_alit
 
-	subroutine draw_ji(j_i,jshock_ij,seed0, success)
+	subroutine draw_ji(j_i,jshock_ij,born_it,seed0, success)
 		implicit none
-		integer	:: j_i(:)
+		integer	:: j_i(:),born_it(:,:)
 		real(dp) :: jshock_ij(:,:)
 		real(dp) :: jwt
-		integer	:: i,m,ss=1,ij
+		integer	:: i,m,ss=1,ij,it
 		integer,intent(in)  :: seed0
 		integer,intent(out) :: success
 		integer, allocatable :: bdayseed(:)
-		real(dp)	:: Njcumdist(nj+1)
+		real(dp) :: Njcumdist(nj+1,Tsim)
 		real(dp) :: draw_i
-
-		Njcumdist = 0
-		if(nj>1) then
-			do ij=1,nj
-				Njcumdist(ij+1) = occsz0(ij) + Njcumdist(ij)
-			enddo
 		
+		Njcumdist = 0
+		j_i = 0
+		if(nj>1) then
 			call random_seed(size = ss)
 			allocate(bdayseed(ss))
 			forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 			call random_seed(put = bdayseed(1:ss) )
-		
-			do i=1,Nsim
-				call random_number(draw_i)
-				j_i(i) = finder(Njcumdist,draw_i)
-				if(j_i(i) < 1 ) j_i(i) = 1
-				if(j_i(i) > nj) j_i(i) = nj
-			enddo
-
 			if(j_rand .eqv. .false. ) then
 				!draw gumbel-distributed shock
 				do i = 1,Nsim
 					do ij = 1,nj
 						call random_gumbel(draw_i)
-						jshock_ij(i,ij)=draw_i
+						jshock_ij(i,ij) = draw_i
 					enddo
+				enddo
+			else
+			!do periods 2:Tsim
+				do it=2,Tsim
+					Njcumdist(ij+1,it) = occpr_trend(it,ij) + Njcumdist(ij,it)
+					do i=1,Nsim
+						if( born_it(i,it)==1) then
+							call random_number(draw_i)
+							j_i(i) = finder(Njcumdist(:,it),draw_i)
+							if(j_i(i) < 1 ) j_i(i) = 1
+							if(j_i(i) > nj) j_i(i) = nj
+						endif
+					enddo
+				enddo
+
+			!do period 1
+				do ij=1,nj
+					Njcumdist(ij+1,1) = occsz0(ij) + Njcumdist(ij,1)
+				enddo
+
+				do i=1,Nsim
+					if( j_i(i) ==0) then !not born in 2:Tsim and so doesn't have an occupation yet
+						call random_number(draw_i)
+						j_i(i) = finder(Njcumdist(:,1),draw_i)
+						if(j_i(i) < 1 ) j_i(i) = 1
+						if(j_i(i) > nj) j_i(i) = nj
+					endif
 				enddo
 			endif
 			
@@ -2544,10 +2560,8 @@ module sim_hists
 			jshock_ij = 0.
 			j_i = 1
 		endif
-
-
 		success = 0
-		
+
 	end subroutine draw_ji
 
 	subroutine draw_zjt(z_jt_select, z_jt_innov, seed0, success)
@@ -2761,7 +2775,7 @@ module sim_hists
 		seed1 = seed1 + 1
 		call draw_alit(shk%al_hist,shk%al_int_hist, seed0, status)
 		seed0 = seed0 + 1
-		call draw_ji(shk%j_i,shk%jshock_ij,seed1, status)
+		call draw_ji(shk%j_i,shk%jshock_ij,shk%born_hist,seed1, status)
 		seed1 = seed1 + 1
 		call draw_zjt(shk%z_jt_select,shk%z_jt_innov, seed0, status)
 		seed0 = seed0 + 1
@@ -3181,7 +3195,7 @@ module sim_hists
 									endif
 								enddo
 								enddo
-								j_val_ij = (j_val_ij + jshift(ij,iiH))/(amenityscale*vscale) + jshock_ij(i,ij)
+								j_val_ij = (j_val_ij + jshift(ij,it))/(amenityscale*vscale) + jshock_ij(i,ij)
 								if(j_val< j_val_ij ) then
 									j_hr = ij
 									j_val = j_val_ij
@@ -3438,7 +3452,7 @@ module sim_hists
 							! just to fill in values
 							app_dif_it(i,it) = 0.
 							work_dif_it(i,it) = 0.
-							if( invol_un .eqv. .true.) then
+							if( invol_un == 1) then
 								ali_hr = 1
 								al_hr = alfgrid(ali_hr)
 							endif
@@ -4374,6 +4388,7 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		type(moments_struct):: moments_sim
+		real(dp) :: jshift_hr(nj)
 		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app
 		integer :: ij=1,t0tT(2),it,i
 
@@ -4400,10 +4415,21 @@ module find_params
 		t0tT = (/1,1/)
 		call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
 		if(j_regimes .eqv. .true.) then
-			t0tT = (/ struc_brk*itlen,  Tsim/)
-			call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift(:,2))
+			do it=2,Tsim
+				if( mod(it,itlen*2)== 0 ) then
+					t0tT = (/ it-itlen*2+1,   it/)
+					call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift_hr)
+					do i=0,(itlen*2-1)
+						do ij=1,nj
+							jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
+						enddo
+					enddo
+				endif
+			enddo
 		else
-			jshift(:,2) = jshift(:,1)
+			do it=2,Tsim
+				jshift(:,it) = jshift(:,1)
+			enddo
 		endif
 			
 		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
@@ -4613,6 +4639,7 @@ program V0main
 	! Other
 	!************************************************************************************************!
 		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(3)=1.,err0(3)=1.,param1(nj),err1(nj), cumpid(nd,nd+1,ndi,TT-1)
+		real(dp)	:: jshift_hr(nj)
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct), target :: vfs
@@ -4765,16 +4792,27 @@ program V0main
 			endif
 			vscale = 1.
 		endif
-		t0tT = (/1,1/)
 		if(verbose >2) print *, "solve for initial shift"
 		call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
 		if(verbose >2) print *, "solve for second shift"
 		if(j_regimes .eqv. .true.) then
-			t0tT = (/ struc_brk*itlen,  Tsim/)
-			call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift(:,2))
+			do it=2,Tsim
+				if( mod(it,itlen*2)== 0 ) then
+					t0tT = (/ it-itlen*2+1,   it/)
+					call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift_hr)
+					do i=0,(itlen*2-1)
+						do ij=1,nj
+							jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
+						enddo
+					enddo
+				endif
+			enddo
 		else
-			jshift(:,2) = jshift(:,1)
+			do it=2,Tsim
+				jshift(:,it) = jshift(:,1)
+			enddo
 		endif
+
 			
 		if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 
