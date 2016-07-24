@@ -2529,7 +2529,9 @@ module sim_hists
 			else
 			!do periods 2:Tsim
 				do it=2,Tsim
-					Njcumdist(ij+1,it) = occpr_trend(it,ij) + Njcumdist(ij,it)
+					do ij=1,nj
+						Njcumdist(ij+1,it) = occpr_trend(it,ij) + Njcumdist(ij,it)
+					enddo
 					do i=1,Nsim
 						if( born_it(i,it)==1) then
 							call random_number(draw_i)
@@ -4418,7 +4420,7 @@ module find_params
 			do it=2,Tsim
 				if( mod(it,itlen*2)== 0 ) then
 					t0tT = (/ it-itlen*2+1,   it/)
-					call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift_hr)
+					call jshift_sol(vfs, hst,shk, occpr_trend(it,:) , t0tT,jshift_hr)
 					do i=0,(itlen*2-1)
 						do ij=1,nj
 							jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
@@ -4793,13 +4795,14 @@ program V0main
 			vscale = 1.
 		endif
 		if(verbose >2) print *, "solve for initial shift"
+		t0tT= (/1,1/)
 		call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
 		if(verbose >2) print *, "solve for second shift"
 		if(j_regimes .eqv. .true.) then
 			do it=2,Tsim
 				if( mod(it,itlen*2)== 0 ) then
 					t0tT = (/ it-itlen*2+1,   it/)
-					call jshift_sol(vfs, hst,shk, occprbrk, t0tT,jshift_hr)
+					call jshift_sol(vfs, hst,shk, occpr_trend(it,:) , t0tT,jshift_hr)
 					do i=0,(itlen*2-1)
 						do ij=1,nj
 							jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
@@ -4886,13 +4889,13 @@ program V0main
 	w_strchng = .false.
 	
 	err0 = 0.
-	call cal_dist(parvec,err0,shk)
+	!call cal_dist(parvec,err0,shk)
 	w_strchng = .true.
 
 	! without the correlation between delta and occupation
 	del_by_occ = .false.
 	caselabel = "deloc0"
-	call cal_dist(parvec,err0,shk)
+	!call cal_dist(parvec,err0,shk)
 	
 	! without either the correlation between delta and occupation or wage trend
 	w_strchng = .false.
