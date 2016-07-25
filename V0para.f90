@@ -12,6 +12,8 @@ module V0para
 !use DNORDF_int
 implicit none
 save
+private :: Partition
+
 !***Unit number***********************************!
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 character(len=12) :: caselabel
@@ -29,7 +31,8 @@ real(8), parameter ::	youngD = 20., &	!Length of initial young period
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.407,&	!Fraction young who are eligable
 		R =1.,&!dexp(.02/tlen),&	!People can save at 3% (not quite the rate they'd like)
-		upd_zscl = 0.1		! rate at which to update zshift
+		upd_zscl = 0.1,&		! rate at which to update zshift
+		upd_wgtrnd = 0.05		! rate at which update wage_trend
 
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
@@ -40,10 +43,10 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &		    !Number of individual disability risk types
-			nj  = 16, &!16          !Number of occupations
+			nj  = 5, &!16          !Number of occupations
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 2, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 50, &!100	        !Points on assets grid
+			na  = 40, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000, & !1000*nj!how many agents to draw
@@ -101,17 +104,21 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		prob_age(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
 		hazborn_t(Tsim), &	!hazard of being born at each point t
-		PrD3age(TT-1), &		!Fraction of D2 at each age
-		occprbrk(nj), & 	!Fraction choosing occupation after break
-		occsz0(nj),&		!Fraction in each occupation
+		PrD3age(TT-1), &	!Fraction of D2 at each age
+
 
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
-		seprisk(nz,nj),&	!occupation-cycle specific job separation
-		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
 		wage_trend(Tsim,nj),&!trend in wages
 		wage_lev(nj),&		!occupation-specific differences in wage-level
-		occpr_trend(Tsim,nj)!trend in occupation choice
+
+!		targets for occupations
+		seprisk(nz,nj),&	!occupation-cycle specific job separation
+		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
+		occwg_trend(Tsim,nj),& !trend in occupation wage
+		occwg_lev(nj),&		!level of occupation wage
 		
+		occsz0(nj),&		!Fraction in each occupation
+		occpr_trend(Tsim,nj)!trend in occupation choice
 		
 integer :: 	dgrid(nd), &		! just enumerate the d states
 		agegrid(TT)		! the mid points of the ages
@@ -275,12 +282,14 @@ subroutine setparams()
 	!beti(2) = 1.2 
 
 	do i=1,nj
-		wage_lev(i) = wage_lev_read(i)
+		occwg_lev(i) = wage_lev_read(i)
 		do t=1,Tsim	
-			wage_trend(t,i) = wage_trend_read(t,i+1)
+			occwg_trend(t,i) = wage_trend_read(t,i+1)
 		enddo
 	enddo
-
+	!initialize the input to the observed
+	wage_lev = occwg_lev
+	wage_trend = occwg_trend
 
 	!Individual Wage component (alpha)- grid= 2 std. deviations
 	alfrhot = alfrho**(1./tlen)
@@ -421,15 +430,7 @@ subroutine setparams()
 		enddo
 		occpr_trend(t,:) = occpr_trend(t,:)/summy
 	enddo
-	summy = 0.
-	do j=1,nj
-		occprbrk(j) = 0.
-		do t=(struc_brk*itlen),Tsim
-			occprbrk(j) = occpr_trend(t,j)/dble(Tsim - struc_brk*itlen +1)+ occprbrk(j)
-		enddo
-		summy = occprbrk(j)+summy
-	enddo
-	forall(j=1:nj) occprbrk(j) = occprbrk(j)/summy
+
 
 
 ! Initial distribution of people across occupations
@@ -1310,6 +1311,57 @@ subroutine hptrend(t,y,phi, yt,yd)
 	yd  = y-yt
 
 end subroutine hptrend
+
+
+! qsort stuff
+
+recursive subroutine QsortC(A)
+  real(8), intent(in out), dimension(:) :: A
+  integer :: iq
+
+  if(size(A) > 1) then
+     call Partition(A, iq)
+     call QsortC(A(:iq-1))
+     call QsortC(A(iq:))
+  endif
+end subroutine QsortC
+
+subroutine Partition(A, marker)
+  real(8), intent(in out), dimension(:) :: A
+  integer, intent(out) :: marker
+  integer :: i, j
+  real(8) :: temp
+  real(8) :: x      ! pivot point
+  x = A(1)
+  i= 0
+  j= size(A) + 1
+
+  do
+     j = j-1
+     do
+        if (A(j) <= x) exit
+        j = j-1
+     end do
+     i = i+1
+     do
+        if (A(i) >= x) exit
+        i = i+1
+     end do
+     if (i < j) then
+        ! exchange A(i) and A(j)
+        temp = A(i)
+        A(i) = A(j)
+        A(j) = temp
+     elseif (i == j) then
+        marker = i+1
+        return
+     else
+        marker = i
+        return
+     endif
+  end do
+
+end subroutine Partition
 
 
 end module V0para

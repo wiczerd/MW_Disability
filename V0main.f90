@@ -2904,7 +2904,7 @@ module sim_hists
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
-		real(dp), allocatable :: e_it(:,:)
+		real(dp), allocatable :: e_it(:,:), median_wage(:,:)
 		
 		! FOR DEBUGGING
 		real(dp), allocatable :: val_hr_it(:)
@@ -4317,7 +4317,7 @@ module find_params
 				mod_ij_obj = ij
 				it = struc_brk*itlen
 				mod_it = it
-				mod_prob_target = occprbrk(ij) ! I don't like using globals here
+				mod_prob_target = occpr_trend(it,ij) ! I don't like using globals here
 
 				! bounds on the area in which actually solved the problem
 				z_hi = zgrid(nz,ij) - zgrid(nz/2+1,ij)
@@ -4372,6 +4372,63 @@ module find_params
 		
 	end subroutine iter_zproc
 	
+	subroutine iter_wgtrend(vfs, pfs, hst,shk )
+
+		type(shocks_struct) :: shk
+		type(val_struct) :: vfs
+		type(pol_struct) :: pfs
+		type(hist_struct):: hst
+		
+		real(dp) :: dist_wgtrend
+		real(dp), allocatable :: jwages(:,:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
+		integer :: i,ii,ij,it, iter, pl_o
+		
+		allocate(jwages(Nsim,Tsim))
+		allocate(dist_wgtrend_jt(Tsim,nj))
+		allocate(med_wage_jt(Tsim,nj))
+
+		do iter = 1,3
+			dist_wgtrend = 0.
+			print *, "simulating"
+			call sim(vfs, pfs, hst,shk)
+			print *, "done with the simulation"
+			do ij=1,nj
+				jwages = 0.
+				do it=1,Tsim
+					ii = 0
+					do i=1,Nsim
+						if( shk%j_i(i) == ij .and. shk%age_hist(i,it) >0 .and. hst%status_hist(i,it)==1) then
+							ii = 1+ii
+							jwages(ii,it) = hst%wage_hist(i,it)
+						endif
+					enddo
+					call QsortC( jwages(1:ii,it) )
+					if( mod(ii,2)==0) then
+						med_wage_jt(it,ij) = jwages(ii/2,it)
+					else
+						med_wage_jt(it,ij) = 0.5*(jwages(ii/2,it)+jwages(ii/2+1,it))
+					endif
+					dist_wgtrend_jt(it,ij) = med_wage_jt(it,ij) - occwg_trend(it,ij)
+					!update the global variable : wage_trend
+					wage_trend(it,ij) = -upd_wgtrnd*dist_wgtrend_jt(it,ij) + wage_trend(it,ij) 
+					if(dist_wgtrend_jt(it,ij) > dist_wgtrend ) then
+						dist_wgtrend = dist_wgtrend_jt(it,ij)
+					endif
+				enddo
+				!if(print_lev .ge. 4) then
+					call mat2csv( dist_wgtrend_jt, "dist_wgtrend_jt.csv",1)
+				!endif
+			enddo
+			
+		enddo
+		
+		
+		deallocate(jwages,med_wage_jt,dist_wgtrend_jt)
+		
+		!compute median wage trends in each occupation using hst%wage_hist
+	
+	end subroutine iter_wgtrend
+
 
 	subroutine cal_dist(paramvec, errvec,shk)
 		! the inputs are the values of parameters we're moving in paramvec
@@ -4385,7 +4442,6 @@ module find_params
 		real(dp), intent(out) :: errvec(:)
 		
 		type(shocks_struct) :: shk
-		
 		type(val_struct) :: vfs
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
@@ -4438,6 +4494,8 @@ module find_params
 		! COMMENT THIS OUT FOR NOW!
 		!call iter_zproc(vfs,pfs, hst,shk)
 		!after iter_zproc, I should cycle and re-solve it all
+		call iter_wgtrend(vfs, pfs, hst,shk)
+		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
 		if(verbose >2) print *, "Computing moments"
@@ -4524,7 +4582,6 @@ module find_params
 		! 1/ persistence of occupation productivity shock
 		! 2/ standard deviation of occupation productivity shock
 		! 3/ dispersion of gumbel shock - amenityscale
-		! 
 		
 		real(dp), intent(in) :: paramvec(:)
 		real(dp), intent(out) :: errvec(:)
@@ -4818,7 +4875,10 @@ program V0main
 
 			
 		if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
-
+		
+		if(verbose>2) print *, "iterating to find wage trend"
+		call iter_wgtrend(vfs, pfs, hst,shk)
+		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
 		if(verbose >2) print *, "Computing moments"
