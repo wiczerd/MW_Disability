@@ -2887,7 +2887,7 @@ module sim_hists
 	end subroutine set_zjt
 
 	
-	subroutine sim(vfs, pfs,hst,shk)
+	subroutine sim(vfs, pfs,hst,shk,occaggs)
 		
 		implicit none
 
@@ -2896,7 +2896,7 @@ module sim_hists
 		type(hist_struct), intent(inout), target :: hst
 		type(shocks_struct), intent(inout), target :: shk
 		
-
+		logical, optional :: occaggs
 
 		integer :: i=1, ii=1, iter=1, it=1, it_old=1, ij=1, idi=1, id=1, Tret=1,wo=1, &
 			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5,Ncol=100
@@ -2960,7 +2960,14 @@ module sim_hists
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
 			& beti=1, status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0
 			
-		logical :: w_strchng_old = .false., final_iter = .false.
+		logical :: w_strchng_old = .false., final_iter = .false.,occaggs_hr =.true.
+		
+		if(present(occaggs)) then
+			occaggs_hr = occaggs
+		else
+			occaggs_hr = .true.
+		endif
+		
 		!************************************************************************************************!
 		! Allocate things
 		!************************************************************************************************!
@@ -3671,66 +3678,68 @@ module sim_hists
 		enddo! iter
 		
 		! calc occupation growth rates
-		if(verbose >2) print *, "calculating occupation growth rates"		
-		it = 1
-		Nworkt = 0. !labor force in first period are the ones "born" in the first period
-		occsize_jt = 0.
-		occgrow_jt = 0.
-		occshrink_jt = 0.
-		do i=1,Nsim
-			if( age_it(i,it) > 0 .and. status_it(i,it) <= 2 .and. status_it(i,it)>=1) Nworkt = 1._dp + Nworkt
-			do ij=1,nj
-				if(j_i(i) == ij .and. age_it(i,it) >= 1 .and. status_it(i,it) == 1) &
-					& occsize_jt(ij,it) = 1._dp+occsize_jt(ij,it)
-			enddo
-		enddo
-		occsize_jt(:,it) = occsize_jt(:,it) / Nworkt
-
-		!$omp parallel do private(it,Nworkt,i,ij,occgrow_hr,occsize_hr,occshrink_hr)
-		do it = 2,Tsim
-			Nworkt = 0.
-			occgrow_hr   = 0.
-			occshrink_hr = 0.
-			occsize_hr   = 0.
+		if(occaggs_hr) then
+			if(verbose >2) print *, "calculating occupation growth rates"		
+			it = 1
+			Nworkt = 0. !labor force in first period are the ones "born" in the first period
+			occsize_jt = 0.
+			occgrow_jt = 0.
+			occshrink_jt = 0.
 			do i=1,Nsim
-				if((status_it(i,it) <= 2 .and. status_it(i,it)>=1) .and. age_it(i,it) > 0 ) Nworkt = 1._dp + Nworkt !labor force in this period
-				ij =j_i(i)
-				if(born_it(i,it) == 1 ) &
-					& occgrow_hr(ij) = 1._dp + occgrow_hr(ij)
-				if(status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
-					& occgrow_hr(ij) = 1._dp + occgrow_hr(ij) !wasn't working last period
-				if(status_it(i,it-1) == 1 .and. status_it(i,it) > 1) &
-					& occshrink_hr(ij) = 1._dp + occshrink_hr(ij)
-				if(status_it(i,it) == 1) &
-					& occsize_hr(ij) = 1._dp + occsize_hr(ij)
-				
+				if( age_it(i,it) > 0 .and. status_it(i,it) <= 2 .and. status_it(i,it)>=1) Nworkt = 1._dp + Nworkt
+				do ij=1,nj
+					if(j_i(i) == ij .and. age_it(i,it) >= 1 .and. status_it(i,it) == 1) &
+						& occsize_jt(ij,it) = 1._dp+occsize_jt(ij,it)
+				enddo
 			enddo
-			do ij =1,nj
-				occgrow_jt(ij,it) = occgrow_hr(ij)/occsize_hr(ij)
-				occshrink_jt(ij,it) = occshrink_hr(ij)/occsize_hr(ij)
-			enddo
-			occsize_jt(:,it) = occsize_hr/Nworkt
-		enddo
-		!$omp end parallel do
-		
-		if(print_lev > 1)then
-				call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
-				call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
-				call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
-				call mati2csv(status_it,"status_it_hist"//trim(caselabel)//".csv")
-				call mati2csv(d_it,"d_it_hist"//trim(caselabel)//".csv")
-				call veci2csv(j_i,"j_i_hist"//trim(caselabel)//".csv")
-				call veci2csv(z_jt_macroint,"z_jt_hist"//trim(caselabel)//".csv")
-				call mat2csv (occsize_jt,"occsize_jt_hist"//trim(caselabel)//".csv")
-				call mat2csv (occgrow_jt,"occgrow_jt_hist"//trim(caselabel)//".csv")
-				call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
-				call mat2csv (hst%wage_hist,"wage_it_hist"//trim(caselabel)//".csv")
-				call mat2csv (hst%app_dif_hist,"app_dif_it_hist"//trim(caselabel)//".csv")
-				call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
-				call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
-				call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
-		endif
+			occsize_jt(:,it) = occsize_jt(:,it) / Nworkt
 
+			!$omp parallel do private(it,Nworkt,i,ij,occgrow_hr,occsize_hr,occshrink_hr)
+			do it = 2,Tsim
+				Nworkt = 0.
+				occgrow_hr   = 0.
+				occshrink_hr = 0.
+				occsize_hr   = 0.
+				do i=1,Nsim
+					if((status_it(i,it) <= 2 .and. status_it(i,it)>=1) .and. age_it(i,it) > 0 ) Nworkt = 1._dp + Nworkt !labor force in this period
+					ij =j_i(i)
+					if(born_it(i,it) == 1 ) &
+						& occgrow_hr(ij) = 1._dp + occgrow_hr(ij)
+					if(status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
+						& occgrow_hr(ij) = 1._dp + occgrow_hr(ij) !wasn't working last period
+					if(status_it(i,it-1) == 1 .and. status_it(i,it) > 1) &
+						& occshrink_hr(ij) = 1._dp + occshrink_hr(ij)
+					if(status_it(i,it) == 1) &
+						& occsize_hr(ij) = 1._dp + occsize_hr(ij)
+					
+				enddo
+				do ij =1,nj
+					occgrow_jt(ij,it) = occgrow_hr(ij)/occsize_hr(ij)
+					occshrink_jt(ij,it) = occshrink_hr(ij)/occsize_hr(ij)
+				enddo
+				occsize_jt(:,it) = occsize_hr/Nworkt
+			enddo
+			!$omp end parallel do
+			
+			if(print_lev > 1)then
+					call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
+					call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
+					call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
+					call mati2csv(status_it,"status_it_hist"//trim(caselabel)//".csv")
+					call mati2csv(d_it,"d_it_hist"//trim(caselabel)//".csv")
+					call veci2csv(j_i,"j_i_hist"//trim(caselabel)//".csv")
+					call veci2csv(z_jt_macroint,"z_jt_hist"//trim(caselabel)//".csv")
+					call mat2csv (occsize_jt,"occsize_jt_hist"//trim(caselabel)//".csv")
+					call mat2csv (occgrow_jt,"occgrow_jt_hist"//trim(caselabel)//".csv")
+					call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
+					call mat2csv (hst%wage_hist,"wage_it_hist"//trim(caselabel)//".csv")
+					call mat2csv (hst%app_dif_hist,"app_dif_it_hist"//trim(caselabel)//".csv")
+					call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
+					call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
+					call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
+			endif
+		endif
+		
 		deallocate(al_int_it_endog,al_it_endog)
 		deallocate(e_it)
 		deallocate(a_it_int,e_it_int)
@@ -4379,52 +4388,72 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		
-		real(dp) :: dist_wgtrend
-		real(dp), allocatable :: jwages(:,:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
-		integer :: i,ii,ij,it, iter, pl_o
+		real(dp) :: dist_wgtrend,dist_wgtrend_iter(50)
+		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
+		real(dp), allocatable :: nocc(:,:)
+		integer :: i,ii,ij,it, iter,iout
 		
-		allocate(jwages(Nsim,Tsim))
+		
+		allocate(jwages(Nsim))
 		allocate(dist_wgtrend_jt(Tsim,nj))
 		allocate(med_wage_jt(Tsim,nj))
+		allocate(nocc(Tsim,nj)) !!!!!!!!!!!!!!!!!!!!!!!!!debugging
 
-		do iter = 1,3
+		call mat2csv(wage_trend,"wage_trend_0.csv")
+		do iter = 1,50
 			dist_wgtrend = 0.
-			print *, "simulating"
-			call sim(vfs, pfs, hst,shk)
-			print *, "done with the simulation"
+			dist_wgtrend_iter(iter) = 0.
+			
+			call sim(vfs, pfs, hst,shk,.false.)
+			
 			do ij=1,nj
 				jwages = 0.
 				do it=1,Tsim
 					ii = 0
 					do i=1,Nsim
-						if( shk%j_i(i) == ij .and. shk%age_hist(i,it) >0 .and. hst%status_hist(i,it)==1) then
+						if( shk%j_i(i) == ij .and. shk%age_hist(i,it) > 0 .and. hst%status_hist(i,it)==1) then
 							ii = 1+ii
-							jwages(ii,it) = hst%wage_hist(i,it)
+							jwages(ii) = log(hst%wage_hist(i,it))
 						endif
 					enddo
-					call QsortC( jwages(1:ii,it) )
+					nocc(it,ij) = ii
+					!call QsortC( jwages(1:ii) )
+					call quicksort(jwages(1:ii),1,ii)
 					if( mod(ii,2)==0) then
-						med_wage_jt(it,ij) = jwages(ii/2,it)
+						med_wage_jt(it,ij) = jwages(ii/2)
 					else
-						med_wage_jt(it,ij) = 0.5*(jwages(ii/2,it)+jwages(ii/2+1,it))
+						med_wage_jt(it,ij) = 0.5*(jwages(ii/2)+jwages(ii/2+1))
 					endif
+				enddo
+				!compute distance
+				do it=Tsim,1,-1
+					! relative to the first period
+					med_wage_jt(it,ij) = med_wage_jt(1,ij) - med_wage_jt(it,ij) 
 					dist_wgtrend_jt(it,ij) = med_wage_jt(it,ij) - occwg_trend(it,ij)
 					!update the global variable : wage_trend
 					wage_trend(it,ij) = -upd_wgtrnd*dist_wgtrend_jt(it,ij) + wage_trend(it,ij) 
 					if(dist_wgtrend_jt(it,ij) > dist_wgtrend ) then
 						dist_wgtrend = dist_wgtrend_jt(it,ij)
 					endif
+					dist_wgtrend_iter(iter) = dist_wgtrend_jt(it,ij) + dist_wgtrend_iter(iter)
 				enddo
-				!if(print_lev .ge. 4) then
-					call mat2csv( dist_wgtrend_jt, "dist_wgtrend_jt.csv",1)
-				!endif
 			enddo
+			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
+			
+			!if(print_lev .ge. 4) then
+				if(iter==1) iout=0
+				call mat2csv( dist_wgtrend_jt, "dist_wgtrend_jt.csv",iout)
+				call mat2csv(med_wage_jt,"med_wage_jt.csv",iout)
+				call mat2csv(nocc,"nocc.csv",iout)
+				iout=1
+			!endif
 			
 		enddo
-		
+		call mat2csv(wage_trend,"wage_trend_new.csv")
+		call vec2csv(dist_wgtrend_iter,"dist_wgtrend_iter.csv")
 		
 		deallocate(jwages,med_wage_jt,dist_wgtrend_jt)
-		
+		deallocate(nocc)
 		!compute median wage trends in each occupation using hst%wage_hist
 	
 	end subroutine iter_wgtrend
@@ -4464,33 +4493,35 @@ module find_params
 		if(verbose >2) print *, "Solving the model"	
 		call sol(vfs,pfs)
 
-
-		call vscale_set(vfs, hst, shk, vscale)
-		if(dabs(vscale)<1) then 
-			vscale = 1.
-			if( verbose >1 ) print *, "reset vscale to 1"
-		endif
-		t0tT = (/1,1/)
-		call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
-		if(j_regimes .eqv. .true.) then
-			do it=2,Tsim
-				if( mod(it,itlen*2)== 0 ) then
-					t0tT = (/ it-itlen*2+1,   it/)
-					call jshift_sol(vfs, hst,shk, occpr_trend(it,:) , t0tT,jshift_hr)
-					do i=0,(itlen*2-1)
-						do ij=1,nj
-							jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
+		if(j_rand .eqv. .false.) then 
+			call vscale_set(vfs, hst, shk, vscale)
+			if(dabs(vscale)<1) then 
+				vscale = 1.
+				if( verbose >1 ) print *, "reset vscale to 1"
+			endif
+			t0tT = (/1,1/)
+			call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
+			if(j_regimes .eqv. .true.) then
+				do it=2,Tsim
+					if( mod(it,itlen*2)== 0 ) then
+						t0tT = (/ it-itlen*2+1,   it/)
+						call jshift_sol(vfs, hst,shk, occpr_trend(it,:) , t0tT,jshift_hr)
+						do i=0,(itlen*2-1)
+							do ij=1,nj
+								jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
+							enddo
 						enddo
-					enddo
-				endif
-			enddo
-		else
-			do it=2,Tsim
-				jshift(:,it) = jshift(:,1)
-			enddo
+					endif
+				enddo
+			else
+				do it=2,Tsim
+					jshift(:,it) = jshift(:,1)
+				enddo
+			endif
+				
+			if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
 		endif
-			
-		if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
+		
 		! COMMENT THIS OUT FOR NOW!
 		!call iter_zproc(vfs,pfs, hst,shk)
 		!after iter_zproc, I should cycle and re-solve it all
@@ -4844,37 +4875,38 @@ program V0main
 		if(verbose >2) print *, "Solving the model"	
 		call sol(vfs,pfs)
 
-		call vscale_set(vfs, hst, shk, vscale)
-		if(dabs(vscale)<1) then 
-			if( verbose >1 ) then 
-				print *, "reset vscale to 1, vscale was ", vscale
-			endif
-			vscale = 1.
-		endif
-		if(verbose >2) print *, "solve for initial shift"
-		t0tT= (/1,1/)
-		call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
-		if(verbose >2) print *, "solve for second shift"
-		if(j_regimes .eqv. .true.) then
-			do it=2,Tsim
-				if( mod(it,itlen*2)== 0 ) then
-					t0tT = (/ it-itlen*2+1,   it/)
-					call jshift_sol(vfs, hst,shk, occpr_trend(it,:) , t0tT,jshift_hr)
-					do i=0,(itlen*2-1)
-						do ij=1,nj
-							jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
-						enddo
-					enddo
+		if(j_rand .eqv. .false.) then
+			call vscale_set(vfs, hst, shk, vscale)
+			if(dabs(vscale)<1) then 
+				if( verbose >1 ) then 
+					print *, "reset vscale to 1, vscale was ", vscale
 				endif
-			enddo
-		else
-			do it=2,Tsim
-				jshift(:,it) = jshift(:,1)
-			enddo
+				vscale = 1.
+			endif
+			if(verbose >2) print *, "solve for initial shift"
+			t0tT= (/1,1/)
+			call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
+			if(verbose >2) print *, "solve for second shift"
+			if(j_regimes .eqv. .true.) then
+				do it=2,Tsim
+					if( mod(it,itlen*2)== 0 ) then
+						t0tT = (/ it-itlen*2+1,   it/)
+						call jshift_sol(vfs, hst,shk, occpr_trend(it,:) , t0tT,jshift_hr)
+						do i=0,(itlen*2-1)
+							do ij=1,nj
+								jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
+							enddo
+						enddo
+					endif
+				enddo
+			else
+				do it=2,Tsim
+					jshift(:,it) = jshift(:,1)
+				enddo
+			endif
+				
+			if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 		endif
-
-			
-		if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 		
 		if(verbose>2) print *, "iterating to find wage trend"
 		call iter_wgtrend(vfs, pfs, hst,shk)
@@ -4915,7 +4947,7 @@ program V0main
 		
 	parvec(1) = nu
 	err0 = 0.
-	call cal_dist(parvec,err0,shk)
+!	call cal_dist(parvec,err0,shk)
 	
 	if(verbose > 2) then
 		call CPU_TIME(t2)

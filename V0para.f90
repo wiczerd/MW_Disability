@@ -68,7 +68,7 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 ! these relate to what's changing over the simulation/across occupation
 logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  j_regimes  = .true.,& !different pref shifts
-					  j_rand     = .false.,&! randomly assign j, or let choose.
+					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
 					  NBER_tseq  = .true.	!just feed in NBER recessions?
 					  
@@ -288,7 +288,7 @@ subroutine setparams()
 		enddo
 	enddo
 	!initialize the input to the observed
-	wage_lev = occwg_lev
+	wage_lev = 0.!occwg_lev
 	wage_trend = occwg_trend
 
 	!Individual Wage component (alpha)- grid= 2 std. deviations
@@ -1362,6 +1362,35 @@ subroutine Partition(A, marker)
   end do
 
 end subroutine Partition
+
+recursive subroutine quicksort(a, first, last)
+! quicksort.f -*-f90-*-
+! Author: t-nissie
+! License: GPLv3
+! Gist: https://gist.github.com/t-nissie/479f0f16966925fa29ea
+	implicit none
+	real*8  a(*), x, t
+	integer first, last
+	integer i, j
+
+	x = a( (first+last) / 2 )
+	i = first
+	j = last
+	do
+		do while (a(i) < x)
+			i=i+1
+		end do
+		do while (x < a(j))
+			j=j-1
+		end do
+		if (i >= j) exit
+		t = a(i);  a(i) = a(j);  a(j) = t
+		i=i+1
+		j=j-1
+	end do
+	if (first < i-1) call quicksort(a, first, i-1)
+	if (j+1 < last)  call quicksort(a, j+1, last)
+end subroutine quicksort
 
 
 end module V0para
