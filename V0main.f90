@@ -3181,7 +3181,7 @@ module sim_hists
 								ali_hr	= al_it_int(i,it)
 								
 								if(w_strchng .eqv. .true.) then ! adjust for wage trend
-									if(ali_hr > 1) al_hr = max(al_hr - wage_trend(it,ij), alfgrid(2))
+									if(ali_hr > 1) al_hr = max(al_hr + wage_trend(it,ij), alfgrid(2))
 									do ali_hr = nal,2,-1
 										if( alfgrid(ali_hr)< al_hr) exit
 									enddo
@@ -3265,7 +3265,7 @@ module sim_hists
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
 					if( w_strchng .eqv. .true.) then
-						if( ali_hr>1 ) al_hr = max(al_hr - wage_trend(it,j_hr), alfgrid(2))
+						if( ali_hr>1 ) al_hr = max(al_hr + wage_trend(it,j_hr), alfgrid(2))
 						do ali_hr = nal,2,-1
 							if(alfgrid(ali_hr)<al_hr) exit
 						enddo
@@ -4232,7 +4232,7 @@ module find_params
 						al_hr	= shk%al_hist(i,it)
 						ali_hr	= shk%al_int_hist(i,it)
 						if(w_strchng .eqv. .true.) then
-							if(ali_hr>1) al_hr = max(al_hr - wage_trend(it,ij), alfgrid(2))
+							if(ali_hr>1) al_hr = max(al_hr + wage_trend(it,ij), alfgrid(2))
 							do ali_hr = nal,2,-1
 								if(alfgrid(ali_hr)<ali_hr) exit
 							enddo
@@ -4388,10 +4388,10 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		
-		real(dp) :: dist_wgtrend,dist_wgtrend_iter(50)
+		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter)
 		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
 		real(dp), allocatable :: nocc(:,:)
-		integer :: i,ii,ij,it, iter,iout
+		integer :: i,ii,ij,it, iter,iout,plO,vO
 		
 		
 		allocate(jwages(Nsim))
@@ -4399,8 +4399,12 @@ module find_params
 		allocate(med_wage_jt(Tsim,nj))
 		allocate(nocc(Tsim,nj)) !!!!!!!!!!!!!!!!!!!!!!!!!debugging
 
-		call mat2csv(wage_trend,"wage_trend_0.csv")
-		do iter = 1,50
+		plO = print_lev
+		if(plO<4) print_lev = 1
+		vO = verbose
+		if(v0<4) verbose=0
+		!call mat2csv(wage_trend,"wage_trend_0.csv")
+		do iter = 1,maxiter
 			dist_wgtrend = 0.
 			dist_wgtrend_iter(iter) = 0.
 			
@@ -4428,7 +4432,7 @@ module find_params
 				!compute distance
 				do it=Tsim,1,-1
 					! relative to the first period
-					med_wage_jt(it,ij) = med_wage_jt(1,ij) - med_wage_jt(it,ij) 
+					med_wage_jt(it,ij) = med_wage_jt(it,ij) - med_wage_jt(1,ij) 
 					dist_wgtrend_jt(it,ij) = med_wage_jt(it,ij) - occwg_trend(it,ij)
 					!update the global variable : wage_trend
 					wage_trend(it,ij) = -upd_wgtrnd*dist_wgtrend_jt(it,ij) + wage_trend(it,ij) 
@@ -4439,18 +4443,24 @@ module find_params
 				enddo
 			enddo
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
-			
-			!if(print_lev .ge. 4) then
+			if(dist_wgtrend<1e-5) then
+				exit
+			endif
+			if(print_lev .ge. 4) then
 				if(iter==1) iout=0
 				call mat2csv( dist_wgtrend_jt, "dist_wgtrend_jt.csv",iout)
 				call mat2csv(med_wage_jt,"med_wage_jt.csv",iout)
 				call mat2csv(nocc,"nocc.csv",iout)
 				iout=1
-			!endif
+				print*, dist_wgtrend
+			endif
 			
 		enddo
-		call mat2csv(wage_trend,"wage_trend_new.csv")
-		call vec2csv(dist_wgtrend_iter,"dist_wgtrend_iter.csv")
+		
+		print_lev = plO
+		verbose = vO
+		!call mat2csv(wage_trend,"wage_trend_new.csv")
+		!call vec2csv(dist_wgtrend_iter,"dist_wgtrend_iter.csv")
 		
 		deallocate(jwages,med_wage_jt,dist_wgtrend_jt)
 		deallocate(nocc)
