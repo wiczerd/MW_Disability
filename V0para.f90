@@ -30,6 +30,8 @@ real(8), parameter ::	youngD = 20., &	!Length of initial young period
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.407,&	!Fraction young who are eligable
 		R =1.,&!dexp(.02/tlen),&	!People can save at 3% (not quite the rate they'd like)
+		avg_unrt = 0.055,&	!average rate of unemployment over the period.
+		avg_undur = 3.,&	! average months of unemployment
 		upd_zscl = 0.1,&		! rate at which to update zshift
 		upd_wgtrnd = 0.05		! rate at which update wage_trend
 
@@ -42,9 +44,9 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &		    !Number of individual disability risk types
-			nj  = 5, &!16          !Number of occupations
+			nj  = 2, &!16          !Number of occupations
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 2, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 40, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	

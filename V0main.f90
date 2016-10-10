@@ -189,7 +189,7 @@ module helper_funs
 		if(itin>1 .or. ineligNoNu .eqv. .true.)then
 			xifun = 1._dp-(1._dp-xi(idin,itin)*zin**xizcoef)**(1._dp/tlen) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
 		else !itin ==1 & ineligNoNu == F
-			xifun = 1._dp-(1._dp-xi(idin,itin)*eligY)**(1._dp/tlen)
+			xifun = 1._dp-(1._dp-xi(idin,itin)*zin**xizcoef*eligY)**(1._dp/tlen)
 		endif
 		
 		!if itin==4 
@@ -1175,13 +1175,19 @@ module sol_val
 				do iaai = iaaL,nal !Loop over alpha_i'
 				
 					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
-							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1))
-					VNhr    = VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)
+							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1))
+					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)
+		!	maxVNV0= VNhr
 					Vc1 = (1-ptau(it))*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 ) !Age and might go on DI
+
 					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
-							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
-					VNhr    = VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it)
+							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it))
+					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it)
+		!	maxVNV0= VNhr
+		!			if(it<TT-1) Vc1=0.
 					Vc1 = Vc1+ptau(it)*((1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0)     !Don't age, might go on DI
+		!			if(it<TT-1) Vc1 = Vc1/ptau(it)
+					
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
 				enddo
 				enddo
@@ -1226,18 +1232,23 @@ module sol_val
 				do izz = 1,nz	 !Loop over z'
 				do iaai = iaaL,nal !Loop over alpha_i'
 					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
-							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1))
-					VNhr    = VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)
+							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1))
+					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)
+		!	maxVNV0= VNhr
 					VDhr    = VD0(id,ie,iaa,it+1)
 					Vc1 =   (1-ptau(it))*(1-xihr)*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 )&
 						& + (1-ptau(it))*xihr    *VDhr !Age and might go on DI
-					
+
+			!		if(it<TT-1) Vc1 = 0.
 					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
 							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
-					VNhr    = VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)
+					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)
+		!	maxVNV0= VNhr
 					VDhr    = VD0(id,ie,iaa,it)
-					Vc1 = Vc1 +	    ptau(it)*(1-xihr)*((1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0) &
+					Vc1 = Vc1 +	    ptau(it)*(1-xihr)*( (1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0 ) &
 						&     + 	ptau(it)*xihr    * VDhr     !Don't age, might go on DI		
+						
+			!		if(it<TT-1) Vc1 = Vc1/ptau(it)
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
 				enddo
 				enddo
@@ -4378,8 +4389,47 @@ module find_params
 		if(print_lev>=1) call mat2csv(zgrid1,"zgrid1.csv")
 
 		deallocate(zshift0,zshift1,zgrid0,zgrid1)
-		
 	end subroutine iter_zproc
+	
+	subroutine comp_ustats(hst,shk,urt,udur,Efrt,Esrt)
+		
+		type(shocks_struct) :: shk
+		type(hist_struct):: hst
+		real(dp), intent(out) :: urt,udur,Efrt,Esrt
+		real(dp) :: Nunemp,Nlf, Nsep,Nfnd
+		integer :: i, j, it,duri
+		
+		udur = 0.
+		urt  = 0.
+		Nlf  = 0.
+		Nunemp = 0.
+		Nsep = 0.
+		Nfnd = 0.
+		do i = 1,Nsim
+			duri = 0
+			do it=1,Tsim
+				if(hst%status_hist(i,it)<=2 .and. hst%status_hist(i,it)>0) then
+					Nlf = Nlf+1.
+					if(hst%status_hist(i,it) == 2) then
+						Nunemp = Nunemp + 1.
+						if(duri == 0 .and. it>1) & !count a new spell
+							& Nsep = Nsep+1.
+						duri = duri+1
+						udur = dble(duri) + udur
+					else 	
+						if(duri >0) & !just found
+							& Nfnd = Nfnd+1
+						duri = 0
+					endif
+				endif
+			enddo
+		enddo
+		urt = Nunemp/Nlf
+		udur = udur/Nunemp
+		Esrt = Nsep/(Nlf-Nunemp)
+		Efrt = Nfnd/Nunemp
+	
+	end subroutine comp_ustats
 	
 	subroutine iter_wgtrend(vfs, pfs, hst,shk )
 
@@ -4392,6 +4442,9 @@ module find_params
 		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
 		real(dp), allocatable :: nocc(:,:)
 		integer :: i,ii,ij,it, iter,iout,plO,vO
+		real(dp) :: urt,udur,Efrt,Esrt
+		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt0_mul,seprt1_mul
+		real(dp) :: seprt1,seprt0,s0factor,frt0,frt0_mul
 		
 		
 		allocate(jwages(Nsim))
@@ -4402,14 +4455,23 @@ module find_params
 		plO = print_lev
 		if(plO<4) print_lev = 1
 		vO = verbose
-		if(v0<4) verbose=0
+		if(vO<4) verbose=0
 		!call mat2csv(wage_trend,"wage_trend_0.csv")
+
+		!initialize fmul stuff
+		fndrt_mul0 = 1. 
+		seprt0_mul = 1.
 		do iter = 1,maxiter
 			dist_wgtrend = 0.
 			dist_wgtrend_iter(iter) = 0.
 			
 			call sim(vfs, pfs, hst,shk,.false.)
 			
+			call comp_ustats(hst,shk,urt,udur,Efrt,Esrt)
+			print*,  'urt , udur', urt,udur
+			print*,  'Efrt, Esrt', Efrt,Esrt
+			
+			dist_wgtrend = 0.
 			do ij=1,nj
 				jwages = 0.
 				do it=1,Tsim
@@ -4441,7 +4503,7 @@ module find_params
 					endif
 					dist_wgtrend_iter(iter) = dist_wgtrend_jt(it,ij) + dist_wgtrend_iter(iter)
 				enddo
-			enddo
+			enddo !ij 
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
 			if(dist_wgtrend<1e-5) then
 				exit
@@ -4452,15 +4514,33 @@ module find_params
 				call mat2csv(med_wage_jt,"med_wage_jt.csv",iout)
 				call mat2csv(nocc,"nocc.csv",iout)
 				iout=1
-				print*, dist_wgtrend
+				
 			endif
+			!take a step in fndrate, seprisk space
+			frt0_mul = udur*Efrt
 			
-		enddo
+			fndrt_mul1 = udur/avg_undur*fndrt_mul0
+			fndrt_mul1 = upd_wgtrnd*fndrt_mul1 + (1.-upd_wgtrnd)*fndrt_mul0
+			!fndrt_mul1 = fndrt_mul0 !HOLD FOR NOW... see if otherstuff works
+				
+			seprt1_mul = (Efrt*avg_unrt*fndrt_mul1/fndrt_mul0)/(Esrt/seprt0_mul*(1.-avg_unrt))
+			seprt1_mul = upd_wgtrnd*seprt1_mul + (1.-upd_wgtrnd)*seprt0_mul
+			
+			
+			seprisk = seprisk/seprt0_mul*seprt1_mul
+			fndrate = fndrate/fndrt_mul0*fndrt_mul1
+			
+			seprt0_mul = seprt1_mul
+			fndrt_mul0 = fndrt_mul1
+			print*, "iter ", iter, "dist ", dist_wgtrend, "seprt1", seprt1_mul
+		enddo !iter
 		
 		print_lev = plO
 		verbose = vO
 		!call mat2csv(wage_trend,"wage_trend_new.csv")
 		!call vec2csv(dist_wgtrend_iter,"dist_wgtrend_iter.csv")
+		if(print_lev .ge. 2) call mat2csv(wage_trend,"wage_trend.csv")
+		
 		
 		deallocate(jwages,med_wage_jt,dist_wgtrend_jt)
 		deallocate(nocc)
@@ -4808,11 +4888,22 @@ program V0main
 			enddo
 		enddo
 		
-		call mat2csv(wage_trend,"wage_trend.csv")
 		call vec2csv(occsz0, "occsz0.csv")
 		call vec2csv(occdel, "occdel.csv")
 		call vec2csv(prob_age, "prob_age.csv")
 		call mat2csv(occpr_trend,"occpr_trend.csv")
+		call mat2csv(wage_trend,"occwg_trend.csv")
+
+
+		open(1, file="xi.csv")
+		do it=1,TT-1
+			do id=1,(nd-1)
+				write(1, "(G20.12)", advance='no') xifun(id,1._dp,it)
+			enddo
+			id = nd
+			write(1,*) xifun(id,1._dp,it)
+		enddo
+		close(1)
 
 		open(1, file="wage_dist.csv")
 		ibi = 1
