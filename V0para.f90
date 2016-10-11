@@ -170,8 +170,8 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 ! some handy programming terms
 integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
 			Tblock_sim = struc_brk,&		!The actual time before structural change (years)
-			iaaU	= 1 ,&		! the index of alpha that signifies an exogenously displaced worker
-			iaaL	= 2
+			ialU	= 1 ,&		! the index of alpha that signifies an exogenously displaced worker
+			ialL	= 2
 
 !**** calibration targets
 real(8) :: emp_persist = 0.98 ,&
@@ -368,7 +368,7 @@ subroutine setparams()
 
 	!Wage Bonus 0.0373076,-0.0007414
 	do i=1,TT-1							
-		wtau(i) = ageW*agegrid(i)+ageW2*agegrid(i)**2 !Old
+		wtau(i) = 0.!ageW*agegrid(i)+ageW2*agegrid(i)**2 !Old
 	enddo
 	
 	!Aging Probability (actually, probability of not aging)

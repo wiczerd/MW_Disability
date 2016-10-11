@@ -1105,7 +1105,7 @@ module sol_val
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:),VU0(:,:,:,:,:,:,:)
 		real(dp) :: Vc1,chere,Vtest1,Vtest2
-		integer :: iw, iaa,iaai,izz
+		integer :: iw, iaa,ialal,izz
 
 		iw = 1 ! don't work
 		Vtest1 = -1e6 ! just a very bad number, does not really matter
@@ -1115,25 +1115,25 @@ module sol_val
 			if(chere>0.) then 
 				Vtest2 = 0. !Continuation value if don't go on disability
 				do izz = 1,nz	 !Loop over z'
-				do iaai = iaaL,nal !Loop over alpha_i'
+				do ialal = ialL,nal !Loop over alpha_i'
 				
-					if(iaai > iaaU) then
-						Vc1 = (1._dp-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
-							& 	            +(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) )  !Age and might go LTU
-						Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) & 
-							&	      +(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
-					else
-						Vc1 = (1._dp-ptau(it))*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) &
-							& 	+(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1) +&
-									 (1.- fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,id,ie,iaa,izz,it+1)  ) )  !Age and might go LTU
+					if(ial > ialU) then !unemp by choice
+						Vc1 = (1._dp-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) &
+							& 	            +(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) )  !Age and might go LTU
+						Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it) & 
+							&	      +(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
+					else !unemployed exogenously
+						Vc1 = (1._dp-ptau(it))*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialU ,id,ie,iaa,izz,it+1) &
+							& 	+(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) +&
+									 (1.- fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+ialU ,id,ie,iaa,izz,it+1)  ) )  !Age and might go LTU
 
-						Vc1 = ptau(it)*(pphi*             VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,id,ie,iaa,izz,it) & 
-							  & +(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it) +&
-							  &		  (1.-fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,id,ie,iaa,izz,it) ) ) + Vc1    !Don't age, maybe LTU
+						Vc1 = ptau(it)*(pphi*             VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialU ,id,ie,iaa,izz,it) & 
+							  & +(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it) +&
+							  &		  (1.-fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+ialU ,id,ie,iaa,izz,it) ) ) + Vc1    !Don't age, maybe LTU
 					endif
 
-					!Vc1 = (1.-fndrate(iz,ij))*Vc1 + fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)
-					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1  !Probability of alpha_i X z_i draw 
+					!Vc1 = (1.-fndrate(iz,ij))*Vc1 + fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it)
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal)*Vc1  !Probability of alpha_i X z_i draw 
 				enddo
 				enddo
 				Vtest2 = Vtest2 + util(chere,id,iw)
@@ -1158,7 +1158,7 @@ module sol_val
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:)
 		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, VNhr, VDhr, maxVNV0, minvalVD,minvalVN, xihr,nuhr
-		integer :: iw, iaa,iaai,izz,aapp,aNapp
+		integer :: iw, iaa,ialal,izz,aapp,aNapp
 
 		iw = 1 ! not working
 		!*******************************************
@@ -1172,23 +1172,21 @@ module sol_val
 				Vtest2 = 0.
 				!Continuation if do not apply for DI
 				do izz = 1,nz	 !Loop over z'
-				do iaai = iaaL,nal !Loop over alpha_i'
+				do ialal = ialL,nal !Loop over alpha_i'
 				
-					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
-							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1))
-					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)
-		!	maxVNV0= VNhr
+					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1), &
+							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it+1))
+					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it+1)
+
 					Vc1 = (1-ptau(it))*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 ) !Age and might go on DI
 
-					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
-							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it))
-					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it)
-		!	maxVNV0= VNhr
-		!			if(it<TT-1) Vc1=0.
+					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it), & 
+							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it))
+					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it)
+
 					Vc1 = Vc1+ptau(it)*((1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0)     !Don't age, might go on DI
-		!			if(it<TT-1) Vc1 = Vc1/ptau(it)
 					
-					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal)*Vc1 
 				enddo
 				enddo
 				Vtest2 = Vtest2 + util(chere,id,iw)
@@ -1214,8 +1212,6 @@ module sol_val
 			write(*,*) "VN: ",ij,ibi,idi,ial,id,ie,ia,iz,it
 		endif
 	
-	
-	
 		!**********Value if apply for DI 
 		xihr = xifun(id,1._dp,it)
 		nuhr = nu
@@ -1230,26 +1226,25 @@ module sol_val
 				Vtest2 = 0.
 				!Continuation if apply for DI
 				do izz = 1,nz	 !Loop over z'
-				do iaai = iaaL,nal !Loop over alpha_i'
-					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it+1), &
-							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1))
-					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +iaai,id,ie,iaa,izz,it+1)
-		!	maxVNV0= VNhr
-					VDhr    = VD0(id,ie,iaa,it+1)
+				do ialal = ialL,nal !Loop over alpha_i'
+					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1), &
+							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it+1))
+					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it+1)
+
+					VDhr    = max(VD0(id,ie,iaa,it+1),VNhr)
 					Vc1 =   (1-ptau(it))*(1-xihr)*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 )&
 						& + (1-ptau(it))*xihr    *VDhr !Age and might go on DI
 
-			!		if(it<TT-1) Vc1 = 0.
-					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it), & 
-							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it))
-					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,id,ie,iaa,izz,it)
-		!	maxVNV0= VNhr
-					VDhr    = VD0(id,ie,iaa,it)
+					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it), & 
+							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it))
+					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it)
+
+					VDhr    = max(VD0(id,ie,iaa,it),VNhr)
 					Vc1 = Vc1 +	    ptau(it)*(1-xihr)*( (1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0 ) &
 						&     + 	ptau(it)*xihr    * VDhr     !Don't age, might go on DI		
 						
 			!		if(it<TT-1) Vc1 = Vc1/ptau(it)
-					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,iaai)*Vc1 
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal)*Vc1 
 				enddo
 				enddo
 				Vtest2 = util(chere,id,iw) + Vtest2 &
@@ -1276,7 +1271,7 @@ module sol_val
 			write(*,*) "ruh roh!"
 			write(*,*) "Vapp, aapp: ", Vapp, aapp
 			write(*,*) "VD: ",id,ie,iaa,it
-			write(*,*) "VN: ",ij,ibi,idi,iaai,id,ie,iaa,izz,it
+			write(*,*) "VN: ",ij,ibi,idi,ialal,id,ie,iaa,izz,it
 		endif
 
 		!******************************************************
@@ -1313,7 +1308,7 @@ module sol_val
 		real(dp), intent(out) :: Vout, VWout
 		real(dp), intent(in) :: VU(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:)
 		real(dp) :: Vc1,utilhere,chere,Vtest1,Vtest2,VWhere,VUhere,smthV, vL, vH, uL, uH
-		integer :: iw, iaa,iaai,izz,idd
+		integer :: iw, iaa,ialal,izz,idd
 
 		iw = 2 ! working
 		Vtest1= -1.e6_dp ! just to initialize, does not matter
@@ -1326,21 +1321,21 @@ module sol_val
 			if (chere >0.) then
 				Vc1 = 0.
 				do izz  = 1,nz	 !Loop over z'
-				do iaai = iaaL,nal  !Loop over alpha_i'
+				do ialal = ialL,nal  !Loop over alpha_i'
 				do idd  = 1,nd	 !Loop over d'
 					!Linearly interpolating on e'
-					vL = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee1,iaa,izz,it+1) & 
-						& +ptau(it)  *V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee1,iaa,izz,it)
-					vH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee2,iaa,izz,it+1) & 
-						& +ptau(it)  *V0((ij-1)*nbi+ibi,(idi-1)*nal+iaai,idd,iee2,iaa,izz,it)
+					vL = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,idd,iee1,iaa,izz,it+1) & 
+						& +ptau(it)  *V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,idd,iee1,iaa,izz,it)
+					vH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,idd,iee2,iaa,izz,it+1) & 
+						& +ptau(it)  *V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,idd,iee2,iaa,izz,it)
 					!if become unemployed here - 
-					uL = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,idd,iee1,iaa,izz,it+1) & 
-						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,idd,iee1,iaa,izz,it)
-					uH = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,idd,iee2,iaa,izz,it+1) & 
-						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+iaaU,idd,iee2,iaa,izz,it)	
+					uL = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+ialU,idd,iee1,iaa,izz,it+1) & 
+						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+ialU,idd,iee1,iaa,izz,it)
+					uH = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+ialU,idd,iee2,iaa,izz,it+1) & 
+						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+ialU,idd,iee2,iaa,izz,it)	
 						
 						
-					Vc1 = piz(iz,izz)*pialf(ial,iaai)*pid(id,idd,idi,it) &
+					Vc1 = piz(iz,izz)*pialf(ial,ialal)*pid(id,idd,idi,it) &
 						& * (  (1.-seprisk(iz,ij))*(vH*(1._dp - iee1wt) + vL*iee1wt) &
 							+  seprisk(iz,ij)*     (uH*(1._dp - iee1wt) + uL*iee1wt) ) &
 						& + Vc1
@@ -4505,7 +4500,7 @@ module find_params
 				enddo
 			enddo !ij 
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
-			if(dist_wgtrend<1e-5) then
+			if(dist_wgtrend<1e-4) then
 				exit
 			endif
 			if(print_lev .ge. 4) then
@@ -4845,7 +4840,7 @@ program V0main
 	moments_sim%alloced = 0
 
 	call setparams()
-
+	
 	narg_in = iargc()
 	if( narg_in > 0 ) then
 		call getarg(1, arg_in)
