@@ -1117,19 +1117,19 @@ module sol_val
 				do izz = 1,nz	 !Loop over z'
 				do ialal = ialL,nal !Loop over alpha_i'
 				
-					if(ial > ialU) then !unemp by choice
+					if(ial > ialUn) then !unemp by choice
 						Vc1 = (1._dp-ptau(it))*(pphi*VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) &
 							& 	            +(1-pphi)*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) )  !Age and might go LTU
 						Vc1 = ptau(it)*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it) & 
 							&	      +(1-pphi)*   V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
 					else !unemployed exogenously
-						Vc1 = (1._dp-ptau(it))*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialU ,id,ie,iaa,izz,it+1) &
+						Vc1 = (1._dp-ptau(it))*(pphi*     VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,id,ie,iaa,izz,it+1) &
 							& 	+(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) +&
-									 (1.- fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+ialU ,id,ie,iaa,izz,it+1)  ) )  !Age and might go LTU
+									 (1.- fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,id,ie,iaa,izz,it+1)  ) )  !Age and might go LTU
 
-						Vc1 = ptau(it)*(pphi*             VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialU ,id,ie,iaa,izz,it) & 
+						Vc1 = ptau(it)*(pphi*             VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,id,ie,iaa,izz,it) & 
 							  & +(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it) +&
-							  &		  (1.-fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+ialU ,id,ie,iaa,izz,it) ) ) + Vc1    !Don't age, maybe LTU
+							  &		  (1.-fndrate(iz,ij))*VU0((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,id,ie,iaa,izz,it) ) ) + Vc1    !Don't age, maybe LTU
 					endif
 
 					!Vc1 = (1.-fndrate(iz,ij))*Vc1 + fndrate(iz,ij)*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it)
@@ -1158,7 +1158,7 @@ module sol_val
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:)
 		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, VNhr, VDhr, maxVNV0, minvalVD,minvalVN, xihr,nuhr
-		integer :: iw, iaa,ialal,izz,aapp,aNapp
+		integer :: iw, iaa,ialal,izz,aapp,aNapp, ialalhr
 
 		iw = 1 ! not working
 		!*******************************************
@@ -1173,16 +1173,15 @@ module sol_val
 				!Continuation if do not apply for DI
 				do izz = 1,nz	 !Loop over z'
 				do ialal = ialL,nal !Loop over alpha_i'
-				
-					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1), &
-							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it+1))
-					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it+1)
+					if(ial == ialUn) ialalhr = ialUn
+					if(ial > ialUn)  ialalhr = ialal
+					VNhr    =   	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it+1)
+					maxVNV0 = max(   V0((ij-1)*nbi+ibi,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it+1),VNhr)
 
 					Vc1 = (1-ptau(it))*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 ) !Age and might go on DI
 
-					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it), & 
-							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it))
-					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it)
+					VNhr    =   	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it)
+					maxVNV0 = max(   V0((ij-1)*nbi+ibi,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it),VNhr)
 
 					Vc1 = Vc1+ptau(it)*((1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0)     !Don't age, might go on DI
 					
@@ -1227,22 +1226,22 @@ module sol_val
 				!Continuation if apply for DI
 				do izz = 1,nz	 !Loop over z'
 				do ialal = ialL,nal !Loop over alpha_i'
-					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1), &
-							& 	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it+1))
-					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialal,id,ie,iaa,izz,it+1)
+					if(ial == ialUn) ialalhr = ialUn
+					if(ial > ialUn)  ialalhr = ialal					
+					VNhr    =   	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it+1)				
+					maxVNV0 = max(	 V0((ij-1)*nbi+ibi,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it+1), VNhr)
 
 					VDhr    = max(VD0(id,ie,iaa,it+1),VNhr)
 					Vc1 =   (1-ptau(it))*(1-xihr)*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 )&
 						& + (1-ptau(it))*xihr    *VDhr !Age and might go on DI
 
-					maxVNV0 = max(		 V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it), & 
-							&	VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it))
-					VNhr    =   VN0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,id,ie,iaa,izz,it)
+					VNhr    =   	VN0((ij-1)*nbi+ibi,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it)
+					maxVNV0 = max(	 V0((ij-1)*nbi+ibi,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it),VNhr)
 
 					VDhr    = max(VD0(id,ie,iaa,it),VNhr)
 					Vc1 = Vc1 +	    ptau(it)*(1-xihr)*( (1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0 ) &
 						&     + 	ptau(it)*xihr    * VDhr     !Don't age, might go on DI		
-						
+
 			!		if(it<TT-1) Vc1 = Vc1/ptau(it)
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal)*Vc1 
 				enddo
@@ -1329,11 +1328,12 @@ module sol_val
 					vH = (1-ptau(it))*V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,idd,iee2,iaa,izz,it+1) & 
 						& +ptau(it)  *V0((ij-1)*nbi+ibi,(idi-1)*nal+ialal,idd,iee2,iaa,izz,it)
 					!if become unemployed here - 
-					uL = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+ialU,idd,iee1,iaa,izz,it+1) & 
-						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+ialU,idd,iee1,iaa,izz,it)
-					uH = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+ialU,idd,iee2,iaa,izz,it+1) & 
-						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+ialU,idd,iee2,iaa,izz,it)	
-						
+					uL = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it+1) & 
+						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it)
+					uH = (1-ptau(it))*VU((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it+1) & 
+						& +ptau(it)  *VU((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it)
+					!uL = VU((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it)
+					!uH = VU((ij-1)*nbi+ibi,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it)	
 						
 					Vc1 = piz(iz,izz)*pialf(ial,ialal)*pid(id,idd,idi,it) &
 						& * (  (1.-seprisk(iz,ij))*(vH*(1._dp - iee1wt) + vL*iee1wt) &
@@ -2623,19 +2623,21 @@ module sim_hists
 		do it = 1,Tsim
 			if(NBER_tseq .eqv. .true. ) then
 				if(it >= NBER_start_stop(ss,1) .and. it < NBER_start_stop(ss,2) ) then
-					z_innov = -5.
-				elseif( it >= NBER_start_stop(ss,2) .and. it<= NBER_start_stop(ss,2)+nzblock/2  ) then !fully reverse the recession
-					z_innov = 5.
-					if( it == NBER_start_stop(ss,2)+nzblock/2 ) ss= ss+1
+					z_jt_innov(it) = -1.
+					z_jt_select(it) = 0
+				elseif( it == NBER_start_stop(ss,2)   ) then !fully reverse the recession
+					z_jt_innov(it)  = 1.
+					z_jt_select(it) = 1
+					ss= ss+1
 				else
-					z_innov = 0. ! 
+					z_jt_innov(it)  = 1.
+					z_jt_select(it) = 1
 				endif
 			else
 				call random_normal(z_innov)
-
+				z_jt_innov(it) = z_innov
+				z_jt_select(it) = alnorm(z_innov,.false.)
 			endif	
-			z_jt_innov(it) = z_innov
-			z_jt_select(it) = alnorm(z_innov,.false.)
 		enddo
 		success = 0
 		deallocate(bdayseed)
@@ -2854,7 +2856,7 @@ module sim_hists
 		endif
 		
 		it = 1
-		zi_jt_t = finder(cumergpi,shk%z_jt_select(it) )
+		zi_jt_t = finder( cumergpi,shk%z_jt_select(it) )
 		z_jt_macroint(it) = zi_jt_t
 		Zz_t = zsig*shk%z_jt_innov(it)
 		forall (ij = 1:nj)	z_jt_panel(ij,it) = Zz_t*zscale(ij)
@@ -4433,10 +4435,9 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		
-		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter)
+		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter/10)
 		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
-		real(dp), allocatable :: nocc(:,:)
-		integer :: i,ii,ij,it, iter,iout,plO,vO
+		integer  :: i,ii,ij,it, iter,iout,plO,vO
 		real(dp) :: urt,udur,Efrt,Esrt
 		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt0_mul,seprt1_mul
 		real(dp) :: seprt1,seprt0,s0factor,frt0,frt0_mul
@@ -4445,7 +4446,6 @@ module find_params
 		allocate(jwages(Nsim))
 		allocate(dist_wgtrend_jt(Tsim,nj))
 		allocate(med_wage_jt(Tsim,nj))
-		allocate(nocc(Tsim,nj)) !!!!!!!!!!!!!!!!!!!!!!!!!debugging
 
 		plO = print_lev
 		if(plO<4) print_lev = 1
@@ -4456,7 +4456,7 @@ module find_params
 		!initialize fmul stuff
 		fndrt_mul0 = 1. 
 		seprt0_mul = 1.
-		do iter = 1,maxiter
+		do iter = 1,(maxiter/10)
 			dist_wgtrend = 0.
 			dist_wgtrend_iter(iter) = 0.
 			
@@ -4477,8 +4477,6 @@ module find_params
 							jwages(ii) = log(hst%wage_hist(i,it))
 						endif
 					enddo
-					nocc(it,ij) = ii
-					!call QsortC( jwages(1:ii) )
 					call quicksort(jwages(1:ii),1,ii)
 					if( mod(ii,2)==0) then
 						med_wage_jt(it,ij) = jwages(ii/2)
@@ -4500,14 +4498,13 @@ module find_params
 				enddo
 			enddo !ij 
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
-			if(dist_wgtrend<1e-4) then
+			if(dist_wgtrend_iter(iter)<1e-4) then
 				exit
 			endif
 			if(print_lev .ge. 4) then
 				if(iter==1) iout=0
 				call mat2csv( dist_wgtrend_jt, "dist_wgtrend_jt.csv",iout)
 				call mat2csv(med_wage_jt,"med_wage_jt.csv",iout)
-				call mat2csv(nocc,"nocc.csv",iout)
 				iout=1
 				
 			endif
@@ -4527,18 +4524,21 @@ module find_params
 			
 			seprt0_mul = seprt1_mul
 			fndrt_mul0 = fndrt_mul1
-			print*, "iter ", iter, "dist ", dist_wgtrend, "seprt1", seprt1_mul
+		!	if(print_lev .ge. 4) &
+				print*, "iter ", iter, "dist ", dist_wgtrend, "seprt1", seprt1_mul
 		enddo !iter
 		
 		print_lev = plO
 		verbose = vO
 		!call mat2csv(wage_trend,"wage_trend_new.csv")
 		!call vec2csv(dist_wgtrend_iter,"dist_wgtrend_iter.csv")
-		if(print_lev .ge. 2) call mat2csv(wage_trend,"wage_trend.csv")
+		if(print_lev .ge. 2) then 
+			call mat2csv(wage_trend,"wage_trend.csv")
+			call vec2csv(dist_wgtrend_iter, "dist_wgtrend_iter.csv")
+		endif
 		
 		
 		deallocate(jwages,med_wage_jt,dist_wgtrend_jt)
-		deallocate(nocc)
 		!compute median wage trends in each occupation using hst%wage_hist
 	
 	end subroutine iter_wgtrend
