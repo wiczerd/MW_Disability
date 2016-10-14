@@ -2472,8 +2472,8 @@ module sim_hists
 			endif
 			al_it_int(i,t) = alfgrid_int
 			
+			
 			! draw sequence:
-
 			do t=2,Tsim
 				if(al_contin .eqv. .true.) then
 					!call rand_num_closed(alf_innov)
@@ -2622,17 +2622,15 @@ module sim_hists
 		z_jt_t = (nzblock+1)/2
 		do it = 1,Tsim
 			if(NBER_tseq .eqv. .true. ) then
-				if(it >= NBER_start_stop(ss,1) .and. it < NBER_start_stop(ss,2) ) then
+				if(it >= NBER_start_stop(ss,1) .and. it <= NBER_start_stop(ss,2) ) then
 					z_jt_innov(it) = -1.
-					z_jt_select(it) = 0
-				elseif( it == NBER_start_stop(ss,2)   ) then !fully reverse the recession
-					z_jt_innov(it)  = 1.
-					z_jt_select(it) = 1
-					ss= ss+1
+					z_jt_select(it) = 0.
 				else
 					z_jt_innov(it)  = 1.
-					z_jt_select(it) = 1
+					z_jt_select(it) = 1.
 				endif
+				if(it == NBER_start_stop(ss,2)) &
+					& ss = ss+1
 			else
 				call random_normal(z_innov)
 				z_jt_innov(it) = z_innov
@@ -2963,7 +2961,7 @@ module sim_hists
 	
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., ziwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
-					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1.
+					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., PrAl1(nz),totpopz(nz)
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
 			& beti=1, status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0
@@ -3052,8 +3050,8 @@ module sim_hists
 		work_dif_it      = 0.
 		app_dif_it       = 0.
 		Ncol = size(drawi_ititer,2)
-		al_int_it_endog  = 0
-		al_it_endog      = 0.
+		al_int_it_endog  = al_it_int
+		al_it_endog      = al_it
 
 		if(shk%drawn /= 1 )then
 			call draw_shocks(shk)
@@ -3109,6 +3107,23 @@ module sim_hists
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,iter_draws
 			if(verbose >3) print *, "iter: ", iter
+			!set prob alpha=1 for each z state.  Only works now for z_contin == .false.
+			if(iter>1)then 
+				PrAl1= 0.
+				totpopz = 0.
+				do zi_hr=1,nz
+					do i=1,Nsim
+						do it=2,Tsim
+							if(z_jt_macroint(it)==zi_hr .and. age_it(i,it) ) then 
+								totpopz(zi_hr) = totpopz(zi_hr) + 1.
+								if(al_int_it_endog(i,it)==1) &
+									& PrAl1(zi_hr) = PrAl1(zi_hr)+1.
+							endif
+						enddo!it
+					enddo !i
+					PrAl1(zi_hr) = PrAl1(zi_hr)/totpopz(zi_hr)
+				enddo !zi_hr
+			endif!iter>1
 			it = 1
 			ii = 1
 			junk =0.
@@ -3117,7 +3132,7 @@ module sim_hists
 				!need to draw these from age-specific distributions for iterations > 1
 				ii = 1
 				if(iter>1 .and. age_it(i,it)  > 0 ) then
-					!use status_it_innov(i,Tsim) to identify the d status, along with age of this guy
+					!use status_it_innov(i,Tsim) to identify the d state, along with age of this guy
 					if( status_it_innov(i,Tsim) < PrD3age(age_it(i,it)) ) then
 						do ii=1,Ncol
 							drawi = drawi_ititer(i,ii)!iter-1
@@ -3137,7 +3152,6 @@ module sim_hists
 					e_it(i,it) = e_it(drawi,drawt)
 					e_it_int(i,it) = e_it_int(drawi,drawt)
 					a_it_int(i,it) = a_it_int(drawi,drawt)
-					
 				endif
 			enddo !i=1:Nsim
 
@@ -3149,7 +3163,6 @@ module sim_hists
 	
 				!set a j to correspond to the probabilities.  This will get overwritten if born
 				j_hr = j_i(i)
-
 				del_hr = del_i_int(i) 
 
 				!initialize stuff
@@ -3172,6 +3185,8 @@ module sim_hists
 							j_hr = 1 !initial value
 							if(it< (struc_brk*itlen)) iiH = 1
 							if(it>=(struc_brk*itlen)) iiH = 2
+							al_hr	= al_it(i,it)
+							ali_hr	= al_it_int(i,it)					
 							do ij = 1,nj
 								j_val_ij = 0.
 								if(zj_contin .eqv. .true.)then
@@ -3185,8 +3200,6 @@ module sim_hists
 								else
 									zi_hr = z_jt_macroint(it)
 								endif
-								al_hr	= al_it(i,it)
-								ali_hr	= al_it_int(i,it)
 								
 								if(w_strchng .eqv. .true.) then ! adjust for wage trend
 									if(ali_hr > 1) al_hr = max(al_hr + wage_trend(it,ij), alfgrid(2))
@@ -3217,7 +3230,7 @@ module sim_hists
 									j_hr = ij
 									j_val = j_val_ij
 								endif
-							enddo
+							enddo !choose j
 							j_i(i) = j_hr
 							val_hr_it(i) = j_val
 							! now draw a del
@@ -3269,9 +3282,37 @@ module sim_hists
 						endif
 					endif 
 
+					!figure out where to evaluate z
+					if(zj_contin .eqv. .false.) then
+						zi_hr	= z_jt_macroint(it)
+						z_hr	= zgrid(zi_hr,j_hr)
+					else
+						z_hr	= z_jt_panel(it,j_hr)
+						do zi_hr = nz,1,-1
+							if(zgrid(zi_hr,ij)<z_hr) exit
+						enddo
+						ziH  = min(zi_hr+1,nz)
+						ziwt = (zgrid(ziH,j_hr)- z_hr)/( zgrid(ziH,j_hr) -   zgrid(zi_hr,j_hr) )
+						if( ziH == zi_hr ) ziwt = 1.
+					endif
+
+
 					!set the idiosyncratic income state
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
+					!in the first period need to establish the right number of exog unemp
+					if(it==1 .and. iter>1)then
+						if(status_it_innov(i,it) < PrAl1(zi_hr)) then
+									ali_hr = 1
+									invol_un = 1
+									iiwt = 1.
+									iiH = 2
+									al_hr = alfgrid(ali_hr)
+									status_tmrw = 2
+									status_it(i,it) = 2
+						endif
+					endif
+					
 					if( w_strchng .eqv. .true.) then
 						if( ali_hr>1 ) al_hr = max(al_hr + wage_trend(it,j_hr), alfgrid(2))
 						do ali_hr = nal,2,-1
@@ -3292,20 +3333,6 @@ module sim_hists
 					!	if(verbose >1 .and. (iiwt >1. .or. iiwt<0.)) then
 					!		print *, "iiwt=", iiwt, " (i,t,alpha)=", i, it, ali_hr
 					!	endif
-					endif
-					!figure out where to evaluate z
-
-					if(zj_contin .eqv. .false.) then
-						zi_hr	= z_jt_macroint(it)
-						z_hr	= zgrid(zi_hr,j_hr)
-					else
-						z_hr	= z_jt_panel(it,j_hr)
-						do zi_hr = nz,1,-1
-							if(zgrid(zi_hr,ij)<z_hr) exit
-						enddo
-						ziH  = min(zi_hr+1,nz)
-						ziwt = (zgrid(ziH,j_hr)- z_hr)/( zgrid(ziH,j_hr) -   zgrid(zi_hr,j_hr) )
-						if( ziH == zi_hr ) ziwt = 1.
 					endif
 
 					wage_hr	= wage(wage_lev(j_hr),al_hr,d_hr,z_hr,age_hr)

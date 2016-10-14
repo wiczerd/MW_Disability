@@ -44,9 +44,9 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
 			ndi = 3,  &		    !Number of individual disability risk types
-			nj  = 16, &!16          !Number of occupations
+			nj  = 2, &!16          !Number of occupations
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 40, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
