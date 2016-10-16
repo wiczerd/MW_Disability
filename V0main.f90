@@ -181,20 +181,27 @@ module helper_funs
 	!------------------------------------------------------------------------
 	! 4) Acceptance probability
 	!--------------------
-	function xifun(idin,zin,itin)
+	function xifun(idin,win,itin)
 
-		real(dp), intent(in):: zin
+		real(dp), intent(in):: win
 		integer, intent(in):: idin,itin
 		real(dp) :: xifun
-		if(itin>1 .or. ineligNoNu .eqv. .true.)then
-			xifun = 1._dp-(1._dp-xi(idin,itin)*zin**xizcoef)**(1._dp/tlen) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
-		else !itin ==1 & ineligNoNu == F
-			xifun = 1._dp-(1._dp-xi(idin,itin)*zin**xizcoef*eligY)**(1._dp/tlen)
-		endif
 		
-		!if itin==4 
-		!	xifun = xi(idin,itin) + (1._dp - xi(idin,itin))*(xizcoef*zin + 0.124)
-		!endif
+		!stage 1-3
+		if(itin>1 .or. ineligNoNu .eqv. .true.)then
+			xifun = xi_d(idin) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
+		else !itin ==1 & ineligNoNu == F
+			xifun = xi_d(idin)*eligY
+		endif
+		!vocational stages 4-5
+		if(itin>=(TT-2)) then
+			xifun = (1._dp-xifun)*( max(0._dp,(maxwin-win)/(maxwin-minwin))**xizcoef*(1.+xiagecoef))+ xifun
+		else
+			xifun = (1._dp-xifun)*( max(0._dp,(maxwin-win)/(maxwin-minwin))**xizcoef) + xifun
+		endif
+		!adjust for time aggregation
+		xifun = 1._dp - (1.-xifun)**(1._dp/tlen)
+		
 		
 	end function
 
@@ -1150,13 +1157,13 @@ module sol_val
 		Vout = Vtest1
 	end subroutine maxVU
 
-	subroutine maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0, V0, iaa0,iaaA,apol,gapp_pol,gapp_dif,Vout  )
+	subroutine maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0, V0,wagehere, iaa0,iaaA,apol,gapp_pol,gapp_dif,Vout  )
 		integer, intent(in) :: ij,ibi,idi,ial,id,ie,ia,iz,it
 		integer, intent(in) :: iaa0, iaaA 
 		integer, intent(out) :: apol,gapp_pol
 		real(dp), intent(out) :: gapp_dif
 		real(dp), intent(out) :: Vout
-		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:)
+		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:),wagehere
 		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, VNhr, VDhr, maxVNV0, minvalVD,minvalVN, xihr,nuhr
 		integer :: iw, iaa,ialal,izz,aapp,aNapp, ialalhr
 
@@ -1212,7 +1219,8 @@ module sol_val
 		endif
 	
 		!**********Value if apply for DI 
-		xihr = xifun(id,1._dp,it)
+
+		xihr = xifun(id,wagehere,it)
 		nuhr = nu
 		if(it== TT-1) nuhr = nu*(ptau(it)) !only pay nu for non-retired state
 		minvalVD = minval(VD0)
@@ -1950,20 +1958,21 @@ module sol_val
 				aa_u = 0
 				npara = nal*nd*ne*nz
 			!$OMP  parallel do reduction(+:summer)&
-			!$OMP& private(ipara,ial,id,ie,iz,apol,ga,gadif,ia,iaa0,iaaA,iaa_k,aa_l,aa_u,aa_m,V_m,Vtest1,iaN,ia_o) 
+			!$OMP& private(ipara,ial,id,ie,iz,apol,ga,gadif,ia,iaa0,iaaA,iaa_k,aa_l,aa_u,aa_m,V_m,Vtest1,wagehere,iaN,ia_o) 
 				do ipara = 1,npara
 					iz = mod(ipara-1,nz)+1
 					ie = mod(ipara-1,nz*ne)/nz + 1
 					id = mod(ipara-1,nz*ne*nd)/(nz*ne) +1
 					ial= mod(ipara-1,nz*ne*nd*nal)/(nz*ne*nd)+1
 
+					wagehere = wage(wage_lev(ij),alfgrid(ial),id,zgrid(iz,ij),it)
 					!----------------------------------------------------------------
 					!Loop over current state: assets
 					iaN=0
 					ia = 1
 					iaa0 = 1
 					iaaA = na
-					call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0,iaa0,iaaA,apol,ga,gadif,Vtest1)
+					call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0,wagehere,iaa0,iaaA,apol,ga,gadif,Vtest1)
 					aa_m(ia) = apol
 					V_m(ia) = Vtest1
 					gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
@@ -1975,7 +1984,7 @@ module sol_val
 					ia = na
 					iaa0 = aa_m(1)
 					iaaA = na
-					call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0, iaa0,iaaA,apol,ga,gadif,Vtest1)
+					call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0,wagehere,iaa0,iaaA,apol,ga,gadif,Vtest1)
 					V_m(ia) = Vtest1
 					aa_m(ia) = apol !agrid(apol)
 					gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
@@ -1998,7 +2007,7 @@ module sol_val
 							ia = aa_u(iaa_k)
 							iaa0 = aa_m( aa_l(iaa_k-1) )
 							iaaA = aa_m( aa_u(iaa_k-1) )
-							call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,VD0,V0, iaa0,iaaA,apol,ga,gadif,Vtest1)
+							call maxVN(ij,ibi,idi,ial,id,ie,ia,iz,it, VN0,VD0,V0,wagehere,iaa0,iaaA,apol,ga,gadif,Vtest1)
 							V_m(ia) = Vtest1
 							aa_m(ia) = apol !agrid(apol)
 							gapp((ij-1)*nbi+ibi,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
@@ -2961,7 +2970,7 @@ module sim_hists
 	
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., ziwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
-					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., PrAl1(nz),totpopz(nz)
+					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., PrAl1(nz),PrAl1St3(nz),totpopz(nz)
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
 			& beti=1, status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0
@@ -3114,13 +3123,16 @@ module sim_hists
 				do zi_hr=1,nz
 					do i=1,Nsim
 						do it=2,Tsim
-							if(z_jt_macroint(it)==zi_hr .and. age_it(i,it) ) then 
+							if(z_jt_macroint(it)==zi_hr .and. age_it(i,it)>0 .and. status_it(i,it) <=3 ) then 
 								totpopz(zi_hr) = totpopz(zi_hr) + 1.
-								if(al_int_it_endog(i,it)==1) &
-									& PrAl1(zi_hr) = PrAl1(zi_hr)+1.
+								if(al_int_it_endog(i,it)==1) then
+									PrAl1(zi_hr) = PrAl1(zi_hr)+1.
+										if(status_it(i,it)==3) PrAl1St3(zi_hr) = PrAl1St3(zi_hr)+1.
+								endif
 							endif
 						enddo!it
 					enddo !i
+					PrAl1St3(zi_hr) = PrAl1St3(zi_hr)/PrAl1(zi_hr)
 					PrAl1(zi_hr) = PrAl1(zi_hr)/totpopz(zi_hr)
 				enddo !zi_hr
 			endif!iter>1
@@ -3301,15 +3313,22 @@ module sim_hists
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
 					!in the first period need to establish the right number of exog unemp
-					if(it==1 .and. iter>1)then
-						if(status_it_innov(i,it) < PrAl1(zi_hr)) then
+					if(it==1 .and. iter>1 .and. status_hr<=3 .and. age_hr>0) then
+						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
 									ali_hr = 1
 									invol_un = 1
 									iiwt = 1.
 									iiH = 2
 									al_hr = alfgrid(ali_hr)
-									status_tmrw = 2
-									status_it(i,it) = 2
+									if(status_it_innov(i,Tsim-2)<PrAl1St3(zi_hr)) then
+										status_hr=3
+										status_tmrw = 3
+										status_it(i,it) = 3
+									else 
+										status_hr=2
+										status_tmrw = 2
+										status_it(i,it) = 2
+									endif
 						endif
 					endif
 					
@@ -3674,6 +3693,7 @@ module sim_hists
 
 			enddo
 			if( final_iter .eqv. .true. ) then 
+				print *, "prob al1" ,PrAl1(1), ",", PrAl1(2)
 				exit
 			endif
 			if( (sum((a_mean - a_mean_liter)**2) + sum((s_mean - s_mean_liter)**2) + sum((d_mean - d_mean_liter)**2))<1.e-5_dp .or. &
@@ -4920,13 +4940,16 @@ program V0main
 		open(1, file="xi.csv")
 		do it=1,TT-1
 			do id=1,(nd-1)
-				write(1, "(G20.12)", advance='no') xifun(id,1._dp,it)
+				write(1, "(G20.12)", advance='no') xifun(id,0.8_dp,it)
 			enddo
 			id = nd
-			write(1,*) xifun(id,1._dp,it)
+			write(1,*) xifun(id,0.8_dp,it)
 		enddo
 		close(1)
 
+		!output the possible wage-levels and set maxwin and minwin
+		maxwin = exp(maxval(alfgrid))
+		minwin = exp(minval(alfgrid))
 		open(1, file="wage_dist.csv")
 		ibi = 1
 		iz  = 3
@@ -4935,14 +4958,25 @@ program V0main
 				do id = 1,nd-1
 					wagehere = wage(0._dp,alfgrid(ial),id,zgrid(iz,ij),it)
 					write(1, "(G20.12)", advance='no') wagehere
+					if(wagehere > maxwin) &
+						maxwin = wagehere
+					if(wagehere < minwin) &
+						minwin = wagehere
 				enddo
 				id = nd
-				wagehere = wage(beti(ibi),alfgrid(ial),id,zgrid(iz,ij),it)
+				wagehere = wage(0._dp,alfgrid(ial),id,zgrid(iz,ij),it)
 				write(1,*) wagehere
+				if(wagehere > maxwin) &
+					maxwin = wagehere
+				if(wagehere < minwin) &
+					minwin = wagehere
 			enddo
 			write(1,*) " "! trailing space
 		enddo	
 		close(1)
+		minwin = minwin * exp(minval(wage_lev)) *0.99_dp
+		maxwin = maxwin * exp(maxval(wage_lev)) *1.01_dp
+		
 		open(1, file="util_dist.csv")
 		junk =0.
 		ibi =1

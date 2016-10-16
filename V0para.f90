@@ -93,7 +93,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		zshift(nj),&		!shifts occupation TFP in second period.  
 		zscale(nj),&		!scales occupation TFP relative to the aggregate shock.  
 		zgrid(nz,nj), &		!TFP shock grid
-		xi(nd,TT-1), &		!DI acceptance probability
+!		xi(nd,TT-1), &		!DI acceptance probability
+		xi_d(nd),&			!1st round DI acceptance probability
 		agrid(na),&			!Assets grid
 		egrid(ne),&			!Earnings Index Grid
 		pialf(nal,nal),&	!Alpha_i transition matrix
@@ -149,16 +150,23 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
-		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
-		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
-		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
-		xi0M = 0.315, &		!Probability of DI accept for d=0, middle age
-		xi1M = 0.450, &		!Probability of DI accept for d=1, middle age
-		xi2M = 0.503, &		!Probability of DI accept for d=2, middle age
-		xi0O = 0.315, &		!Probability of DI accept for d=0, old
-		xi1O = 0.450, &		!Probability of DI accept for d=1, old
-		xi2O = 0.503, &		!Probability of DI accept for d=2, old
-		xizcoef = 0., &		! -2 targets the change from 1-30% -> 1-16% acceptance rate with z deterioration
+!~ 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
+!~ 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
+!~ 		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
+!~ 		xi0M = 0.315, &		!Probability of DI accept for d=0, middle age
+!~ 		xi1M = 0.450, &		!Probability of DI accept for d=1, middle age
+!~ 		xi2M = 0.503, &		!Probability of DI accept for d=2, middle age
+!~ 		xi0O = 0.315, &		!Probability of DI accept for d=0, old
+!~ 		xi1O = 0.450, &		!Probability of DI accept for d=1, old
+!~ 		xi2O = 0.503, &		!Probability of DI accept for d=2, old
+		xizcoef = 0., &		! change in acceptance rate with z deterioration
+		voc_accept = 0.25,&	!fraction of admissions from vocational criteria, target 1985
+		hlth_accept = 0.75,&!fraction taken based on health criteria, target 1985
+		xiagecoef = 0.,&	!increase in vocational acceptance due to age
+		voc_age	= 0.25,&	!target for increase in vocation due to age
+		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
+		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
+		maxwin,minwin,&		!frac limits for earnings for DI probs
 		DItest1 = 1.0, &	!Earnings Index threshold 1 (These change based on the average wage)
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3
@@ -336,6 +344,8 @@ subroutine setparams()
 	pialf(1,nal) = 1.-sum(pialf(1,2:(nal-1) ))
 	pialf(2:nal,1) = 0. !exogenous separation is not built into alpha transitions
 
+	maxwin = exp(maxval(alfgrid)) !will overwrite in the main code
+	minwin = exp(minval(alfgrid)) !will overwrite in the main code
 
 	!read these numberrs in already
 	seprisk = 0.
@@ -492,32 +502,16 @@ subroutine setparams()
 	wd(3) = -0.50111	!Full Disabled, large penalty
 
 	!DI Acceptance probability for each d,t status
-
-	xi(1,1) = xi0Y
-	xi(2,1) = xi1Y
-	xi(3,1) = xi2Y
-	xi(1,2) = xi0M
-	xi(2,2) = xi1M
-	xi(3,2) = xi2M
-	if(TT-1>=3) then
-		xi(1,3) = xi0M
-		xi(2,3) = xi1M
-		xi(3,3) = xi2M
-	endif
-	if(TT-1>=4) then
-		xi(1,4) = xi0O
-		xi(2,4) = xi1O
-		xi(3,4) = xi2O
-	endif
-	if(TT-1>=5) then
-		xi(1,5) = xi0O
-		xi(2,5) = xi1O
-		xi(3,5) = xi2O
-	endif
-	! COME BACK TO THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!! (coming from old age effect in "Modeling SSA's Sequential Disability Determination Process Using SIPP)
-	xi(:,4:5) = xi(:,4:5)*(1.+ .124)
-	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	xiagecoef = voc_age
+	xi_d1shift = (1491*.603+2211*0.546)/(1491+2211) - (347*.581+752*.655)/(347+752) !differences from Lahiri, Vaughn, Wixon : denial rate for hlth 1,2 vs. 3,4
+	xi_d3shift = (1491*.603+2211*0.546)/(1491+2211) - .484
+	
+	! initialize a few starting values
+	xi_d(2) = 0.357_dp * 0.81 !or hlth_accept*0.4
+	xi_d(1) = xi_d(2)*(1+xi_d1shift)	!
+	xi_d(3) = xi_d(2)*(1+xi_d3shift) 
+	
+	xizcoef = dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
 	
 	!DI applications target.  Average of 1980-1985
 	apprt_target = 0.
