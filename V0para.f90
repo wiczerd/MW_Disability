@@ -159,7 +159,9 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 !~ 		xi0O = 0.315, &		!Probability of DI accept for d=0, old
 !~ 		xi1O = 0.450, &		!Probability of DI accept for d=1, old
 !~ 		xi2O = 0.503, &		!Probability of DI accept for d=2, old
-		xizcoef = 0., &		! change in acceptance rate with z deterioration
+		proc_time1 = 3.6,&	!time to process an application 
+		proc_time2 = 28.05,&!time to process an application in stage 2 (28.05-3.6)
+		xizcoef = 0., &		!change in acceptance rate with z deterioration
 		voc_accept = 0.25,&	!fraction of admissions from vocational criteria, target 1985
 		hlth_accept = 0.75,&!fraction taken based on health criteria, target 1985
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
@@ -507,11 +509,11 @@ subroutine setparams()
 	xi_d3shift = (1491*.603+2211*0.546)/(1491+2211) - .484
 	
 	! initialize a few starting values
-	xi_d(2) = 0.357_dp * 0.81 !or hlth_accept*0.4
-	xi_d(1) = xi_d(2)*(1+xi_d1shift)	!
-	xi_d(3) = xi_d(2)*(1+xi_d3shift) 
+	xi_d(3) = 0.357_dp * 0.81 !or hlth_accept*0.4
+	xi_d(2) = xi_d(3)-xi_d3shift 
+	xi_d(1) = xi_d(2)+xi_d1shift	!
 	
-	xizcoef = dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
+	xizcoef = (0.4_dp - xi_d(2))/0.5_dp!dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
 	
 	!DI applications target.  Average of 1980-1985
 	apprt_target = 0.

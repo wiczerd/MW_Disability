@@ -193,14 +193,16 @@ module helper_funs
 		else !itin ==1 & ineligNoNu == F
 			xifun = xi_d(idin)*eligY
 		endif
+		xifun = 1._dp - (xifun)**(1._dp/proc_time1)
+		
 		!vocational stages 4-5
 		if(itin>=(TT-2)) then
-			xifun = (1._dp-xifun)*( max(0._dp,(maxwin-win)/(maxwin-minwin))**xizcoef*(1.+xiagecoef))+ xifun
+			xifun = (1._dp-xifun)*( max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef*(1.+xiagecoef))+ xifun
 		else
-			xifun = (1._dp-xifun)*( max(0._dp,(maxwin-win)/(maxwin-minwin))**xizcoef) + xifun
+			xifun = (1._dp-xifun)*( max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef) + xifun
 		endif
 		!adjust for time aggregation
-		xifun = 1._dp - (1.-xifun)**(1._dp/tlen)
+		xifun = 1._dp - max(0._dp,1.-xifun)**(1._dp/proc_time2)
 		
 		
 	end function
@@ -2456,6 +2458,8 @@ module sim_hists
 		enddo
 
 		success =0
+		!
+		
 		do i=1,Nsim
 
 			! draw starting values
@@ -4545,7 +4549,7 @@ module find_params
 				enddo
 			enddo !ij 
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
-			if(dist_wgtrend_iter(iter)<1e-4) then
+			if(dist_wgtrend_iter(iter)<1e-3) then
 				exit
 			endif
 			if(print_lev .ge. 4) then
