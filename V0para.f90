@@ -127,7 +127,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 5., &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 6.5, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -509,7 +509,7 @@ subroutine setparams()
 	xi_d3shift = (1491*.603+2211*0.546)/(1491+2211) - .484
 	
 	! initialize a few starting values
-	xi_d(3) = 0.357_dp * 0.81 !or hlth_accept*0.4
+	xi_d(3) = .15_dp !or hlth_accept*0.4
 	xi_d(2) = xi_d(3)-xi_d3shift 
 	xi_d(1) = xi_d(2)+xi_d1shift	!
 	

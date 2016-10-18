@@ -181,29 +181,33 @@ module helper_funs
 	!------------------------------------------------------------------------
 	! 4) Acceptance probability
 	!--------------------
-	function xifun(idin,win,itin)
+	function xifun(idin,win,itin,hlthprob)
 
 		real(dp), intent(in):: win
 		integer, intent(in):: idin,itin
-		real(dp) :: xifun
+		real(dp), optional :: hlthprob
+		real(dp) :: xifunH,xifunV,xifun
 		
 		!stage 1-3
 		if(itin>1 .or. ineligNoNu .eqv. .true.)then
-			xifun = xi_d(idin) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
+			xifunH = xi_d(idin) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
 		else !itin ==1 & ineligNoNu == F
-			xifun = xi_d(idin)*eligY
+			xifunH = xi_d(idin)*eligY
 		endif
-		xifun = 1._dp - (xifun)**(1._dp/proc_time1)
+		xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
+		if(present(hlthprob) .eqv. .true.) &
+			hlthprob = xifunH
 		
 		!vocational stages 4-5
 		if(itin>=(TT-2)) then
-			xifun = (1._dp-xifun)*( max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef*(1.+xiagecoef))+ xifun
+			xifunV = max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef*(1.+xiagecoef)
 		else
-			xifun = (1._dp-xifun)*( max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef) + xifun
+			xifunV = max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef)
 		endif
 		!adjust for time aggregation
-		xifun = 1._dp - max(0._dp,1.-xifun)**(1._dp/proc_time2)
+		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 		
+		xifun = (1._dp-xifunH)*xifunV + xifunH
 		
 	end function
 
@@ -2459,7 +2463,6 @@ module sim_hists
 
 		success =0
 		!
-		
 		do i=1,Nsim
 
 			! draw starting values
@@ -2923,6 +2926,7 @@ module sim_hists
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
+		integer, allocatable :: hlthvocSSDI(:,:) ! got into ssdi on health or vocational considerations, 0= no ssdi, 1=health, 2=vocation
 		real(dp), allocatable :: e_it(:,:), median_wage(:,:)
 		
 		! FOR DEBUGGING
@@ -2970,11 +2974,11 @@ module sim_hists
 		logical :: ptrsuccess=.false.
 		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),pialf_conddist(nal), cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1), &
 				& d_var(TT-1),a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
-				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj)
+				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj),PrAl1(nz),PrAl1St3(nz),totpopz(nz)
 	
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., ziwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
-					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., PrAl1(nz),PrAl1St3(nz),totpopz(nz)
+					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
 			& beti=1, status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0
@@ -3000,6 +3004,7 @@ module sim_hists
 		allocate(app_it(Nsim,Tsim))
 		allocate(al_int_it_endog(Nsim,Tsim))
 		allocate(al_it_endog(Nsim,Tsim))
+		allocate(hlthvocSSDI(Nsim,Tsim))
 
 
 		!!!!!!!!!!!!!!! DEBUGGING
@@ -3062,6 +3067,7 @@ module sim_hists
 		Tret = (Longev - youngD - oldD*oldN)*tlen
 		work_dif_it      = 0.
 		app_dif_it       = 0.
+		hlthvocSSDI		 = 0 
 		Ncol = size(drawi_ititer,2)
 		al_int_it_endog  = al_it_int
 		al_it_endog      = al_it
@@ -3173,7 +3179,7 @@ module sim_hists
 
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
-			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,ii,sepi,fndi,invol_un,status_tmrw) 
+			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,hlthprob,ii,sepi,fndi,invol_un,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3475,8 +3481,13 @@ module sim_hists
 									if(age_hr > 1 .or. (ineligNoNu .eqv. .false. .and. age_hr==1)&
 										& .or. (age_hr ==1 .and. status_it_innov(i,min(it+1,Tsim))<eligY )) then !status_it_innov(i,it+1) is an independent draw
 										!applying, do you get it?
-										if(status_it_innov(i,it) < xifun(d_hr,z_hr,age_hr)) then 
+										if(status_it_innov(i,it) < xifun(d_hr,z_hr,age_hr,hlthprob)) then 
 											status_tmrw = 4
+											if( status_it_innov(i,it) <  hlthprob) then
+												hlthvocSSDI(i,it) = 1
+											else
+												hlthvocSSDI(i,it) = 2
+											endif
 										else	
 											status_tmrw = 3
 										endif
@@ -3796,6 +3807,7 @@ module sim_hists
 					call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
 					call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
+					call mati2csv (hlthvocSSDI,"hlthvocSSDI_hist"//trim(caselabel)//".csv")
 			endif
 		endif
 		
@@ -3804,6 +3816,7 @@ module sim_hists
 		deallocate(a_it_int,e_it_int)
 		deallocate(app_it,work_it)
 		deallocate(val_hr_it)
+		deallocate(hlthvocSSDI)
 		!deallocate(status_it_innov)
 		!deallocate(drawi_ititer,drawt_ititer)
 
@@ -4941,16 +4954,6 @@ program V0main
 		call mat2csv(wage_trend,"occwg_trend.csv")
 
 
-		open(1, file="xi.csv")
-		do it=1,TT-1
-			do id=1,(nd-1)
-				write(1, "(G20.12)", advance='no') xifun(id,0.8_dp,it)
-			enddo
-			id = nd
-			write(1,*) xifun(id,0.8_dp,it)
-		enddo
-		close(1)
-
 		!output the possible wage-levels and set maxwin and minwin
 		maxwin = exp(maxval(alfgrid))
 		minwin = exp(minval(alfgrid))
@@ -4981,6 +4984,23 @@ program V0main
 		minwin = minwin * exp(minval(wage_lev)) *0.99_dp
 		maxwin = maxwin * exp(maxval(wage_lev)) *1.01_dp
 		
+		open(1, file="xi.csv")
+		do it=1,TT-1
+			do id=1,(nd-1)
+				write(1, "(G20.12)", advance='no') xifun(id,minwin*1.1_dp,it)
+			enddo
+			id = nd
+			write(1,*) xifun(id,minwin*1.1_dp,it)
+		enddo
+		do it=1,TT-1
+			do id=1,(nd-1)
+				write(1, "(G20.12)", advance='no') xifun(id,maxwin*0.9_dp,it)
+			enddo
+			id = nd
+			write(1,*) xifun(id,maxwin*0.9_dp,it)
+		enddo		
+		close(1)
+
 		open(1, file="util_dist.csv")
 		junk =0.
 		ibi =1
