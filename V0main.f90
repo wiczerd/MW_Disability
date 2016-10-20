@@ -189,25 +189,24 @@ module helper_funs
 		real(dp) :: xifunH,xifunV,xifun
 		
 		!stage 1-3
-		if(itin>1 .or. ineligNoNu .eqv. .true.)then
-			xifunH = xi_d(idin) !+ (1._dp - xi(idin,itin))*(xizcoef*zin)
-		else !itin ==1 & ineligNoNu == F
-			xifunH = xi_d(idin)*eligY
-		endif
+		xifunH = xi_d(idin)
 		xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
 		if(present(hlthprob) .eqv. .true.) &
 			hlthprob = xifunH
 		
 		!vocational stages 4-5
 		if(itin>=(TT-2)) then
-			xifunV = max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef*(1.+xiagecoef)
+			xifunV =  max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef*(1.+xiagecoef)
 		else
-			xifunV = max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef)
+			xifunV =  max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef
 		endif
 		!adjust for time aggregation
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 		
 		xifun = (1._dp-xifunH)*xifunV + xifunH
+
+		if(itin==1 .and. ineligNoNu .eqv. .false.) &
+			xifun = xifun*eligY
 		
 	end function
 
@@ -526,6 +525,23 @@ module helper_funs
 		deallocate(XpX,XpX_fac,XpX_inv,fitted,resids)
 	
 	end subroutine OLS
+
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	! Time aggregation solution to pid
+	subroutine cor_time_ag( pid_bian, pid_mo )
+	
+		real(dp), intent(in) , dimension(:,:,:) :: pid_bian
+		real(dp), intent(out), dimension(:,:,:) :: pid_mo
+		
+		integer :: sz,i
+		
+		external dgees 
+		
+		pid_mo = pid_bian
+		
+		
+	end subroutine cor_time_ag
+		
 
 	subroutine alloc_hist(hst)
 	
@@ -3288,9 +3304,9 @@ module sim_hists
 					
 					status_hr = status_it(i,it)
 					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
-					if((age_hr .eq. TT) ) then
+					if((age_hr .eq. TT) .or. status_it_innov(i,it)>(1.-PrDeath(d_hr,age_hr)) ) then !
 						it_old = it_old + 1
-						if(it_old >  Tret ) then
+						if(it_old >  Tret  .or. status_it_innov(i,it)>(1.-PrDeath(d_hr,age_hr))) then !
 							age_it(i,it) = -1
 							a_it(i,it) = 0.
 							a_it_int(i,it) = 0
@@ -4926,6 +4942,7 @@ program V0main
 		call veci2csv(agegrid,'agegrid.csv',wo)		
 		call mat2csv(piz(:,:),"piz.csv",wo)
 		call mat2csv(pialf,"pial.csv",wo)
+		call mat2csv(PrDeath,"PrDeath.csv",wo)
 		cumpid = 0.
 		do idi=1,ndi
 		do it =1,TT-1
@@ -4985,21 +5002,27 @@ program V0main
 		maxwin = maxwin * exp(maxval(wage_lev)) *1.01_dp
 		
 		open(1, file="xi.csv")
+		open(2, file="xi_hlth.csv")
 		do it=1,TT-1
 			do id=1,(nd-1)
-				write(1, "(G20.12)", advance='no') xifun(id,minwin*1.1_dp,it)
+				write(1, "(G20.12)", advance='no') xifun(id,minwin*1.1_dp,it,junk)
+				write(2, "(G20.12)", advance='no') junk
 			enddo
 			id = nd
-			write(1,*) xifun(id,minwin*1.1_dp,it)
+			write(1,*) xifun(id,minwin*1.1_dp,it,junk)
+			write(2,*) junk
 		enddo
 		do it=1,TT-1
 			do id=1,(nd-1)
-				write(1, "(G20.12)", advance='no') xifun(id,maxwin*0.9_dp,it)
+				write(1, "(G20.12)", advance='no') xifun(id,maxwin*0.9_dp,it,junk)
+				write(2, "(G20.12)", advance='no') junk
 			enddo
 			id = nd
-			write(1,*) xifun(id,maxwin*0.9_dp,it)
+			write(1,*) xifun(id,maxwin*0.9_dp,it,junk)
+			write(2,*) junk
 		enddo		
 		close(1)
+		close(2)
 
 		open(1, file="util_dist.csv")
 		junk =0.

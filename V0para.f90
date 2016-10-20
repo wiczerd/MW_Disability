@@ -107,7 +107,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		prborn_t(Tsim),&	!probability of being born at each point t
 		hazborn_t(Tsim), &	!hazard of being born at each point t
 		PrD3age(TT-1), &	!Fraction of D2 at each age
-
+		PrDeath(nd,TT),&	!Probability of death during work-life
 
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
 		wage_trend(Tsim,nj),&!trend in wages
@@ -150,15 +150,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
-!~ 		xi0Y = 0.297, &		!Probability of DI accept for d=0, young
-!~ 		xi1Y = 0.427, &		!Probability of DI accept for d=1, young
-!~ 		xi2Y = 0.478, &		!Probability of DI accept for d=2, young
-!~ 		xi0M = 0.315, &		!Probability of DI accept for d=0, middle age
-!~ 		xi1M = 0.450, &		!Probability of DI accept for d=1, middle age
-!~ 		xi2M = 0.503, &		!Probability of DI accept for d=2, middle age
-!~ 		xi0O = 0.315, &		!Probability of DI accept for d=0, old
-!~ 		xi1O = 0.450, &		!Probability of DI accept for d=1, old
-!~ 		xi2O = 0.503, &		!Probability of DI accept for d=2, old
+
 		proc_time1 = 3.6,&	!time to process an application 
 		proc_time2 = 28.05,&!time to process an application in stage 2 (28.05-3.6)
 		xizcoef = 0., &		!change in acceptance rate with z deterioration
@@ -515,6 +507,7 @@ subroutine setparams()
 	
 	xizcoef = (0.4_dp - xi_d(2))/0.5_dp!dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
 	
+	
 	!DI applications target.  Average of 1980-1985
 	apprt_target = 0.
 	do t=1,50
@@ -549,7 +542,7 @@ subroutine setparams()
 	enddo
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	!Make Markov transition matrices with all wierd invidual stuff
+	!Make 2-year Markov transition matrices with all wierd invidual stuff
 	!Disability: pid(id,id';i,t) <---indv. type and age specific
 	!  					& 0 & 1 & 2 & dead\\
     pid_tmp(1,:,1) = (/0.978 , 0.018 , 0.003 , 0.001/)
@@ -583,15 +576,15 @@ subroutine setparams()
 		enddo
 	enddo
 	
-	! convert to monthly and multiply by delgrid
+	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
 		do j=1,ndi
-		pid(1,2,j,i) = 1. - ( 1.-pid_tmp(1,2,i)*delgrid(j) )**(1./tlen)
-		pid(1,3,j,i) = 1. - ( 1.-pid_tmp(1,3,i)*delgrid(j) )**(1./tlen)
+		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i) )**(0.5_dp/tlen))*delgrid(j)
+		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i) )**(0.5_dp/tlen))*delgrid(j)
 		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
 		
-		pid(2,1,j,i) = 1. - ( 1.-pid_tmp(2,1,i) )**(1./tlen)
-		pid(2,3,j,i) = 1. - ( 1.-pid_tmp(2,3,i)*delgrid(j) )**(1./tlen)
+		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i) )**(0.5_dp/tlen))*delgrid(j)
+		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i) )**(0.5_dp/tlen))*delgrid(j)
 		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
 		
 		pid(3,3,j,i) = 1.
@@ -600,7 +593,11 @@ subroutine setparams()
 		enddo
 	enddo
 	
-	PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
+	!was: PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
+	PrD3age = (/0.0444_dp,0.0756_dp,0.0933_dp,0.1201_dp,0.1617_dp /)
+	
+	PrDeath(:,1:(TT-1)) = 1.-(1._dp-pid_tmp(:,4,:))**(0.5_dp/tlen)
+	PrDeath(:,TT) = PrDeath(:,TT-1)
 	
 end subroutine setparams
 
