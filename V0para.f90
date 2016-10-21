@@ -43,11 +43,11 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
 			nbi = 1,  &		        !Number of indiVidual beta types
-			ndi = 3,  &		    !Number of individual disability risk types
-			nj  = 2, &!16          !Number of occupations
+			ndi = 2,  &		    !Number of individual disability risk types
+			nj  = 16, &!16          !Number of occupations
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 40, &!100	        !Points on assets grid
+			na  = 50, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000, & !1000*nj!how many agents to draw
@@ -64,7 +64,9 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  z_flowrts	 = .true.,& !make zj just control flow rates and not productivity (makes the next irrelevant)
 					  zj_contin	 = .false.,& !make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
-					  ineligNoNu = .false.  ! do young ineligable also pay the nu cost when they are ineligable?
+					  ineligNoNu = .false.,&! do young ineligable also pay the nu cost when they are ineligable?
+					  dieyoung   = .false.
+					  
 					  
 ! these relate to what's changing over the simulation/across occupation
 logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
@@ -372,7 +374,7 @@ subroutine setparams()
 
 	!Wage Bonus 0.0373076,-0.0007414
 	do i=1,TT-1							
-		wtau(i) = 0.!ageW*agegrid(i)+ageW2*agegrid(i)**2 !Old
+		wtau(i) = ageW*agegrid(i)+ageW2*agegrid(i)**2 !Old
 	enddo
 	
 	!Aging Probability (actually, probability of not aging)
@@ -505,8 +507,8 @@ subroutine setparams()
 	xi_d(2) = xi_d(3)-xi_d3shift 
 	xi_d(1) = xi_d(2)+xi_d1shift	!
 	
-	xizcoef = (0.4_dp - xi_d(2))/0.5_dp!dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
-	
+	xizcoef = (0.4_dp - xi_d(2))/0.5_dp !dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
+	xizcoef = 1.1_dp * xizcoef !just and arbitrary adjustment
 	
 	!DI applications target.  Average of 1980-1985
 	apprt_target = 0.

@@ -203,10 +203,13 @@ module helper_funs
 		!adjust for time aggregation
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 		
-		xifun = (1._dp-xifunH)*xifunV + xifunH
+		xifun = xifunV + xifunH
+		
+		xifun = min(xifun,1._dp)
 
-		if(itin==1 .and. ineligNoNu .eqv. .false.) &
+		if((itin .eq. 1) .and. (ineligNoNu .eqv. .false.)) then
 			xifun = xifun*eligY
+		endif
 		
 	end function
 
@@ -500,7 +503,7 @@ module helper_funs
 			call dgemm('T', 'N', nK, nK, nX, 1._dp, XX, nX, XX, nX, 0., XpX, nK)
 			XpX_fac = XpX
 			call dpotrf('U',Nk,XpX_fac,Nk,status)
-			if(status == 0) then
+			if(status .eq. 0) then
 				! 3/ Multiply LHS of regression and solve it
 				call dgemv('T', nX, nK, 1._dp, XX, nX, Y, 1, 0., coefs, 1)
 				call dpotrs('U',nK,1,XpX_fac,nK,coefs,Nk,status)
@@ -509,7 +512,7 @@ module helper_funs
 			endif
 		endif
 		
-		if(status == 0) then 
+		if(status .eq. 0) then 
 			XpX_inv = XpX_fac
 			call dpotri('U',nK,XpX_inv,nK,status)
 			fitted = 0.
@@ -519,7 +522,7 @@ module helper_funs
 			do i=1,nY
 				hatsig2 = (resids(i)**2)/dble(nX-nK) + hatsig2
 			enddo
-			if(status == 0) cov_coef = hatsig2*XpX_inv
+			if(status .eq. 0) cov_coef = hatsig2*XpX_inv
 		endif
 		
 		deallocate(XpX,XpX_fac,XpX_inv,fitted,resids)
@@ -820,12 +823,12 @@ module model_data
 						endif
 					enddo
 					do ij = 1,nj
-						if(shk%j_i(i) == ij )  then
-							if(it<=Tsim - yr_stride .and. it>= yr_stride+1) then
+						if(shk%j_i(i) .eq. ij )  then
+							if((it<=Tsim - yr_stride) .and. (it>= yr_stride+1)) then
 								obsX_vars(Nobs, (TT-1)+(nd-1)*2+1) = (hst%occsize_jt(ij,it+yr_stride) - hst%occsize_jt(ij,it-yr_stride)) &
 													& /(hst%occsize_jt(ij,it))
 							endif
-							if(it<=Tsim - 2*yr_stride .and. it>= 2*yr_stride+1) then
+							if((it<=Tsim - 2*yr_stride) .and. (it>= 2*yr_stride+1)) then
 								obsX_vars(Nobs, (TT-1)+(nd-1)*2+2) = hst%occsize_jt(ij,it+2*yr_stride) - hst%occsize_jt(ij,it-2*yr_stride) &
 													& /(hst%occsize_jt(ij,it))
 							endif
@@ -915,7 +918,7 @@ module model_data
 		
 		do si = 1,Nsim
 			do st = 1,Tsim
-				if(hst%status_hist(si,st) >0 .and. shk%age_hist(si,st) >0 ) then
+				if((hst%status_hist(si,st)>0) .and. (shk%age_hist(si,st) >0) ) then
 					age_hr = shk%age_hist(si,st)
 					totage_st(age_hr,st) = totage_st(age_hr,st) + 1
 					! savings and disability by time
@@ -937,9 +940,9 @@ module model_data
 								dD_age(age_hr) = dD_age(age_hr)+hst%d_hist(si,st)
 								! associate this with its shock
 								do ial = 1,nal
-									if(  shk%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp) &
-									&	.and. shk%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp) &
-									&	.and. hst%status_hist(si,st) == 4 ) &
+									if(  (shk%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp)) &
+									&	.and. (shk%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp)) &
+									&	.and. (hst%status_hist(si,st) == 4 )) &
 									&	alD_age(ial,age_hr) = 1._dp + alD_age(ial,it)
 								enddo
 							elseif(hst%status_hist(si,st) == 3) then
@@ -1233,7 +1236,7 @@ module sol_val
 		enddo !iaa
 		Vnapp = Vtest1 					
 		aNapp = apol !agrid(apol)
-		if(Vnapp <-1e5 .and. verbose >0) then
+		if((Vnapp <-1e5) .and. (verbose >0)) then
 			write(*,*) "ruh roh!"
 			write(*,*) "Vnapp, aNapp: ", Vnapp, aNapp
 			write(*,*) "VD: ",id,ie,iaa,it
@@ -1320,7 +1323,7 @@ module sol_val
 
 		gapp_dif = Vapp - Vnapp
 		if(verbose .gt. 4) print *, Vapp - Vnapp
-		if(it == 1 .and. ineligNoNu .eqv. .true.) then
+		if((it == 1) .and. (ineligNoNu .eqv. .true.)) then
 			Vout = smthV*Vnapp + (1._dp - smthV)*(eligY*Vapp + (1._dp- eligY)*Vnapp)
 		else
 			Vout = smthV*Vnapp + (1._dp - smthV)*Vapp
@@ -2114,9 +2117,9 @@ module sol_val
 					wagehere = wage(wage_lev(ij),alfgrid(ial),id,zgrid(iz,ij),it)
 					eprime = Hearn(it,ie,wagehere)
 					!linear interpolate for the portion that blocks off bounds on assets
-					if(eprime > emin .and. eprime < emax) then  ! this should be the same as if(eprime > minval(egrid) .and. eprime < maxval(egrid))
+					if((eprime > emin) .and. (eprime < emax)) then  ! this should be the same as if(eprime > minval(egrid) .and. eprime < maxval(egrid))
 						iee1 = ne
-						do while( eprime < egrid(iee1) .and. iee1>= 1)
+						do while( (eprime < egrid(iee1)) .and. (iee1>= 1))
 							iee1 = iee1 -1
 						enddo
 						iee2 = min(ne,iee1+1)
@@ -2654,7 +2657,7 @@ module sim_hists
 		z_jt_t = (nzblock+1)/2
 		do it = 1,Tsim
 			if(NBER_tseq .eqv. .true. ) then
-				if(it >= NBER_start_stop(ss,1) .and. it <= NBER_start_stop(ss,2) ) then
+				if((it >= NBER_start_stop(ss,1)) .and. (it <= NBER_start_stop(ss,2)) ) then
 					z_jt_innov(it) = -1.
 					z_jt_select(it) = 0.
 				else
@@ -2722,14 +2725,14 @@ module sim_hists
 			do it=2,Tsim
 				if(age_it(i,it-1)<TT) then
 					call rand_num_closed(rand_born)
-					if(rand_born < hazborn_t(it) .and. bn_i == 0 ) then
+					if((rand_born < hazborn_t(it)) .and.( bn_i == 0) ) then
 						age_it(i,it) =1
 						born_it(i,it) = 1
 						bn_i = 1
 					elseif(bn_i == 1) then
 						born_it(i,it) = 0
 						call rand_num_closed(rand_age)
-						if(rand_age < 1- ptau(age_it(i,it-1)) .and. age_it(i,it-1) < TT ) then
+						if((rand_age < 1- ptau(age_it(i,it-1))) .and. (age_it(i,it-1) < TT) ) then
 							age_it(i,it) = age_it(i,it-1)+1
 						else 
 							age_it(i,it) = age_it(i,it-1)
@@ -2896,7 +2899,7 @@ module sim_hists
 
 			! use conditional probability w/in time block
 			zi_jt_t = finder(cumpi_zblock(zi_jt_t,:),shk%z_jt_select(it) )
-			if( it >= Tblock_sim*itlen .and. z_regimes .eqv. .true.) then
+			if( (it >= Tblock_sim*itlen) .and. (z_regimes .eqv. .true.)) then
 				z_jt_macroint(it) = zi_jt_t  + nz/2
 			else
 				z_jt_macroint(it) = zi_jt_t
@@ -2905,7 +2908,7 @@ module sim_hists
 			
 			Zz_t = (1.-zrho) * zmu + zsig*shk%z_jt_innov(it) + zrho*Zz_t
 			do ij=1,nj
-				if(it>= Tblock_sim*itlen .and. z_regimes .eqv. .true.) then 
+				if((it>= Tblock_sim*itlen) .and. (z_regimes .eqv. .true.)) then 
 					muhere = zshift(ij)
 				else
 					muhere = 0.
@@ -2987,14 +2990,14 @@ module sim_hists
 		integer, pointer ::	gapp(:,:,:,:,:,:,:), &
 					gwork(:,:,:,:,:,:,:)
 
-		logical :: ptrsuccess=.false.
+		logical :: ptrsuccess=.false., dead = .false.
 		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),pialf_conddist(nal), cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1), &
 				& d_var(TT-1),a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
 				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj),PrAl1(nz),PrAl1St3(nz),totpopz(nz)
 	
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., ziwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
-					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob
+					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1, &
 			& beti=1, status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0
@@ -3149,7 +3152,7 @@ module sim_hists
 				do zi_hr=1,nz
 					do i=1,Nsim
 						do it=2,Tsim
-							if(z_jt_macroint(it)==zi_hr .and. age_it(i,it)>0 .and. status_it(i,it) <=3 ) then 
+							if((z_jt_macroint(it)==zi_hr) .and. (age_it(i,it)>0 ).and. (status_it(i,it) <=3) ) then 
 								totpopz(zi_hr) = totpopz(zi_hr) + 1.
 								if(al_int_it_endog(i,it)==1) then
 									PrAl1(zi_hr) = PrAl1(zi_hr)+1.
@@ -3169,7 +3172,7 @@ module sim_hists
 				!for the population that is pre-existing in the first period 
 				!need to draw these from age-specific distributions for iterations > 1
 				ii = 1
-				if(iter>1 .and. age_it(i,it)  > 0 ) then
+				if((iter>1) .and. (age_it(i,it)  > 0 )) then
 					!use status_it_innov(i,Tsim) to identify the d state, along with age of this guy
 					if( status_it_innov(i,Tsim) < PrD3age(age_it(i,it)) ) then
 						do ii=1,Ncol
@@ -3195,7 +3198,7 @@ module sim_hists
 
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,apc_hr,ep_hr, &
-			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,junk,app_dif_hr,work_dif_hr,hlthprob,ii,sepi,fndi,invol_un,status_tmrw) 
+			!$OMP& iiH, iiwt, ziwt,ziH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr,hlthprob,ii,sepi,fndi,invol_un,dead,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3207,6 +3210,7 @@ module sim_hists
 				it = 1
 				it_old = 1
 				invol_un = 0
+				dead = .false.
 				do it=1,Tsim
 				if(age_it(i,it) > 0) then !they've been born 
 					
@@ -3244,7 +3248,7 @@ module sim_hists
 									do ali_hr = nal,2,-1
 										if( alfgrid(ali_hr)< al_hr) exit
 									enddo
-									if( alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr) .and. ali_hr <nal ) ali_hr = ali_hr+1
+									if( (alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr)) .and. (ali_hr <nal) ) ali_hr = ali_hr+1
 								endif
 								if(it==1 ) then
 									pialf_conddist = ergpialf
@@ -3304,9 +3308,21 @@ module sim_hists
 					
 					status_hr = status_it(i,it)
 					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
-					if((age_hr .eq. TT) .or. status_it_innov(i,it)>(1.-PrDeath(d_hr,age_hr)) ) then !
+					if((age_hr .eq. TT) ) then !
 						it_old = it_old + 1
-						if(it_old >  Tret  .or. status_it_innov(i,it)>(1.-PrDeath(d_hr,age_hr))) then !
+						if(it_old >  Tret ) then !
+							dead = .true.
+						else
+							status_it(i,it) = 5
+						endif
+					endif 
+					
+					if(dieyoung .eqv. .true.)then
+						if(status_it_innov(i,it)>(1.-PrDeath(d_hr,age_hr))) &
+							dead = .true.
+					endif
+					
+					if(dead .eqv. .true.) then
 							age_it(i,it) = -1
 							a_it(i,it) = 0.
 							a_it_int(i,it) = 0
@@ -3315,10 +3331,7 @@ module sim_hists
 							work_dif_it(i,it) = 0.
 							status_it(i,it) = -1
 							exit
-						else
-							status_it(i,it) = 5
-						endif
-					endif 
+					endif
 
 					!figure out where to evaluate z
 					if(zj_contin .eqv. .false.) then
@@ -3339,7 +3352,7 @@ module sim_hists
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
 					!in the first period need to establish the right number of exog unemp
-					if(it==1 .and. iter>1 .and. status_hr<=3 .and. age_hr>0) then
+					if((it==1) .and. (iter>1) .and. (status_hr<=3) .and. (age_hr>0)) then
 						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
 									ali_hr = 1
 									invol_un = 1
@@ -3381,6 +3394,8 @@ module sim_hists
 					endif
 
 					wage_hr	= wage(wage_lev(j_hr),al_hr,d_hr,z_hr,age_hr)
+					if(invol_un ==1) &
+						& wage_hr	= wage(wage_lev(j_hr),al_last_invol,d_hr,z_hr,age_hr)
 					hst%wage_hist(i,it) = wage_hr
 
 					!make decisions if not yet retired
@@ -3393,10 +3408,10 @@ module sim_hists
 							!check for rest unemployment
 							if(al_contin .eqv. .false. ) then
 								work_dif_hr = gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-							elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .false. ) then
+							elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) ) then
 								work_dif_hr = iiwt   *gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 										&	(1.-iiwt)*gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-							elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .true. ) then
+							elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .true.) ) then
 								work_dif_hr = ziwt    * iiwt    *gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 										&	  ziwt    *(1.-iiwt)*gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 										&	 (1.-ziwt)* iiwt    *gwork_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
@@ -3420,6 +3435,7 @@ module sim_hists
 								if( status_it_innov(i,it) < sepi) then !separate?
 									ali_hr = 1
 									invol_un = 1
+									al_last_invol = al_hr
 									iiwt = 1.
 									iiH = 2
 									al_hr = alfgrid(ali_hr)
@@ -3447,14 +3463,14 @@ module sim_hists
 										ali_hr	= al_it_int(i,it)
 										al_hr = al_it(i,it)
 									endif
-								elseif( invol_un == 1  .and. status_it_innov(i,min(it+1,Tsim)) > fndi) then
+								elseif( (invol_un == 1)  .and. (status_it_innov(i,min(it+1,Tsim)) > fndi)) then
 								!voluntary or involuntary?
 									ali_hr = 1
 									al_hr = alfgrid(ali_hr)
 									iiwt = 1.
 									iiH = 2
 									status_it(i,it) = 2
-								elseif(invol_un == 1 .and. status_it_innov(i,min(it+1,Tsim)) <= fndi) then
+								elseif((invol_un == 1) .and. (status_it_innov(i,min(it+1,Tsim)) <= fndi)) then
 									invol_un = 0
 									ali_hr	= al_it_int(i,it)
 									al_hr = al_it(i,it)
@@ -3476,12 +3492,12 @@ module sim_hists
 									iiH = 2
 								endif
 								!evaluate application choice
-								if(al_contin .eqv. .false. .and. zj_contin .eqv. .false. ) then
+								if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
 									app_dif_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-								elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .false. ) then
+								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) ) then
 									app_dif_hr = iiwt    *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 											&	(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-								elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .true. ) then
+								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .true.) ) then
 									app_dif_hr = ziwt    * iiwt    *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 											&	 ziwt    *(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 											&	(1.-ziwt)*  iiwt   *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
@@ -3494,10 +3510,10 @@ module sim_hists
 									! choose to apply
 									app_it(i,it) = 1
 									! eligible to apply?
-									if(age_hr > 1 .or. (ineligNoNu .eqv. .false. .and. age_hr==1)&
-										& .or. (age_hr ==1 .and. status_it_innov(i,min(it+1,Tsim))<eligY )) then !status_it_innov(i,it+1) is an independent draw
+									if((age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))&
+										& .or. ((age_hr ==1) .and. (status_it_innov(i,min(it+1,Tsim))<eligY) )) then !status_it_innov(i,it+1) is an independent draw
 										!applying, do you get it?
-										if(status_it_innov(i,it) < xifun(d_hr,z_hr,age_hr,hlthprob)) then 
+										if(status_it_innov(i,it) < xifun(d_hr,wage_hr,age_hr,hlthprob)) then 
 											status_tmrw = 4
 											if( status_it_innov(i,it) <  hlthprob) then
 												hlthvocSSDI(i,it) = 1
@@ -3525,14 +3541,14 @@ module sim_hists
 								endif
 							end select
 							
-							if(status_hr <= 2 .and. print_lev >=2) then
+							if((status_hr <= 2) .and. (print_lev >=2)) then
 								!evaluate application choice (for diagnostics, would the workers want to apply?)
-								if(al_contin .eqv. .false. .and. zj_contin .eqv. .false. ) then
+								if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
 									app_dif_hr = gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-								elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .false. ) then
+								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) ) then
 									app_dif_hr = iiwt    *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 											&	(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-								elseif(al_contin .eqv. .true. .and. zj_contin .eqv. .true. ) then
+								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .true.) ) then
 									app_dif_hr = ziwt    * iiwt    *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 											&	 ziwt    *(1.-iiwt)*gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 											&	(1.-ziwt)*  iiwt   *gapp_dif( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
@@ -3561,7 +3577,7 @@ module sim_hists
 							api_hr = aR(d_hr,ei_hr,ai_hr)
 							apc_hr = agrid(api_hr)
 						else
-							if(al_contin .eqv. .false. .and. zj_contin .eqv. .false.) then
+							if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.)) then
 								if(status_hr .eq. 1) then
 									api_hr = aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
 								elseif(status_hr .eq. 2) then
@@ -3571,7 +3587,7 @@ module sim_hists
 								endif
 								apc_hr = agrid(api_hr)
 							!INTERPOLATE!!!!!	
-							elseif(al_contin .eqv. .true.  .and. zj_contin .eqv. .false.) then
+							elseif((al_contin .eqv. .true.)  .and. (zj_contin .eqv. .false.)) then
 								if(status_hr .eq. 1) then
 									apc_hr = iiwt    *agrid( aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
 										&	(1.-iiwt)*agrid( aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ))
@@ -3587,7 +3603,7 @@ module sim_hists
 									if( dabs(agrid(ii)-apc_hr) <  dabs(agrid(ii)-agrid(api_hr))) api_hr = ii
 								enddo
 								api_hr = min(max(ali_hr,1),na)
-							elseif(al_contin .eqv. .true.  .and. zj_contin .eqv. .true.) then
+							elseif((al_contin .eqv. .true.)  .and. (zj_contin .eqv. .true.)) then
 								if(status_hr .eq. 1) then
 									apc_hr = ziwt    * iiwt    *agrid( aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
 										&	 ziwt    *(1.-iiwt)*agrid( aw( (j_hr-1)*nbi + beti, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
@@ -3628,7 +3644,7 @@ module sim_hists
 						status_it(i,it+1) = status_tmrw
 						! push forward asset					
 						a_it_int(i,it+1) = api_hr
-						if( al_contin .eqv. .true. .or. zj_contin .eqv. .true. ) then
+						if( (al_contin .eqv. .true.) .or. (zj_contin .eqv. .true.) ) then
 							a_it(i,it+1) = apc_hr
 						else
 							a_it(i,it+1) = agrid(api_hr) 
@@ -3747,7 +3763,7 @@ module sim_hists
 					exit
 				endif
 			else
-				if(verbose >=4 .or. (verbose >=2 .and. mod(iter,10) == 0)) then
+				if(verbose >=4 .or. ((verbose >=2) .and. (mod(iter,10) == 0))) then
 					print *, "iter:", iter
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)
 					print *, "a mean, a var",  sum(a_mean), sum(a_var)
@@ -3772,7 +3788,7 @@ module sim_hists
 			occgrow_jt = 0.
 			occshrink_jt = 0.
 			do i=1,Nsim
-				if( age_it(i,it) > 0 .and. status_it(i,it) <= 2 .and. status_it(i,it)>=1) Nworkt = 1._dp + Nworkt
+				if( (age_it(i,it) > 0) .and. (status_it(i,it) <= 2) .and. (status_it(i,it)>=1)) Nworkt = 1._dp + Nworkt
 				do ij=1,nj
 					if(j_i(i) == ij .and. age_it(i,it) >= 1 .and. status_it(i,it) == 1) &
 						& occsize_jt(ij,it) = 1._dp+occsize_jt(ij,it)
@@ -3787,11 +3803,11 @@ module sim_hists
 				occshrink_hr = 0.
 				occsize_hr   = 0.
 				do i=1,Nsim
-					if((status_it(i,it) <= 2 .and. status_it(i,it)>=1) .and. age_it(i,it) > 0 ) Nworkt = 1._dp + Nworkt !labor force in this period
+					if(((status_it(i,it) <= 2) .and. (status_it(i,it)>=1)) .and. (age_it(i,it) > 0) ) Nworkt = 1._dp + Nworkt !labor force in this period
 					ij =j_i(i)
-					if(born_it(i,it) == 1 ) &
+					if( born_it(i,it) == 1 ) &
 						& occgrow_hr(ij) = 1._dp + occgrow_hr(ij)
-					if(status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
+					if( status_it(i,it-1) > 1  .and. status_it(i,it)== 1) &
 						& occgrow_hr(ij) = 1._dp + occgrow_hr(ij) !wasn't working last period
 					if(status_it(i,it-1) == 1 .and. status_it(i,it) > 1) &
 						& occshrink_hr(ij) = 1._dp + occshrink_hr(ij)
@@ -4029,7 +4045,7 @@ module find_params
 			!z_min = minval(zgrid_in(nz/2+1:nz,ij))
 			do iz=1,nz
 			
-				if(iz>=nz/2+1 .and. z_regimes .eqv. .true.) then !don't shift around the mean
+				if((iz>=nz/2+1) .and. (z_regimes .eqv. .true.)) then !don't shift around the mean
 					zgrid_out(iz,ij) = (zgrid_in(iz,ij) - zshift(ij))/zscale(ij)*zscale_in(ij)+zshift(ij)
 				else
 					zgrid_out(iz,ij) = zgrid_in(iz,ij)/zscale(ij)*zscale_in(ij)
@@ -4052,7 +4068,7 @@ module find_params
 		!and will extrapolate for the top and bottom points (problematic?)
 		do iz=1,nz
 			zj_here   = zgrid_out(iz,ij)
-			if( iz >= nz/2+1 .and. z_regimes .eqv. .true.) then
+			if( (iz >= nz/2+1) .and. (z_regimes .eqv. .true.)) then
 				zj_lo	  = finder(zgrid_in(nz/2+1:nz,ij),zj_here) + nz/2
 				zj_lo	  = min( max(zj_lo,nz/2+1), nz-1)
 				zj_hi	  = min(zj_lo +1,nz)
@@ -4299,7 +4315,7 @@ module find_params
 		! first load the value functions for the target period
 		do it = t0tT(1), t0tT(2)
 			do i = 1,Nsim
-				if(shk%born_hist(i,it) > 0 .or.  (it == 1 .and. shk%age_hist(i,it) > 0) ) then
+				if(shk%born_hist(i,it) > 0 .or.  ((it == 1) .and. (shk%age_hist(i,it) > 0)) ) then
 				!they're alive in the first period or born this period
 					nborn = 1._dp + nborn
 					!set the state
@@ -4324,7 +4340,7 @@ module find_params
 							do ali_hr = nal,2,-1
 								if(alfgrid(ali_hr)<ali_hr) exit
 							enddo
-							if( alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr) .and. ali_hr <nal ) ali_hr = ali_hr+1
+							if( (alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr)) .and. (ali_hr <nal) ) ali_hr = ali_hr+1
 						endif
 						if(it==1 ) then
 							pialf_conddist = ergpialf
@@ -4521,7 +4537,7 @@ module find_params
 		real(dp) :: urt,udur,Efrt,Esrt
 		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt0_mul,seprt1_mul
 		real(dp) :: seprt1,seprt0,s0factor,frt0,frt0_mul
-		
+		integer  :: miniter = 10
 		
 		allocate(jwages(Nsim))
 		allocate(dist_wgtrend_jt(Tsim,nj))
@@ -4552,7 +4568,7 @@ module find_params
 				do it=1,Tsim
 					ii = 0
 					do i=1,Nsim
-						if( shk%j_i(i) == ij .and. shk%age_hist(i,it) > 0 .and. hst%status_hist(i,it)==1) then
+						if( (shk%j_i(i) == ij) .and. (shk%age_hist(i,it) > 0) .and. (hst%status_hist(i,it)==1)) then
 							ii = 1+ii
 							jwages(ii) = log(hst%wage_hist(i,it))
 						endif
@@ -4571,14 +4587,14 @@ module find_params
 					dist_wgtrend_jt(it,ij) = med_wage_jt(it,ij) - occwg_trend(it,ij)
 					!update the global variable : wage_trend
 					wage_trend(it,ij) = -upd_wgtrnd*dist_wgtrend_jt(it,ij) + wage_trend(it,ij) 
-					if(dist_wgtrend_jt(it,ij) > dist_wgtrend ) then
-						dist_wgtrend = dist_wgtrend_jt(it,ij)
+					if(dabs(dist_wgtrend_jt(it,ij)) > dist_wgtrend ) then
+						dist_wgtrend = dabs(dist_wgtrend_jt(it,ij))
 					endif
-					dist_wgtrend_iter(iter) = dist_wgtrend_jt(it,ij) + dist_wgtrend_iter(iter)
+					dist_wgtrend_iter(iter) = dabs(dist_wgtrend_jt(it,ij)) + dist_wgtrend_iter(iter)
 				enddo
 			enddo !ij 
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
-			if(dist_wgtrend_iter(iter)<1e-3) then
+			if(dist_wgtrend_iter(iter)<1e-3 .and. iter>miniter) then
 				exit
 			endif
 			if(print_lev .ge. 4) then
@@ -4614,7 +4630,7 @@ module find_params
 		!call vec2csv(dist_wgtrend_iter,"dist_wgtrend_iter.csv")
 		if(print_lev .ge. 2) then 
 			call mat2csv(wage_trend,"wage_trend.csv")
-			call vec2csv(dist_wgtrend_iter, "dist_wgtrend_iter.csv")
+			call vec2csv(dist_wgtrend_iter(1:iter), "dist_wgtrend_iter.csv")
 		endif
 		
 		
