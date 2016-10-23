@@ -50,7 +50,7 @@ integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types
 			na  = 40, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 5000, & !1000*nj!how many agents to draw
+			Nsim = 16000, & !1000*nj!how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
@@ -293,16 +293,6 @@ subroutine setparams()
 	beti(1) = 1.0
 	!beti(2) = 1.2 
 
-	do i=1,nj
-		occwg_lev(i) = wage_lev_read(i)
-		do t=1,Tsim	
-			occwg_trend(t,i) = wage_trend_read(t,i+1)
-		enddo
-	enddo
-	!initialize the input to the observed
-	wage_lev = 0.!occwg_lev
-	wage_trend = occwg_trend
-
 	!Individual Wage component (alpha)- grid= 2 std. deviations
 	alfrhot = alfrho**(1./tlen)
 	alfcondsig = (alfsig**2*(1-alfrho**2))**0.5
@@ -349,6 +339,21 @@ subroutine setparams()
 
 	maxwin = exp(maxval(alfgrid)) !will overwrite in the main code
 	minwin = exp(minval(alfgrid)) !will overwrite in the main code
+
+	!~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	! Occupation wage component
+	do i=1,nj
+		occwg_lev(i) = wage_lev_read(i)
+		do t=1,Tsim	
+			occwg_trend(t,i) = wage_trend_read(t,i+1)
+			if( occwg_trend(t,i) <minval(alfgrid)) occwg_trend(t,i) = minval(alfgrid)
+			if( occwg_trend(t,i) >maxval(alfgrid)) occwg_trend(t,i) = maxval(alfgrid)
+		enddo
+	enddo
+	!initialize the input to the observed
+	wage_lev = 0.!occwg_lev
+	wage_trend = occwg_trend
+
 
 	!read these numberrs in already
 	seprisk = 0.

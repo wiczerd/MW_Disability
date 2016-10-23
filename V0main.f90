@@ -4600,6 +4600,14 @@ module find_params
 					dist_wgtrend_jt(it,ij) = med_wage_jt(it,ij) - occwg_trend(it,ij)
 					!update the global variable : wage_trend
 					wage_trend(it,ij) = -upd_wgtrnd*dist_wgtrend_jt(it,ij) + wage_trend(it,ij) 
+					if(wage_trend(it,ij) <= minval(alfgrid)) then
+						wage_trend(it,ij) = minval(alfgrid)
+						cycle
+					endif
+					if(wage_trend(it,ij) >= maxval(alfgrid)) then
+						wage_trend(it,ij) = maxval(alfgrid)
+						cycle
+					endif
 					if(dabs(dist_wgtrend_jt(it,ij)) > dist_wgtrend ) then
 						dist_wgtrend = dabs(dist_wgtrend_jt(it,ij))
 					endif
@@ -4635,7 +4643,9 @@ module find_params
 			fndrt_mul0 = fndrt_mul1
 			if(verbose .ge. 3) &
 				print*, "iter ", iter, "dist ", dist_wgtrend, "seprt1", seprt1_mul
-			
+			if(vO .ge. 2 .and. mod(iter,100)==0) then
+				print*, "iter ", iter, "dist ", dist_wgtrend
+			endif
 		enddo !iter
 		
 		print_lev = plO
@@ -4718,7 +4728,7 @@ module find_params
 			if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
 		endif
 		
-		
+		!I only want to iterate on the wage trend if I have a good set of parameters
 		!call iter_wgtrend(vfs, pfs, hst,shk)
 		
 		if(verbose >2) print *, "Simulating the model"	
@@ -5185,7 +5195,7 @@ program V0main
 	parvec(1) = nu
 	parvec(2) = xizcoef
 	err0 = 0.
-!	call cal_dist(parvec,err0,shk)
+	call cal_dist(parvec,err0,shk)
 	
 	print *, err0
 	
