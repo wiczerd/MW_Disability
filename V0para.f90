@@ -47,10 +47,10 @@ integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types
 			nj  = 16, &!16          !Number of occupations
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 50, &!100	        !Points on assets grid
+			na  = 40, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 16000, & !1000*nj!how many agents to draw
+			Nsim = 5000, & !1000*nj!how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
@@ -156,8 +156,6 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		proc_time1 = 3.6,&	!time to process an application 
 		proc_time2 = 28.05,&!time to process an application in stage 2 (28.05-3.6)
 		xizcoef = 0., &		!change in acceptance rate with z deterioration
-		voc_accept = 0.25,&	!fraction of admissions from vocational criteria, target 1985
-		hlth_accept = 0.75,&!fraction taken based on health criteria, target 1985
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
 		voc_age	= 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
@@ -166,8 +164,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		DItest1 = 1.0, &	!Earnings Index threshold 1 (These change based on the average wage)
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3
-		smthELPM = 1., &	!Smoothing for the LPM
-		apprt_target = .01	!target for application rates (to be filled below)
+		smthELPM = 1.		!Smoothing for the LPM
 !		
 		
 		
@@ -180,7 +177,11 @@ integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
 !**** calibration targets
 real(8) :: emp_persist = 0.98 ,&
 		emp_std = 0.01 ,&
-		amen_tgt = 1. ! This is just a placeholder
+		apprt_target = .01,&	!target for application rates (to be filled below)
+		dirt_target = 0.03,&	!target for di rates
+		voc_accept = 0.25,&		!fraction of admissions from vocational criteria, target 1985
+		hlth_accept = 0.75		!fraction taken based on health criteria, target 1985
+		
 
 
 !Preferences----------------------------------------------------------------!
@@ -208,7 +209,8 @@ subroutine setparams()
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
 	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(nj),avgADL, &
-		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(nj), UE_occ_read(nz,16),EU_occ_read(nz,16),apprt_read(50,2), pid_tmp(nd,nd+1,TT-1)
+		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(nj), UE_occ_read(nz,16),EU_occ_read(nz,16),apprt_read(50,2),&
+		& pid_tmp(nd,nd+1,TT-1),causal_phys_read(nj)
 	
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -219,8 +221,6 @@ subroutine setparams()
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!	
 	! Read things in:
 	
-	
-
 	!Read in the occupation size among the young.
 	open(unit=fread, file="hpShareO.csv")
 	do t=1,Tsim
@@ -269,6 +269,13 @@ subroutine setparams()
 		read(fread, *,iostat=k) maxADL_read(j)
 	enddo
 	close(fread)
+	!Read in the disability means by occuaption
+	open(unit= fread, file="causal_phys.csv")
+	do j=1,nj
+		read(fread, *,iostat=k) causal_phys_read(j)
+	enddo
+	close(fread)
+	
 	!Read in the disability application rates
 	open(unit= fread, file="Annual_apprt.csv")
 	do t=1,50
@@ -467,7 +474,7 @@ subroutine setparams()
 	summy = 1.-(1.-avgADL)**(1./(youngD+oldN*oldD))
 	
 	do j=1,nj
-		occdel(j) = (1.-(1.-maxADL_read(j))**(1./(youngD+oldN*oldD))) / summy
+		occdel(j) =  (1.-(1.- (avgADL+ causal_phys_read(j)) )**(1./(youngD+oldN*oldD))) /summy
 	enddo
 	!will set this in draw_del
 	delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
@@ -507,7 +514,7 @@ subroutine setparams()
 	xi_d(2) = xi_d(3)-xi_d3shift 
 	xi_d(1) = xi_d(2)+xi_d1shift	!
 	
-	xizcoef = (0.4_dp - xi_d(2))/0.5_dp !dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
+	xizcoef = (0.4_dp - xi_d(3))/0.5_dp !dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
 	xizcoef = 1.1_dp * xizcoef !just and arbitrary adjustment
 	
 	!DI applications target.  Average of 1980-1985
@@ -581,12 +588,12 @@ subroutine setparams()
 	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
 		do j=1,ndi
-		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i) )**(0.5_dp/tlen))*delgrid(j)
-		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i) )**(0.5_dp/tlen))*delgrid(j)
+		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i)*delgrid(j) )**(0.5_dp/tlen))
+		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i)*delgrid(j) )**(0.5_dp/tlen))
 		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
 		
-		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i) )**(0.5_dp/tlen))*delgrid(j)
-		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i) )**(0.5_dp/tlen))*delgrid(j)
+		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i)*delgrid(j) )**(0.5_dp/tlen))
+		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i)*delgrid(j) )**(0.5_dp/tlen))
 		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
 		
 		pid(3,3,j,i) = 1.

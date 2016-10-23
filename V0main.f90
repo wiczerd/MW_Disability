@@ -75,12 +75,14 @@ module helper_funs
 		real(dp) :: avg_di,di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
 		integer :: alloced
 		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+1,nj+1)
-		real(dp) :: s2
+		real(dp) :: s2, avg_hlth_acc
+		real(dp) :: hlth_acc_rt(TT-1)
 
 	end type 
 
 	type hist_struct
 		real(dp), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
+		integer, allocatable :: hlth_voc_hist(:,:)
 		real(dp), allocatable :: wage_hist(:,:) !realized wages
 		integer, allocatable :: z_jt_macroint(:) !endogenous realization of shocks given a sequence
 		real(dp), allocatable :: z_jt_panel(:,:)
@@ -553,6 +555,7 @@ module helper_funs
 		allocate(hst%wage_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%work_dif_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%app_dif_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%hlth_voc_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%status_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%d_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%a_hist(Nsim,Tsim), stat=hst%alloced)
@@ -631,6 +634,7 @@ module helper_funs
 		deallocate(hst%wage_hist , stat=hst%alloced)
 		deallocate(hst%work_dif_hist , stat=hst%alloced)
 		deallocate(hst%app_dif_hist , stat=hst%alloced)
+		deallocate(hst%hlth_voc_hist, stat=hst%alloced)
 		deallocate(hst%status_hist , stat=hst%alloced)
 		deallocate(hst%d_hist , stat=hst%alloced)
 		deallocate(hst%a_hist , stat=hst%alloced)
@@ -883,7 +887,7 @@ module model_data
 	
 		integer :: i, ij,id,it,ial,st,si,age_hr,status_hr
 		integer :: totage(TT),totD(TT),totW(TT),totst(Tsim),total(nal), tot3al(nal), &
-				& tot3age(TT-1),totage_st(TT,Tsim)
+				& tot3age(TT-1),totage_st(TT,Tsim),tot_applied(TT-1)
 
 		real(dp) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
 				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1), &
@@ -915,6 +919,9 @@ module model_data
 		alworkdif	= 0.
 		alappdif	= 0.
 		status_Nt 	= 0.
+		moments_sim%hlth_acc_rt = 0.
+		moments_sim%avg_hlth_acc = 0. 
+		tot_applied = 0
 		
 		do si = 1,Nsim
 			do st = 1,Tsim
@@ -935,6 +942,11 @@ module model_data
 							if(hst%status_hist(si,st) < 3) &
 							&	workdif_age(age_hr) = workdif_age(age_hr) + hst%work_dif_hist(si,st)
 
+							if(hst%hlth_voc_hist(si,st) >0) then
+								moments_sim%hlth_acc_rt(it) = 2.- dble(hst%hlth_voc_hist(si,st)) + moments_sim%hlth_acc_rt(it)
+								tot_applied(it) = tot_applied(it)+1
+								moments_sim%avg_hlth_acc = 2.- dble(hst%hlth_voc_hist(si,st)) + moments_sim%avg_hlth_acc
+							endif
 							if(hst%status_hist(si,st) == 4) then
 								totD(age_hr) = totD(age_hr) + 1
 								dD_age(age_hr) = dD_age(age_hr)+hst%d_hist(si,st)
@@ -987,7 +999,7 @@ module model_data
 			moments_sim%avg_di = status_Nt(4,st) + moments_sim%avg_di
 		enddo
 		moments_sim%avg_di = moments_sim%avg_di/DIatriskpop
-		
+		moments_sim%avg_hlth_acc = moments_sim%avg_hlth_acc/dble(sum(tot_applied))
 		!just for convenience
 		forall(it=1:TT) totage(it) = sum(totage_st(it,:))
 		
@@ -1021,6 +1033,7 @@ module model_data
 
 		forall(st=1:Tsim) status_Nt(:,st)= status_Nt(:,st)/sum(status_Nt(:,st))
 		
+		forall(it=1:TT-1 ) moments_sim%hlth_acc_rt(it) = moments_sim%hlth_acc_rt(it)/dble(tot_applied(it))
 
 		if(print_lev >= 2) then
 			call veci2csv(totst,"pop_st.csv")
@@ -1033,6 +1046,7 @@ module model_data
 			call vec2csv(alD,"alD"//trim(caselabel)//".csv")
 			call mat2csv(alD_age,"alD_age"//trim(caselabel)//".csv")
 			call mat2csv(status_Nt,"status_Nt"//trim(caselabel)//".csv")
+			call vec2csv(moments_sim%hlth_acc_rt,"hlth_acc_rt"//trim(caselabel)//".csv")
 		endif
 
 !		call LPM_employment(hst,moments_sim,shk)
@@ -2945,7 +2959,7 @@ module sim_hists
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
-		integer, allocatable :: hlthvocSSDI(:,:) ! got into ssdi on health or vocational considerations, 0= no ssdi, 1=health, 2=vocation
+!		integer, allocatable :: hlthvocSSDI(:,:) ! got into ssdi on health or vocational considerations, 0= no ssdi, 1=health, 2=vocation
 		real(dp), allocatable :: e_it(:,:), median_wage(:,:)
 		
 		! FOR DEBUGGING
@@ -3023,7 +3037,7 @@ module sim_hists
 		allocate(app_it(Nsim,Tsim))
 		allocate(al_int_it_endog(Nsim,Tsim))
 		allocate(al_it_endog(Nsim,Tsim))
-		allocate(hlthvocSSDI(Nsim,Tsim))
+!		allocate(hlthvocSSDI(Nsim,Tsim))
 
 
 		!!!!!!!!!!!!!!! DEBUGGING
@@ -3045,7 +3059,7 @@ module sim_hists
 
 		gapp_dif    => pfs%gapp_dif
 		gwork_dif   => pfs%gwork_dif
-
+		
 
 		z_jt_innov  => shk%z_jt_innov
 		z_jt_select  => shk%z_jt_select
@@ -3086,7 +3100,7 @@ module sim_hists
 		Tret = (Longev - youngD - oldD*oldN)*tlen
 		work_dif_it      = 0.
 		app_dif_it       = 0.
-		hlthvocSSDI		 = 0 
+		hst%hlth_voc_hist= 0 
 		Ncol = size(drawi_ititer,2)
 		al_int_it_endog  = al_it_int
 		al_it_endog      = al_it
@@ -3355,6 +3369,7 @@ module sim_hists
 					if((it==1) .and. (iter>1) .and. (status_hr<=3) .and. (age_hr>0)) then
 						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
 									ali_hr = 1
+									al_last_invol = al_hr
 									invol_un = 1
 									iiwt = 1.
 									iiH = 2
@@ -3388,9 +3403,6 @@ module sim_hists
 							iiwt = 1.
 						endif
 						if( iiH == ali_hr ) iiwt = 1.
-					!	if(verbose >1 .and. (iiwt >1. .or. iiwt<0.)) then
-					!		print *, "iiwt=", iiwt, " (i,t,alpha)=", i, it, ali_hr
-					!	endif
 					endif
 
 					wage_hr	= wage(wage_lev(j_hr),al_hr,d_hr,z_hr,age_hr)
@@ -3516,9 +3528,9 @@ module sim_hists
 										if(status_it_innov(i,it) < xifun(d_hr,wage_hr,age_hr,hlthprob)) then 
 											status_tmrw = 4
 											if( status_it_innov(i,it) <  hlthprob) then
-												hlthvocSSDI(i,it) = 1
+												hst%hlth_voc_hist(i,it) = 1
 											else
-												hlthvocSSDI(i,it) = 2
+												hst%hlth_voc_hist(i,it) = 2
 											endif
 										else	
 											status_tmrw = 3
@@ -3740,7 +3752,7 @@ module sim_hists
 
 			enddo
 			if( final_iter .eqv. .true. ) then 
-				print *, "prob al1" ,PrAl1(1), ",", PrAl1(2)
+				if(verbose > 2) print *, "prob al1" ,PrAl1(1), ",", PrAl1(2)
 				exit
 			endif
 			if( (sum((a_mean - a_mean_liter)**2) + sum((s_mean - s_mean_liter)**2) + sum((d_mean - d_mean_liter)**2))<1.e-5_dp .or. &
@@ -3839,7 +3851,7 @@ module sim_hists
 					call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
 					call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
-					call mati2csv (hlthvocSSDI,"hlthvocSSDI_hist"//trim(caselabel)//".csv")
+					call mati2csv (hst%hlth_voc_hist,"hlth_voc_hist"//trim(caselabel)//".csv")
 			endif
 		endif
 		
@@ -3848,7 +3860,7 @@ module sim_hists
 		deallocate(a_it_int,e_it_int)
 		deallocate(app_it,work_it)
 		deallocate(val_hr_it)
-		deallocate(hlthvocSSDI)
+		!deallocate(hlthvocSSDI)
 		!deallocate(status_it_innov)
 		!deallocate(drawi_ititer,drawt_ititer)
 
@@ -4531,7 +4543,7 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		
-		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter/10)
+		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter)
 		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
 		integer  :: i,ii,ij,it, iter,iout,plO,vO
 		real(dp) :: urt,udur,Efrt,Esrt
@@ -4552,17 +4564,18 @@ module find_params
 		!initialize fmul stuff
 		fndrt_mul0 = 1. 
 		seprt0_mul = 1.
-		do iter = 1,(maxiter/10)
+		
+		do iter = 1,maxiter 
 			dist_wgtrend = 0.
 			dist_wgtrend_iter(iter) = 0.
 			
 			call sim(vfs, pfs, hst,shk,.false.)
 			
 			call comp_ustats(hst,shk,urt,udur,Efrt,Esrt)
-			print*,  'urt , udur', urt,udur
-			print*,  'Efrt, Esrt', Efrt,Esrt
+			if(verbose>2) print*,  'urt , udur', urt,udur
+			if(verbose>2) print*,  'Efrt, Esrt', Efrt,Esrt
 			
-			dist_wgtrend = 0.
+			
 			do ij=1,nj
 				jwages = 0.
 				do it=1,Tsim
@@ -4594,7 +4607,7 @@ module find_params
 				enddo
 			enddo !ij 
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
-			if(dist_wgtrend_iter(iter)<1e-3 .and. iter>miniter) then
+			if(dist_wgtrend_iter(iter)<Vtol .and. iter>miniter) then
 				exit
 			endif
 			if(print_lev .ge. 4) then
@@ -4620,8 +4633,9 @@ module find_params
 			
 			seprt0_mul = seprt1_mul
 			fndrt_mul0 = fndrt_mul1
-		!	if(print_lev .ge. 4) &
+			if(verbose .ge. 3) &
 				print*, "iter ", iter, "dist ", dist_wgtrend, "seprt1", seprt1_mul
+			
 		enddo !iter
 		
 		print_lev = plO
@@ -4630,7 +4644,8 @@ module find_params
 		!call vec2csv(dist_wgtrend_iter,"dist_wgtrend_iter.csv")
 		if(print_lev .ge. 2) then 
 			call mat2csv(wage_trend,"wage_trend.csv")
-			call vec2csv(dist_wgtrend_iter(1:iter), "dist_wgtrend_iter.csv")
+			call vec2csv(dist_wgtrend_iter(1:(iter-1)), "dist_wgtrend_iter.csv")
+			if(verbose .ge. 2) print *, "iterated ", (iter-1)
 		endif
 		
 		
@@ -4663,7 +4678,7 @@ module find_params
 		!zrho = paramvec(1)
 		!zsig = paramvec(2)
 		nu   = paramvec(1)
-
+		xizcoef = paramvec(2)
 		
 		call alloc_econ(vfs,pfs,hst)
 
@@ -4703,10 +4718,8 @@ module find_params
 			if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
 		endif
 		
-		! COMMENT THIS OUT FOR NOW!
-		!call iter_zproc(vfs,pfs, hst,shk)
-		!after iter_zproc, I should cycle and re-solve it all
-		call iter_wgtrend(vfs, pfs, hst,shk)
+		
+		!call iter_wgtrend(vfs, pfs, hst,shk)
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -4727,6 +4740,7 @@ module find_params
 				if(hst%status_hist(i,it)<=3 .and. mod(it,itlen) .eq. 0) ninsur_app = 1.+ninsur_app ! only count the body once every year, comparable to data
 				if(hst%status_hist(i,it)==3) &
 				&	totapp_dif_hist = exp(10.*hst%app_dif_hist(i,it))/(1. + exp(10.*hst%app_dif_hist(i,it))) + totapp_dif_hist
+
 			enddo
 		enddo
 		totapp_dif_hist = totapp_dif_hist/ninsur_app
@@ -4734,7 +4748,10 @@ module find_params
 		
 
 		
-		errvec(1) =  totapp_dif_hist - apprt_target
+		!errvec(1) =  totapp_dif_hist - apprt_target
+		errvec(1) = moments_sim%avg_di - dirt_target
+		errvec(2) = moments_sim%avg_hlth_acc - hlth_accept
+		
 		call dealloc_econ(vfs,pfs,hst)
 
 	end subroutine cal_dist
@@ -4909,7 +4926,7 @@ program V0main
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(3)=1.,err0(3)=1.,param1(nj),err1(nj), cumpid(nd,nd+1,ndi,TT-1)
+		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(2)=1.,err0(2)=1.,param1(nj),err1(nj), cumpid(nd,nd+1,ndi,TT-1)
 		real(dp)	:: jshift_hr(nj)
 	!************************************************************************************************!
 	! Structure to communicate everything
@@ -4927,7 +4944,7 @@ program V0main
 		
 	! NLopt stuff
 		integer(8) :: calopt,ires
-		real(dp) :: lb(1),ub(1),parvec(1), erval
+		real(dp) :: lb(2),ub(2),parvec(2), erval
 	!	external cal_dist_nloptwrap
 		
 		
@@ -5166,8 +5183,11 @@ program V0main
 	Vtol = 1e-6
 		
 	parvec(1) = nu
+	parvec(2) = xizcoef
 	err0 = 0.
 !	call cal_dist(parvec,err0,shk)
+	
+	print *, err0
 	
 	if(verbose > 2) then
 		call CPU_TIME(t2)
@@ -5178,9 +5198,9 @@ program V0main
 	
 	
 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
-	lb = 0._dp
+	lb = (/0._dp, 0._dp/)
 	call nlo_set_lower_bounds(ires,calopt,lb)
-	ub = 1._dp
+	ub = (/ 6._dp, (0.4_dp - xi_d(3)) /)
 	call nlo_set_upper_bounds(ires,calopt,ub)
 	call nlo_set_xtol_abs(ires, calopt, 0.005) !integer problem, so it is not very sensitive
 	call nlo_set_ftol_abs(ires,calopt, 0.001)  ! ditto 
@@ -5189,9 +5209,11 @@ program V0main
 	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 	
 	parvec(1) = nu
+	parvec(2) = xizcoef
 	print *, parvec
 !	call nlo_optimize(ires, calopt, parvec, erval)
 	nu = parvec(1) ! new optimum
+	xizcoef = parvec(2)
 	
 !****************************************************************************
 !   Now run some experiments:
