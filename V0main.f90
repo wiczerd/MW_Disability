@@ -4769,8 +4769,8 @@ module find_params
 
 		
 		!errvec(1) =  totapp_dif_hist - apprt_target
-		errvec(1) = moments_sim%avg_di - dirt_target
-		errvec(2) = moments_sim%avg_hlth_acc - hlth_accept
+		errvec(1) = (moments_sim%avg_di - dirt_target)/dirt_target
+		errvec(2) = (moments_sim%avg_hlth_acc - hlth_accept)/hlth_accept
 		
 		call dealloc_econ(vfs,pfs,hst)
 
@@ -5227,7 +5227,7 @@ program V0main
 	call nlo_set_upper_bounds(ires,calopt,ub)
 	call nlo_set_xtol_abs(ires, calopt, 0.005_dp) !integer problem, so it is not very sensitive
 	call nlo_set_ftol_abs(ires,calopt, 0.001_dp)  ! ditto 
-	call nlo_set_maxeval(ires,calopt,1000_dp)
+	call nlo_set_maxeval(ires,calopt,500_dp)
 	
 	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 	

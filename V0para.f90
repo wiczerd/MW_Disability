@@ -130,7 +130,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 2.25, &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 1.75, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -156,7 +156,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 
 		proc_time1 = 3.6,&	!time to process an application 
 		proc_time2 = 28.05,&!time to process an application in stage 2 (28.05-3.6)
-		xizcoef = 0.530287551879883, &		!change in acceptance rate with z deterioration
+		xizcoef = 0.45, &		!change in acceptance rate with z deterioration
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
 		voc_age	= 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
@@ -530,9 +530,6 @@ subroutine setparams()
 	do t=1,50
 		if(apprt_read(t,1)>=1980 .and. apprt_read(t,1)<=1985 )  apprt_target = apprt_read(t,2)/6. + apprt_target
 	enddo
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*****************************AD HOC
-	apprt_target = apprt_target*2.
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!
