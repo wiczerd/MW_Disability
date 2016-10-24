@@ -73,6 +73,7 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
+					  demog_dat	 = .true.,& !do the demographics follow 
 					  NBER_tseq  = .true.	!just feed in NBER recessions?
 					  
 
@@ -129,7 +130,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 6.5, &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 2.25, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -155,7 +156,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 
 		proc_time1 = 3.6,&	!time to process an application 
 		proc_time2 = 28.05,&!time to process an application in stage 2 (28.05-3.6)
-		xizcoef = 0., &		!change in acceptance rate with z deterioration
+		xizcoef = 0.530287551879883, &		!change in acceptance rate with z deterioration
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
 		voc_age	= 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
@@ -178,7 +179,7 @@ integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
 real(8) :: emp_persist = 0.98 ,&
 		emp_std = 0.01 ,&
 		apprt_target = .01,&	!target for application rates (to be filled below)
-		dirt_target = 0.03,&	!target for di rates
+		dirt_target = 0.035,&	!target for di rates
 		voc_accept = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_accept = 0.75		!fraction taken based on health criteria, target 1985
 		
@@ -433,6 +434,7 @@ subroutine setparams()
 	enddo
 
 
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 !	occupation structure
 	summy = 0.
@@ -519,9 +521,10 @@ subroutine setparams()
 	xi_d(2) = xi_d(3)-xi_d3shift 
 	xi_d(1) = xi_d(2)+xi_d1shift	!
 	
-	xizcoef = (0.4_dp - xi_d(3))/0.5_dp !dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
-	xizcoef = 1.1_dp * xizcoef !just and arbitrary adjustment
-	
+	if(xizcoef == 0.) then
+		xizcoef = (0.4_dp - xi_d(3))/0.5_dp !dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
+		xizcoef = 1.1_dp * xizcoef !just and arbitrary adjustment
+	endif
 	!DI applications target.  Average of 1980-1985
 	apprt_target = 0.
 	do t=1,50

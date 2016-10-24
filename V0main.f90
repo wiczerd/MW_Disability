@@ -2701,6 +2701,7 @@ module sim_hists
 		real(dp), dimension(TT) :: cumpi_t0
 		real(dp), dimension(TT-1) :: prob_age_nTT
 		real(dp) :: rand_age,rand_born
+		real(dp), dimension(Tsim) :: hazborn_hr_t
 		
 		call random_seed(size = ss)
 		allocate(bdayseed(ss))
@@ -2709,9 +2710,18 @@ module sim_hists
 
 		!set up cumulative probabilities for t0 and conditional draws
 		!not begining with anyone from TT
-		forall(it=1:TT-1) prob_age_nTT(it) = prob_age(it)/(1-prob_age(TT))
-		!also include TT
-		!prob_age_nTT = prob_age
+		if(demog_dat .eqv. .true.) then
+			forall(it=1:TT-1) prob_age_nTT(it) = prob_age(it)/(1-prob_age(TT))
+			!also include TT
+			!prob_age_nTT = prob_age
+			hazborn_hr_t = hazborn_t
+		else
+			prob_age_nTT(1) = youngD/(youngD+oldD*dble(oldN)) 
+			forall(it=2:TT-1) prob_age_nTT(it) = oldD/(youngD+oldD*dble(oldN))
+			hazborn_hr_t(2:Tsim) = 1.-ptau(1)
+			hazborn_hr_t(1) = (ptau(1))**(Tsim-1)
+		endif
+		
 		
 		cumpi_t0 = 0.
 
@@ -2726,7 +2736,7 @@ module sim_hists
 			bn_i = 0 ! initialize, not yet born
 			it = 1
 			call rand_num_closed(rand_born)
-			if(rand_born < hazborn_t(1)) then 
+			if(rand_born < hazborn_hr_t(1)) then 
 				born_it(i,it) = 0 ! no one is "born" in the first period
 				bn_i = 1
 				!draw an age
@@ -2739,7 +2749,7 @@ module sim_hists
 			do it=2,Tsim
 				if(age_it(i,it-1)<TT) then
 					call rand_num_closed(rand_born)
-					if((rand_born < hazborn_t(it)) .and.( bn_i == 0) ) then
+					if((rand_born < hazborn_hr_t(it)) .and.( bn_i == 0) ) then
 						age_it(i,it) =1
 						born_it(i,it) = 1
 						bn_i = 1
@@ -4565,7 +4575,7 @@ module find_params
 		fndrt_mul0 = 1. 
 		seprt0_mul = 1.
 		
-		do iter = 1,maxiter 
+		do iter = 1,(maxiter/10) 
 			dist_wgtrend = 0.
 			dist_wgtrend_iter(iter) = 0.
 			
@@ -4653,7 +4663,7 @@ module find_params
 		!call mat2csv(wage_trend,"wage_trend_new.csv")
 		!call vec2csv(dist_wgtrend_iter,"dist_wgtrend_iter.csv")
 		if(print_lev .ge. 2) then 
-			call mat2csv(wage_trend,"wage_trend.csv")
+			call mat2csv(wage_trend,"wage_trend_jt.csv")
 			call vec2csv(dist_wgtrend_iter(1:(iter-1)), "dist_wgtrend_iter.csv")
 			if(verbose .ge. 2) print *, "iterated ", (iter-1)
 		endif
@@ -4922,11 +4932,12 @@ program V0main
 	use sol_val
 	use sim_hists
 	use model_data
-	use find_params
+	use find_params !, only: cal_dist,iter_wgtrend,iter_zproc,jshift_sol,obj_zj,obj_zj_wrap,scaleTFPgrid,shiftTFPgrid,vscale_set,zjload_dist,zjload_dist_nloptwrap
 
 	implicit none
 
 
+		
 	!************************************************************************************************!
 	! Counters and Indicies
 	!************************************************************************************************!
@@ -4936,7 +4947,7 @@ program V0main
 	!************************************************************************************************!
 	! Other
 	!************************************************************************************************!
-		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(2)=1.,err0(2)=1.,param1(nj),err1(nj), cumpid(nd,nd+1,ndi,TT-1)
+		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(2)=1.,err0(2)=1.,cumpid(nd,nd+1,ndi,TT-1)
 		real(dp)	:: jshift_hr(nj)
 	!************************************************************************************************!
 	! Structure to communicate everything
@@ -4951,12 +4962,12 @@ program V0main
 	! Timers
 		integer :: c1=1,c2=1,cr=1,cm=1
 		real(dp) :: t1=1.,t2=1.
-		
+		logical :: sol_once = .true.
 	! NLopt stuff
-		integer(8) :: calopt,ires
+		integer(8) :: calopt=0,ires=0
 		real(dp) :: lb(2),ub(2),parvec(2), erval
-	!	external cal_dist_nloptwrap
-		
+!		external :: cal_dist_nloptwrap
+
 		
 		include 'nlopt.f'
 
@@ -5113,6 +5124,7 @@ program V0main
 
 	! Allocate phat matrices
 	!************************************************************************************************!
+	if (sol_once .eqv. .true.) then
 		call alloc_econ(vfs,pfs,hst)
 		Vtol = 5e-5
 		! set up economy and solve it
@@ -5165,65 +5177,69 @@ program V0main
 		if(verbose >0) print *, "DI rate" , moments_sim%avg_di
  
 !	set mean wage:
-	wmean = 0.
-	junk = 0.
-	do i=1,Nsim
-		do it=1,Tsim
-			wagehere = hst%wage_hist(i,it)
-			if( wagehere > 0. ) then
-				wmean = wagehere + wmean
-				junk = junk+1.
-			endif
-		enddo
-	enddo
-	wmean = wmean/junk
-	if(verbose >1) print *, "average wage:", wmean
-		totapp_dif_hist = 0.
-		ninsur_app = 0.
-		do i =1,Nsim
+		wmean = 0.
+		junk = 0.
+		do i=1,Nsim
 			do it=1,Tsim
-				if(hst%status_hist(i,it)<=3 .and. mod(it,itlen) .eq. 0) ninsur_app = 1.+ninsur_app ! only count the body once every year, comparable to data
-				if(hst%status_hist(i,it)==3) &
-				&	totapp_dif_hist = exp(10.*hst%app_dif_hist(i,it))/(1. + exp(10.*hst%app_dif_hist(i,it))) + totapp_dif_hist
+				wagehere = hst%wage_hist(i,it)
+				if( wagehere > 0. ) then
+					wmean = wagehere + wmean
+					junk = junk+1.
+				endif
 			enddo
 		enddo
-		totapp_dif_hist = totapp_dif_hist/ninsur_app
-	if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
+		wmean = wmean/junk
+		if(verbose >1) print *, "average wage:", wmean
+			totapp_dif_hist = 0.
+			ninsur_app = 0.
+			do i =1,Nsim
+				do it=1,Tsim
+					if(hst%status_hist(i,it)<=3 .and. mod(it,itlen) .eq. 0) ninsur_app = 1.+ninsur_app ! only count the body once every year, comparable to data
+					if(hst%status_hist(i,it)==3) &
+					&	totapp_dif_hist = exp(10.*hst%app_dif_hist(i,it))/(1. + exp(10.*hst%app_dif_hist(i,it))) + totapp_dif_hist
+				enddo
+			enddo
+			totapp_dif_hist = totapp_dif_hist/ninsur_app
+		if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
+			
+		Vtol = 1e-6
+			
+		parvec(1) = nu
+		parvec(2) = xizcoef
+		err0 = 0.
+		call cal_dist(parvec,err0,shk)
 		
-	Vtol = 1e-6
+		print *, err0
 		
-	parvec(1) = nu
-	parvec(2) = xizcoef
-	err0 = 0.
-	call cal_dist(parvec,err0,shk)
+		if(verbose > 2) then
+			call CPU_TIME(t2)
+			call SYSTEM_CLOCK(c2)
+			print *, "System Time", dble(c2-c1)/dble(cr)
+			print *, "   CPU Time", (t2-t1)
+		endif
 	
-	print *, err0
+	endif !sol_once
 	
-	if(verbose > 2) then
-		call CPU_TIME(t2)
-		call SYSTEM_CLOCK(c2)
-		print *, "System Time", dble(c2-c1)/dble(cr)
-		print *, "   CPU Time", (t2-t1)
-	endif
-	
-	
-	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
+	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
 	lb = (/0._dp, 0._dp/)
 	call nlo_set_lower_bounds(ires,calopt,lb)
-	ub = (/ 6._dp, (0.4_dp - xi_d(3)) /)
+	ub = (/ 6._dp, 0.75_dp /)
 	call nlo_set_upper_bounds(ires,calopt,ub)
-	call nlo_set_xtol_abs(ires, calopt, 0.005) !integer problem, so it is not very sensitive
-	call nlo_set_ftol_abs(ires,calopt, 0.001)  ! ditto 
-	call nlo_set_maxeval(ires,calopt,1000)
+	call nlo_set_xtol_abs(ires, calopt, 0.005_dp) !integer problem, so it is not very sensitive
+	call nlo_set_ftol_abs(ires,calopt, 0.001_dp)  ! ditto 
+	call nlo_set_maxeval(ires,calopt,1000_dp)
 	
 	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 	
 	parvec(1) = nu
 	parvec(2) = xizcoef
 	print *, parvec
-!	call nlo_optimize(ires, calopt, parvec, erval)
+	call nlo_optimize(ires, calopt, parvec, erval)
 	nu = parvec(1) ! new optimum
 	xizcoef = parvec(2)
+
+	call cal_dist(parvec,err0,shk)
+
 	
 !****************************************************************************
 !   Now run some experiments:
@@ -5231,22 +5247,48 @@ program V0main
 	! without wage trend
 	caselabel = "wchng0"
 	w_strchng = .false.
-	
+	del_by_occ = .true.
+	demog_dat  = .true.
 	err0 = 0.
-	!call cal_dist(parvec,err0,shk)
-	w_strchng = .true.
+	call cal_dist(parvec,err0,shk)
 
 	! without the correlation between delta and occupation
 	del_by_occ = .false.
+	w_strchng = .true.
+	demog_dat = .true.
 	caselabel = "deloc0"
-	!call cal_dist(parvec,err0,shk)
+	call cal_dist(parvec,err0,shk)
 	
 	! without either the correlation between delta and occupation or wage trend
+	del_by_occ = .false.
 	w_strchng = .false.
+	demog_dat = .true.
 	caselabel = "wchng0deloc0"
-!	call cal_dist(parvec,err0,shk)
+	call cal_dist(parvec,err0,shk)
 	
+	del_by_occ = .true.
+	w_strchng = .true.
+	demog_dat = .false.
+	caselabel = "demog0"
+	call cal_dist(parvec,err0,shk)
 	
+	del_by_occ = .true.
+	w_strchng = .false.
+	demog_dat = .false.
+	caselabel = "wchng0demog0"
+	call cal_dist(parvec,err0,shk)	
+
+	del_by_occ = .false.
+	w_strchng = .true.
+	demog_dat = .false.
+	caselabel = "deloc0demog0"
+	call cal_dist(parvec,err0,shk)
+
+	del_by_occ = .false.
+	w_strchng = .false.
+	demog_dat = .false.
+	caselabel = "wchng0deloc0demog0"
+	call cal_dist(parvec,err0,shk)		
 	
 	!****************************************************************************!
 	! IF you love something.... 
