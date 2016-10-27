@@ -16,6 +16,8 @@ save
 !***Unit number***********************************!
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 character(len=12) :: caselabel
+character(len=10) :: callog = "callog.log"
+integer           :: fcallog = 7
 
 integer, parameter:: dp=kind(0.d0) ! double precision
 
@@ -47,10 +49,10 @@ integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types
 			nj  = 16, &!16          !Number of occupations
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 40, &!100	        !Points on assets grid
+			na  = 50, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 16000, & !1000*nj!how many agents to draw
+			Nsim = 5000, &!2000*nj !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
@@ -130,7 +132,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 1.75, &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 4., &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -156,7 +158,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 
 		proc_time1 = 3.6,&	!time to process an application 
 		proc_time2 = 28.05,&!time to process an application in stage 2 (28.05-3.6)
-		xizcoef = 0.45, &		!change in acceptance rate with z deterioration
+		xizcoef = 0.1, &	!change in acceptance rate with z deterioration
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
 		voc_age	= 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
@@ -179,7 +181,7 @@ integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
 real(8) :: emp_persist = 0.98 ,&
 		emp_std = 0.01 ,&
 		apprt_target = .01,&	!target for application rates (to be filled below)
-		dirt_target = 0.035,&	!target for di rates
+		dirt_target = 0.018,&	!target for di rates
 		voc_accept = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_accept = 0.75		!fraction taken based on health criteria, target 1985
 		
@@ -593,12 +595,12 @@ subroutine setparams()
 	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
 		do j=1,ndi
-		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i)*delgrid(j) )**(0.5_dp/tlen))
-		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i)*delgrid(j) )**(0.5_dp/tlen))
+		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i)*dexp(delgrid(j)) )**(0.5_dp/tlen))
+		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i)*dexp(delgrid(j)) )**(0.5_dp/tlen))
 		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
 		
-		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i)*delgrid(j) )**(0.5_dp/tlen))
-		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i)*delgrid(j) )**(0.5_dp/tlen))
+		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i)                  )**(0.5_dp/tlen))
+		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i)*dexp(delgrid(j)) )**(0.5_dp/tlen))
 		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
 		
 		pid(3,3,j,i) = 1.
