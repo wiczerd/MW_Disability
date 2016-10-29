@@ -2430,7 +2430,8 @@ module sim_hists
 			enddo
 		else
 			do ij=1,nj
-				delwt(:,ij) = 1._dp/dble(ndi)
+				delwt(:,ij) = 0.
+				delwt(1,ij) = 1.
 			enddo
 		endif
 		!setup delcumwt
@@ -2755,6 +2756,7 @@ module sim_hists
 			!also include TT
 			!prob_age_nTT = prob_age
 			hazborn_hr_t = hazborn_t
+			prborn_hr_t  = prborn_t
 		else
 			prob_age_nTT(1) = youngD/(youngD+oldD*dble(oldN)) 
 			forall(it=2:TT-1) prob_age_nTT(it) = oldD/(youngD+oldD*dble(oldN))
@@ -2762,9 +2764,9 @@ module sim_hists
 			prborn_hr_t(1) = (ptau(1))**(Tsim-1)
 			cumprnborn_t(1) = 1. - prborn_hr_t(1)
 			hazborn_hr_t(1) = prborn_hr_t(1)
-			do t=2,Tsim
-				hazborn_hr_t(t) = prborn_hr_t(t)/cumprnborn_t(t-1)
-				cumprnborn_t(t) = (1.-prborn_hr_t(t))*cumprnborn_t(t-1)
+			do it=2,Tsim
+				hazborn_hr_t(it) = prborn_hr_t(it)/cumprnborn_t(it-1)
+				cumprnborn_t(it) = (1.-prborn_hr_t(it))*cumprnborn_t(it-1)
 			enddo
 		endif
 		
@@ -3823,8 +3825,8 @@ module sim_hists
 				if(verbose > 2) print *, "prob al1" ,PrAl1(1), ",", PrAl1(2)
 				exit
 			endif
-			if( ( (((a_mean - a_mean_liter)**2)<1.e-5_dp) .and. (sum((s_mean - s_mean_liter)**2)<1e-5 .or. sum((d_mean - d_mean_liter)**2)<1e-5)) .or. &
-			&	iter .ge. iter_draws-1 ) then
+			if( (  sum((a_mean - a_mean_liter)**2)<1.e-5_dp .and. ( sum((s_mean - s_mean_liter)**2)<1e-5 .or. sum((d_mean - d_mean_liter)**2) <1e-5) ).or. &
+			&	(iter .ge. iter_draws-1) ) then
 				if(verbose >=2 ) then
 					print *, "done simulating after convergence in", iter
 					print *, "dif a mean, log a var",  sum((a_mean - a_mean_liter)**2), sum((a_var - a_var_liter)**2)

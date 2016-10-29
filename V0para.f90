@@ -596,12 +596,12 @@ subroutine setparams()
 	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
 		do j=1,ndi
-		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i)*dexp(delgrid(j)/2._dp) )**(0.5_dp/tlen))
-		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i)*dexp(delgrid(j)/2._dp) )**(0.5_dp/tlen))
+		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i)*(delgrid(j)**.5_dp) )**(0.5_dp/tlen))
+		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i)                        )**(0.5_dp/tlen))
 		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
 		
 		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i)                        )**(0.5_dp/tlen))
-		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i)*dexp(delgrid(j)/2._dp) )**(0.5_dp/tlen))
+		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i)*(delgrid(j)**.5_dp) )**(0.5_dp/tlen))
 		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
 		
 		pid(3,3,j,i) = 1.
