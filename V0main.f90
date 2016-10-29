@@ -2445,16 +2445,7 @@ module sim_hists
 		delgridH = maxval(delgrid)
 		do i=1,Nsim
 			delgrid_i = del_i_draw(i)
-!~ 			if(j_rand .eqv. .false.) then
-!~ 				delgrid_i = del_i_draw(i)*(delgridH-delgridL) + delgridL !change domain of uniform
-!~ 				di_int = finder(delgrid,delgrid_i)
-!~ 				if(di_int < ndi) then ! round up or down:
-!~ 					if( (delgrid_i - delgrid(di_int))/(delgrid(di_int+1) - delgrid(di_int)) > 0.5 ) di_int = di_int + 1
-!~ 				endif
-!~ 				di_int = max(min(di_int,ndi),1)
-!~ 			else
 			di_int = finder(delcumwt(:,j_i(i)),delgrid_i)
-!~ 			endif
 			del_i_int(i) = di_int			
 		enddo
 	
@@ -2755,7 +2746,7 @@ module sim_hists
 		real(dp), dimension(TT) :: cumpi_t0
 		real(dp), dimension(TT-1) :: prob_age_nTT
 		real(dp) :: rand_age,rand_born
-		real(dp), dimension(Tsim) :: hazborn_hr_t
+		real(dp), dimension(Tsim) :: hazborn_hr_t,prborn_hr_t,cumprnborn_t
 		
 		!set up cumulative probabilities for t0 and conditional draws
 		!not begining with anyone from TT
@@ -2767,10 +2758,15 @@ module sim_hists
 		else
 			prob_age_nTT(1) = youngD/(youngD+oldD*dble(oldN)) 
 			forall(it=2:TT-1) prob_age_nTT(it) = oldD/(youngD+oldD*dble(oldN))
-			hazborn_hr_t(2:Tsim) = 1.-ptau(1)
-			hazborn_hr_t(1) = (ptau(1))**(Tsim-1)
+			prborn_hr_t(2:Tsim) = 1.-ptau(1)
+			prborn_hr_t(1) = (ptau(1))**(Tsim-1)
+			cumprnborn_t(1) = 1. - prborn_hr_t(1)
+			hazborn_hr_t(1) = prborn_hr_t(1)
+			do t=2,Tsim
+				hazborn_hr_t(t) = prborn_hr_t(t)/cumprnborn_t(t-1)
+				cumprnborn_t(t) = (1.-prborn_hr_t(t))*cumprnborn_t(t-1)
+			enddo
 		endif
-		
 		
 		cumpi_t0 = 0.
 
@@ -2781,54 +2777,64 @@ module sim_hists
 		Nm = size(age_draw,2)
 		born_it = 0
 		do i =1,Nsim
-		do m = 1,Nm
 			bn_i = 0 ! initialize, not yet born
-			it = 1
-			rand_born = age_draw(i,m)
-			m1 = mod(m+Nm/4,Nm)
-			m2 = mod(m+Nm/2,Nm)
-			m3 = mod(m+(3*Nm)/4,Nm)
-			if(rand_born < hazborn_hr_t(1)) then 
-				born_it(i,it) = 0 ! no one is "born" in the first period
-				bn_i = 1
-				!draw an age
-				rand_age = age_draw(i,m1 )
-				age_it(i,it) = finder(cumpi_t0,rand_age)
-			else 
-				age_it(i,it) = 0
-				born_it(i,it) = 0
-			endif
-			do it=2,Tsim
-				if(age_it(i,it-1)<TT) then
-					rand_born = age_draw(i,m2 )
-					if((rand_born < hazborn_hr_t(it)) .and.( bn_i == 0) ) then
-						age_it(i,it) =1
-						born_it(i,it) = 1
-						bn_i = 1
-					elseif(bn_i == 1) then
-						born_it(i,it) = 0
-						rand_age = age_draw(i,m3 )
-						if((rand_age < 1- ptau(age_it(i,it-1))) .and. (age_it(i,it-1) < TT) ) then
-							age_it(i,it) = age_it(i,it-1)+1
-						else 
-							age_it(i,it) = age_it(i,it-1)
-						endif
-					else 
-						bn_i = 0
-						born_it(i,it) = 0
-						age_it(i,it) = 0
-					endif
-				else
-					age_it(i,it) = TT
+			do m = 1,Nm
+				it = 1
+				rand_born = age_draw(i,m)
+				m1 = mod(m+Nm/4,Nm)+1
+				m2 = mod(m+Nm/2,Nm)+1
+				m3 = mod(m+(3*Nm)/4,Nm)+1
+				if(rand_born < hazborn_hr_t(1)) then 
+					born_it(i,it) = 0 ! no one is "born" in the first period
+					bn_i = 1
+					!draw an age
+					rand_age = age_draw(i,m1 )
+					age_it(i,it) = finder(cumpi_t0,rand_age)
+				else 
+					age_it(i,it) = 0
 					born_it(i,it) = 0
 				endif
-			enddo
-			if(bn_i == 1) then !if the born draw never comes, do the whole thing again.
-				exit
-			endif
-		enddo! m=1,50.... if never gets born
+				do it=2,Tsim
+					if(age_it(i,it-1)<TT) then
+						rand_born = age_draw(i,m2 )
+						if((rand_born < hazborn_hr_t(it)) .and.( bn_i == 0) ) then
+							age_it(i,it) =1
+							born_it(i,it) = 1
+							bn_i = 1
+						elseif(bn_i == 1) then
+							born_it(i,it) = 0
+							rand_age = age_draw(i,m3 )
+							if((rand_age < 1- ptau(age_it(i,it-1))) .and. (age_it(i,it-1) < TT) ) then
+								age_it(i,it) = age_it(i,it-1)+1
+							else 
+								age_it(i,it) = age_it(i,it-1)
+							endif
+						else 
+							bn_i = 0
+							born_it(i,it) = 0
+							age_it(i,it) = 0
+						endif
+					else
+						age_it(i,it) = TT
+						born_it(i,it) = 0
+					endif
+				enddo
+				if(bn_i == 1) then !if the born draw never comes, do the whole thing again.
+					exit
+				endif
+				!ensure everyone gets born sometime:
+				if(bn_i .ne. 1 .and. m==(Nm-2)) then
+					it =  max(min( nint((1.-age_draw(i,1))*Tsim),Tsim),1)
+					age_it(i,it) =1
+					born_it(i,it) = 1
+					bn_i = 1	
+				endif
+				
+			enddo! m=1,50.... if never gets born
+
 		enddo! i=1,Nsim
 
+		
 	
 	end subroutine set_age
 
@@ -3817,7 +3823,7 @@ module sim_hists
 				if(verbose > 2) print *, "prob al1" ,PrAl1(1), ",", PrAl1(2)
 				exit
 			endif
-			if( (sum((a_mean - a_mean_liter)**2) + sum((s_mean - s_mean_liter)**2) + sum((d_mean - d_mean_liter)**2))<1.e-5_dp .or. &
+			if( ( (((a_mean - a_mean_liter)**2)<1.e-5_dp) .and. (sum((s_mean - s_mean_liter)**2)<1e-5 .or. sum((d_mean - d_mean_liter)**2)<1e-5)) .or. &
 			&	iter .ge. iter_draws-1 ) then
 				if(verbose >=2 ) then
 					print *, "done simulating after convergence in", iter
@@ -4629,7 +4635,7 @@ module find_params
 		fndrt_mul0 = 1. 
 		seprt0_mul = 1.
 		
-		do iter = 1,maxiter
+		do iter = 1,(maxiter/10)
 			dist_wgtrend = 0.
 			dist_wgtrend_iter(iter) = 0.
 			
@@ -5250,8 +5256,8 @@ program V0main
 			if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 		endif
 		
-!~ 		if(verbose>2) print *, "iterating to find wage trend"
-!~ 		call iter_wgtrend(vfs, pfs, hst,shk)
+		if(verbose>2) print *, "iterating to find wage trend"
+		call iter_wgtrend(vfs, pfs, hst,shk)
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -5290,9 +5296,9 @@ program V0main
 		parvec(1) = nu
 		parvec(2) = xizcoef
 		err0 = 0.
-		call cal_dist(parvec,err0,shk)
+!~  		call cal_dist(parvec,err0,shk)
 		
-		print *, err0
+!~  		print *, err0
 		
 		if(verbose > 2) then
 			call CPU_TIME(t2)
@@ -5304,12 +5310,12 @@ program V0main
 	endif !sol_once
 	
 	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
-	lb = (/0._dp, 0._dp/)
+	lb = (/1._dp, 0.0_dp/)
 	call nlo_set_lower_bounds(ires,calopt,lb)
-	ub = (/ 6._dp, 0.75_dp /)
+	ub = (/ 7._dp, 0.75_dp /)
 	call nlo_set_upper_bounds(ires,calopt,ub)
-	call nlo_set_xtol_abs(ires, calopt, 0.005_dp) !integer problem, so it is not very sensitive
-	call nlo_set_ftol_abs(ires,calopt, 0.001_dp)  ! ditto 
+	call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
+	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
 	call nlo_set_maxeval(ires,calopt,500_dp)
 	
 	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
@@ -5317,63 +5323,116 @@ program V0main
 	parvec(1) = nu
 	parvec(2) = xizcoef
 	print *, parvec
-!	call nlo_optimize(ires, calopt, parvec, erval)
+	call nlo_optimize(ires, calopt, parvec, erval)
 	nu = parvec(1) ! new optimum
 	xizcoef = parvec(2)
 
-!	call cal_dist(parvec,err0,shk)
+ 	call cal_dist(parvec,err0,shk)
 
 	
 !~ !****************************************************************************
 !~ !   Now run some experiments:
 
-!~ 	! without wage trend
-!~ 	caselabel = "wchng0"
-!~ 	w_strchng = .false.
-!~ 	del_by_occ = .true.
-!~ 	demog_dat  = .true.
-!~ 	err0 = 0.
-!~ 	call cal_dist(parvec,err0,shk)
+	! without wage trend
+	caselabel = "wchng0"
+	print *, caselabel, " ---------------------------------------------------"
+	w_strchng = .false.
+	del_by_occ = .true.
+	demog_dat  = .true.
+	!call cal_dist(parvec,err0,shk)
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(vfs, pfs, hst,shk)
+	if(verbose >2) print *, "Computing moments"
+	call moments_compute(hst,moments_sim,shk)
+	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	print *, "---------------------------------------------------"
 
-!~ 	! without the correlation between delta and occupation
-!~ 	del_by_occ = .false.
-!~ 	w_strchng = .true.
-!~ 	demog_dat = .true.
-!~ 	caselabel = "deloc0"
-!~ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-!~ 	call cal_dist(parvec,err0,shk)
+	! without the correlation between delta and occupation
+	del_by_occ = .false.
+	w_strchng = .true.
+	demog_dat = .true.
+	caselabel = "deloc0"
+	print *, caselabel, " ---------------------------------------------------"
+	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(vfs, pfs, hst,shk)
+	if(verbose >2) print *, "Computing moments"
+	call moments_compute(hst,moments_sim,shk)
+	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	print *, "---------------------------------------------------"
 	
-!~ 	! without either the correlation between delta and occupation or wage trend
-!~ 	del_by_occ = .false.
-!~ 	w_strchng = .false.
-!~ 	demog_dat = .true.
-!~ 	caselabel = "wchng0deloc0"
-!~ 	call cal_dist(parvec,err0,shk)
+	! without either the correlation between delta and occupation or wage trend
+	del_by_occ = .false.
+	w_strchng = .false.
+	demog_dat = .true.
+	caselabel = "wchng0deloc0"
+	print *, caselabel, " ---------------------------------------------------"
+	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(vfs, pfs, hst,shk)
+	if(verbose >2) print *, "Computing moments"
+	call moments_compute(hst,moments_sim,shk)
+	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	print *, "---------------------------------------------------"
 	
-!~ 	del_by_occ = .true.
-!~ 	w_strchng = .true.
-!~ 	demog_dat = .false.
-!~ 	caselabel = "demog0"
-!~ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-!~ 	call cal_dist(parvec,err0,shk)
+	del_by_occ = .true.
+	w_strchng = .true.
+	demog_dat = .false.
+	caselabel = "demog0"
+	print *, caselabel, " ---------------------------------------------------"
+	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(vfs, pfs, hst,shk)
+	if(verbose >2) print *, "Computing moments"
+	call moments_compute(hst,moments_sim,shk)
+	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	print *, "---------------------------------------------------"
 	
-!~ 	del_by_occ = .true.
-!~ 	w_strchng = .false.
-!~ 	demog_dat = .false.
-!~ 	caselabel = "wchng0demog0"
-!~ 	call cal_dist(parvec,err0,shk)	
+	del_by_occ = .true.
+	w_strchng = .false.
+	demog_dat = .false.
+	caselabel = "wchng0demog0"
+	print *, caselabel, " ---------------------------------------------------"
+	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(vfs, pfs, hst,shk)
+	if(verbose >2) print *, "Computing moments"
+	call moments_compute(hst,moments_sim,shk)
+	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	print *, "---------------------------------------------------"
 
-!~ 	del_by_occ = .false.
-!~ 	w_strchng = .true.
-!~ 	demog_dat = .false.
-!~ 	caselabel = "deloc0demog0"
-!~ 	call cal_dist(parvec,err0,shk)
+	del_by_occ = .false.
+	w_strchng = .true.
+	demog_dat = .false.
+	caselabel = "deloc0demog0"
+	print *, caselabel, " ---------------------------------------------------"
+	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(vfs, pfs, hst,shk)
+	if(verbose >2) print *, "Computing moments"
+	call moments_compute(hst,moments_sim,shk)
+	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	print *, "---------------------------------------------------"
 
-!~ 	del_by_occ = .false.
-!~ 	w_strchng = .false.
-!~ 	demog_dat = .false.
-!~ 	caselabel = "wchng0deloc0demog0"
-!~ 	call cal_dist(parvec,err0,shk)		
+	del_by_occ = .false.
+	w_strchng = .false.
+	demog_dat = .false.
+	caselabel = "wchng0deloc0demog0"
+	print *, caselabel, " ---------------------------------------------------"
+	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(vfs, pfs, hst,shk)
+	if(verbose >2) print *, "Computing moments"
+	call moments_compute(hst,moments_sim,shk)
+	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	print *, "---------------------------------------------------"
+	
 	
 !~ 	!****************************************************************************!
 !~ 	! IF you love something.... 

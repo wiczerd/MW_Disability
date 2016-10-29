@@ -25,7 +25,7 @@ integer, parameter:: dp=kind(0.d0) ! double precision
 real(8), parameter ::	youngD = 20., &	!Length of initial young period
 		oldD = 5., &		!Length of each old period
 		tlen =12., &		!Number of periods per year (monthly)	
-		Longev = 78.- 25.,&	!Median longevity	
+		Longev = 82.- 25.,&	!Median longevity	
 		ageW = 0.0373076, &	!Coefficient on Age in Mincer,
 		ageW2 = -.0007414,&	!Coefficient on Age^2 in Mincer
 		ageD = 0.1, &		!Coefficient on Age over 45 in Disability hazard (exponential)
@@ -52,7 +52,7 @@ integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types
 			na  = 50, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 5000, &!2000*nj !how many agents to draw
+			Nsim = 16000, &!1000*nj !how many agents to draw
 			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
@@ -132,7 +132,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 4., &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 5, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -413,27 +413,28 @@ subroutine setparams()
 	prob_age = prob_age/sum(prob_age) !just to be sure it adds to 1
 	pop_size(1) = sum(prob_age(1:TT-1))
 	!evolution of age-structure
-	prob_age_tsim(:,1) = prob_age
+!	prob_age_tsim(:,1) = prob_age
 	cumprnborn_t = 1.
 	!prob of getting born
 	do t=2,Tsim
 		i=1
-		prborn_t(t) = 1.-(1.-0.01)**(1./tlen) !1% per year
+		prborn_t(t) = 1.-(1.-0.005)**(1./tlen) +  1.-ptau(TT) !1% per year
 		!prborn_t(t) = prob_age_tsim(TT-1,t-1)*(1.-ptau(TT-1)) !keeps const labor force.  
-		prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prborn_t(t)
-		do i = 2,TT
-			prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prob_age_tsim(i-1,t-1)*(1.-ptau(i-1))
-		enddo
-		pop_size(t) = sum(prob_age_tsim(:,t)) !should always be 1
+		!prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prborn_t(t)
+		!do i = 2,TT
+		!	prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prob_age_tsim(i-1,t-1)*(1.-ptau(i-1))
+		!enddo
+		!pop_size(t) = sum(prob_age_tsim(:,t)) !should always be 1
 		!prborn_t(t) = hazborn_t(t)*cumprnborn_t(t-1) !not actually hazard yet because not have initial prob
 	enddo
-	prborn_t(1) =  max(1.-sum(prborn_t(2:Tsim)),0.1) ! need to have some positive mass alive when the survey starts
+	prborn_t(1) =  product(1.-prborn_t(2:Tsim)) ! need to have some positive mass alive when the survey starts
 	cumprnborn_t(1) = 1. - prborn_t(1)
 	hazborn_t(1) = prborn_t(1)
 	do t=2,Tsim
 		hazborn_t(t) = prborn_t(t)/cumprnborn_t(t-1)
 		cumprnborn_t(t) = (1.-prborn_t(t))*cumprnborn_t(t-1)
 	enddo
+!~  	hazborn_t = prborn_t
 
 
 
@@ -595,12 +596,12 @@ subroutine setparams()
 	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
 		do j=1,ndi
-		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i)*dexp(delgrid(j)) )**(0.5_dp/tlen))
-		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i)*dexp(delgrid(j)) )**(0.5_dp/tlen))
+		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i)*dexp(delgrid(j)/2._dp) )**(0.5_dp/tlen))
+		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i)*dexp(delgrid(j)/2._dp) )**(0.5_dp/tlen))
 		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
 		
-		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i)                  )**(0.5_dp/tlen))
-		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i)*dexp(delgrid(j)) )**(0.5_dp/tlen))
+		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i)                        )**(0.5_dp/tlen))
+		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i)*dexp(delgrid(j)/2._dp) )**(0.5_dp/tlen))
 		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
 		
 		pid(3,3,j,i) = 1.
