@@ -48,7 +48,7 @@ integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types
 			ndi = 2,  &		    !Number of individual disability risk types
 			nj  = 16, &!16          !Number of occupations
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 50, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
@@ -158,7 +158,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 
 		proc_time1 = 3.6,&	!time to process an application 
 		proc_time2 = 28.05,&!time to process an application in stage 2 (28.05-3.6)
-		xizcoef = 0.1, &	!change in acceptance rate with z deterioration
+		xizcoef = 0.2, &	!change in acceptance rate with z deterioration
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
 		voc_age	= 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
@@ -198,6 +198,7 @@ integer :: print_lev, verbose
 logical :: simp_concav = .false.
 
 real(8) ::  Vtol = 5e-6 	!Tolerance on V-dist
+real(8) ::  simtol = 5.e-5_dp !tolerance on simulations
 
 contains
 subroutine setparams()
@@ -481,10 +482,10 @@ subroutine setparams()
 		avgADL = maxADL_read(j)*occsz0(j) + avgADL
 	enddo
 	!make mean 1 for occdel:
-	summy = 1.-(1.-avgADL)**(1./(youngD+oldN*oldD))
+	summy = 1.-(1.-avgADL)**(1./(tlen*youngD+tlen*dble(oldN)*oldD))
 	
 	do j=1,nj
-		occdel(j) =  (1.-(1.- (avgADL+ causal_phys_read(j)) )**(1./(youngD+oldN*oldD))) /summy
+		occdel(j) =  (1.-(1.- (avgADL+ causal_phys_read(j)) )**(1./(tlen*youngD+tlen*dble(oldN)*oldD))) /summy
 	enddo
 	!will set this in draw_del
 	delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
@@ -520,9 +521,11 @@ subroutine setparams()
 	xi_d3shift = (1491*.603+2211*0.546)/(1491+2211) - .484
 	
 	! initialize a few starting values
-	xi_d(3) = .15_dp !or hlth_accept*0.4
-	xi_d(2) = xi_d(3)-xi_d3shift 
-	xi_d(1) = xi_d(2)+xi_d1shift	!
+	xi_d(1) = 0.001!xi_d(2)+xi_d1shift	!
+	xi_d(2) = xi_d(1)-xi_d1shift !xi_d(3)-xi_d3shift 
+	xi_d(3) = xi_d(2)+xi_d3shift !
+
+	
 	
 	if(xizcoef == 0.) then
 		xizcoef = (0.4_dp - xi_d(3))/0.5_dp !dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
@@ -562,29 +565,51 @@ subroutine setparams()
 	!Make 2-year Markov transition matrices with all wierd invidual stuff
 	!Disability: pid(id,id';i,t) <---indv. type and age specific
 	!  					& 0 & 1 & 2 & dead\\
-    pid_tmp(1,:,1) = (/0.978 , 0.018 , 0.003 , 0.001/)
-    pid_tmp(2,:,1) = (/0.417 , 0.527 , 0.056 , 0.000/)
-    pid_tmp(3,:,1) = (/0.000 , 0.000 , 0.952 , 0.048/)
-    !\multicolumn{4}{c}{Age \quad 22-45}\\
+!    pid_tmp(1,:,1) = (/0.978 , 0.018 , 0.003 , 0.001/)
+!    pid_tmp(2,:,1) = (/0.417 , 0.527 , 0.056 , 0.000/)
+!    pid_tmp(3,:,1) = (/0.000 , 0.000 , 0.952 , 0.048/)
+!    !\multicolumn{4}{c}{Age \quad 22-45}\\
 
-    pid_tmp(1,:,2) = (/0.960 , 0.024 , 0.014 , 0.002/)
-    pid_tmp(2,:,2) = (/0.305 , 0.603 , 0.071 , 0.022/)
-    pid_tmp(3,:,2) = (/0.000 , 0.000 , 0.950 , 0.050/)
+!    pid_tmp(1,:,2) = (/0.960 , 0.024 , 0.014 , 0.002/)
+!    pid_tmp(2,:,2) = (/0.305 , 0.603 , 0.071 , 0.022/)
+!    pid_tmp(3,:,2) = (/0.000 , 0.000 , 0.950 , 0.050/)
     
-    pid_tmp(1,:,3) = (/0.960 , 0.024 , 0.014 , 0.002/)
-    pid_tmp(2,:,3) = (/0.305 , 0.603 , 0.071 , 0.022/)
-    pid_tmp(3,:,3) = (/0.000 , 0.000 , 0.950 , 0.050/)
-    !\multicolumn{4}{c}{Age \quad 46-55}\\
+!    pid_tmp(1,:,3) = (/0.960 , 0.024 , 0.014 , 0.002/)
+!    pid_tmp(2,:,3) = (/0.305 , 0.603 , 0.071 , 0.022/)
+!    pid_tmp(3,:,3) = (/0.000 , 0.000 , 0.950 , 0.050/)
+!    !\multicolumn{4}{c}{Age \quad 46-55}\\
 
-    pid_tmp(1,:,4) =  (/0.945 , 0.038 , 0.010 , 0.008/)
-    pid_tmp(2,:,4) =  (/0.375 , 0.455 , 0.134 , 0.037/)
-    pid_tmp(3,:,4) =  (/0.000 , 0.000 , 0.985 , 0.015/)
-    !\multicolumn{4}{c}{Age \quad 56-60}\\
+!    pid_tmp(1,:,4) =  (/0.945 , 0.038 , 0.010 , 0.008/)
+!    pid_tmp(2,:,4) =  (/0.375 , 0.455 , 0.134 , 0.037/)
+!    pid_tmp(3,:,4) =  (/0.000 , 0.000 , 0.985 , 0.015/)
+!    !\multicolumn{4}{c}{Age \quad 56-60}\\
 
-    pid_tmp(1,:,5) =  (/0.896 , 0.072 , 0.017 , 0.016/)
-    pid_tmp(2,:,5) =  (/0.174 , 0.692 , 0.089 , 0.045/)
-    pid_tmp(3,:,5) =  (/0.000 , 0.000 , 0.986 , 0.014/)
+!    pid_tmp(1,:,5) =  (/0.896 , 0.072 , 0.017 , 0.016/)
+!    pid_tmp(2,:,5) =  (/0.174 , 0.692 , 0.089 , 0.045/)
+!    pid_tmp(3,:,5) =  (/0.000 , 0.000 , 0.986 , 0.014/)
     !\multicolumn{4}{c}{Age \quad 61-65}\\
+	pid_tmp(1,:,1) = (/ .9562 ,  .0344  , .0084, 9.8e-04/)
+	pid_tmp(2,:,1) = (/ .5528 ,  .3662  , .0801, 9.2e-04/)
+	pid_tmp(3,:,1) = (/	  0.  ,    0.   , .9979,   .0021/)
+	
+	pid_tmp(1,:,2) = (/ .9378, .0468, .0137, .0018/)
+	pid_tmp(2,:,2) = (/ .4429, .4325, .1198, .0048/)
+	pid_tmp(3,:,2) = (/   0.0,   0.0, .9852, .0148/)
+
+	pid_tmp(1,:,3) = (/ .9378, .0468, .0137, .0018/)
+	pid_tmp(2,:,3) = (/ .4429, .4325, .1198, .0048/)
+	pid_tmp(3,:,3) = (/   0.0,   0.0, .9852, .0148/)
+
+	pid_tmp(1,:,4) = (/ .9293, .0518, .0159, .0029/)
+	pid_tmp(2,:,4) = (/ .4545, .3929, .1338, .0188/)
+	pid_tmp(3,:,4) = (/   0.0,   0.0, .9947, .0053/)
+	
+	pid_tmp(1,:,5) = (/ .8944, .0797, .0213, .0046/)
+	pid_tmp(2,:,5) = (/ .3665, .5391, .0818, .0126/)
+	pid_tmp(3,:,5) = (/   0.0,   0.0, .9701, .0299/)
+	
+
+	
 	
 	! make stochastic--minus that death probability
 	do t =1,TT-1
@@ -596,12 +621,12 @@ subroutine setparams()
 	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
 		do j=1,ndi
-		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i)*(delgrid(j)**.5_dp) )**(0.5_dp/tlen))
-		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i)                        )**(0.5_dp/tlen))
+		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i) )**(0.50_dp/tlen)) *delgrid(j)
+		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i) )**(0.50_dp/tlen)) *delgrid(j)
 		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
 		
-		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i)                        )**(0.5_dp/tlen))
-		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i)*(delgrid(j)**.5_dp) )**(0.5_dp/tlen))
+		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i) )**(0.5_dp/tlen)) 
+		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i) )**(0.5_dp/tlen)) *delgrid(j)
 		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
 		
 		pid(3,3,j,i) = 1.

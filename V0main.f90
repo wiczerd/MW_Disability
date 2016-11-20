@@ -206,7 +206,7 @@ module helper_funs
 		!adjust for time aggregation
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 		
-		xifun = xifunV + xifunH
+		xifun = xifunV + xifunH*(1.-xifunV)
 		
 		xifun = min(xifun,1._dp)
 
@@ -2431,7 +2431,18 @@ module sim_hists
 		else
 			do ij=1,nj
 				delwt(:,ij) = 0.
-				delwt(1,ij) = 1.
+				if(delgridH - delgridL > 1e-4) then
+					delwtH = (1. - delgridL)/(delgridH-delgridL)
+					delwtL = 1._dp - delwtH
+					do i=1,ndi/2
+						delwt(i,:) = delwtL/dble(ndi/2)
+					enddo
+					do i=1+ndi/2,ndi
+						delwt(i,:) = delwtH/dble(ndi-ndi/2)
+					enddo
+				else
+					delwt(1,:)=1.
+				endif
 			enddo
 		endif
 		!setup delcumwt
@@ -3518,6 +3529,7 @@ module sim_hists
 									ali_hr = 1
 									invol_un = 1
 									al_last_invol = al_hr
+									wage_hr	= wage(wage_lev(j_hr),al_last_invol,d_hr,z_hr,age_hr)
 									iiwt = 1.
 									iiH = 2
 									al_hr = alfgrid(ali_hr)
@@ -3825,7 +3837,7 @@ module sim_hists
 				if(verbose > 2) print *, "prob al1" ,PrAl1(1), ",", PrAl1(2)
 				exit
 			endif
-			if( (  sum((a_mean - a_mean_liter)**2)<1.e-5_dp .and. ( sum((s_mean - s_mean_liter)**2)<1e-5 .or. sum((d_mean - d_mean_liter)**2) <1e-5) ).or. &
+			if( (  sum((a_mean - a_mean_liter)**2)<simtol .and. ( sum((s_mean - s_mean_liter)**2)<simtol .or. sum((d_mean - d_mean_liter)**2) <simtol) ).or. &
 			&	(iter .ge. iter_draws-1) ) then
 				if(verbose >=2 ) then
 					print *, "done simulating after convergence in", iter
@@ -4689,7 +4701,7 @@ module find_params
 			enddo !ij 
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
 			if(iter>100) avg_convergence = dabs( sum(dist_wgtrend_iter(iter-100:iter)) - dist_wgtrend_iter(iter)) !in case not making progress
-			if((dist_wgtrend_iter(iter)<Vtol .and. iter>miniter) .or. avg_convergence<1e-4) then
+			if((dist_wgtrend_iter(iter)<simtol*100 .and. iter>miniter) .or. avg_convergence<1e-4) then !cannot get too close because also relies on sim converging
 				exit
 			endif
 			if(print_lev .ge. 4) then
@@ -5365,75 +5377,75 @@ program V0main
 	print *, "---------------------------------------------------"
 	
 	! without either the correlation between delta and occupation or wage trend
-	del_by_occ = .false.
-	w_strchng = .false.
-	demog_dat = .true.
-	caselabel = "wchng0deloc0"
-	print *, caselabel, " ---------------------------------------------------"
-	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(vfs, pfs, hst,shk)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hst,moments_sim,shk)
-	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	print *, "---------------------------------------------------"
+!	del_by_occ = .false.
+!	w_strchng = .false.
+!	demog_dat = .true.
+!	caselabel = "wchng0deloc0"
+!	print *, caselabel, " ---------------------------------------------------"
+!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!	if(verbose >2) print *, "Simulating the model"	
+!	call sim(vfs, pfs, hst,shk)
+!	if(verbose >2) print *, "Computing moments"
+!	call moments_compute(hst,moments_sim,shk)
+!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!	print *, "---------------------------------------------------"
 	
-	del_by_occ = .true.
-	w_strchng = .true.
-	demog_dat = .false.
-	caselabel = "demog0"
-	print *, caselabel, " ---------------------------------------------------"
-	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(vfs, pfs, hst,shk)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hst,moments_sim,shk)
-	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	print *, "---------------------------------------------------"
+!	del_by_occ = .true.
+!	w_strchng = .true.
+!	demog_dat = .false.
+!	caselabel = "demog0"
+!	print *, caselabel, " ---------------------------------------------------"
+!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!	if(verbose >2) print *, "Simulating the model"	
+!	call sim(vfs, pfs, hst,shk)
+!	if(verbose >2) print *, "Computing moments"
+!	call moments_compute(hst,moments_sim,shk)
+!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!	print *, "---------------------------------------------------"
 	
-	del_by_occ = .true.
-	w_strchng = .false.
-	demog_dat = .false.
-	caselabel = "wchng0demog0"
-	print *, caselabel, " ---------------------------------------------------"
-	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(vfs, pfs, hst,shk)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hst,moments_sim,shk)
-	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	print *, "---------------------------------------------------"
+!	del_by_occ = .true.
+!	w_strchng = .false.
+!	demog_dat = .false.
+!	caselabel = "wchng0demog0"
+!	print *, caselabel, " ---------------------------------------------------"
+!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!	if(verbose >2) print *, "Simulating the model"	
+!	call sim(vfs, pfs, hst,shk)
+!	if(verbose >2) print *, "Computing moments"
+!	call moments_compute(hst,moments_sim,shk)
+!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!	print *, "---------------------------------------------------"
 
-	del_by_occ = .false.
-	w_strchng = .true.
-	demog_dat = .false.
-	caselabel = "deloc0demog0"
-	print *, caselabel, " ---------------------------------------------------"
-	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(vfs, pfs, hst,shk)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hst,moments_sim,shk)
-	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	print *, "---------------------------------------------------"
+!	del_by_occ = .false.
+!	w_strchng = .true.
+!	demog_dat = .false.
+!	caselabel = "deloc0demog0"
+!	print *, caselabel, " ---------------------------------------------------"
+!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!	if(verbose >2) print *, "Simulating the model"	
+!	call sim(vfs, pfs, hst,shk)
+!	if(verbose >2) print *, "Computing moments"
+!	call moments_compute(hst,moments_sim,shk)
+!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!	print *, "---------------------------------------------------"
 
-	del_by_occ = .false.
-	w_strchng = .false.
-	demog_dat = .false.
-	caselabel = "wchng0deloc0demog0"
-	print *, caselabel, " ---------------------------------------------------"
-	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(vfs, pfs, hst,shk)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hst,moments_sim,shk)
-	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	print *, "---------------------------------------------------"
+!	del_by_occ = .false.
+!	w_strchng = .false.
+!	demog_dat = .false.
+!	caselabel = "wchng0deloc0demog0"
+!	print *, caselabel, " ---------------------------------------------------"
+!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!	if(verbose >2) print *, "Simulating the model"	
+!	call sim(vfs, pfs, hst,shk)
+!	if(verbose >2) print *, "Computing moments"
+!	call moments_compute(hst,moments_sim,shk)
+!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!	print *, "---------------------------------------------------"
 	
 	
 !~ 	!****************************************************************************!
