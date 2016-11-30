@@ -43,9 +43,9 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 7,  &!7		!Number of individual alpha types 
-			nbi = 1,  &		        !Number of indiVidual beta types
-			ndi = 2,  &		    !Number of individual disability risk types
+integer, parameter ::	nal = 5,  &!7		!Number of individual alpha types 
+			ntr = 10,  &		        !Number of occupation trend points
+			ndi = 2,  &		    	!Number of individual disability risk types
 			nj  = 16, &!16          !Number of occupations
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
@@ -86,7 +86,7 @@ real(8), parameter ::  amax 	 = 10.0,   &	!Max on Asset Grid
 
 !**To build***************************!
 real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
-		beti(nbi), &		!Beta_i grid- individual wage type parameter
+		trgrid(ntr), &		!Wage trend grid- individual wage type parameter
 		wtau(TT-1), &		!Age-specific wage parameter
 		wd(nd),   &		!Disability-specific wage parameter
 		ptau(TT), &		!Probability of aging
@@ -175,7 +175,8 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
 			Tblock_sim = struc_brk,&		!The actual time before structural change (years)
 			ialUn	= 1 ,&		! the index of alpha that signifies an exogenously displaced worker
-			ialL	= 2
+			ialL	= 2 ,&
+			tri0	= ntr/2	! the index of the trgrid that is 0
 
 !**** calibration targets
 real(8) :: emp_persist = 0.98 ,&
@@ -204,7 +205,7 @@ contains
 subroutine setparams()
 
 	logical, parameter :: lower= .FALSE. 
-	integer:: i, j, k, t
+	integer:: i, j, k, t,tri
 	real(8):: summy, emin, emax, step, &
 		  node, nodei,nodek,nodemidH,nodemidL, &
 		  alfcondsig,alfcondsigt,alfrhot,alfsigt, &
@@ -292,10 +293,6 @@ subroutine setparams()
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!Earnings
 	
-	
-	!Individual exposure to TFP shocks (beta)
-	beti(1) = 1.0
-	!beti(2) = 1.2 
 
 	!Individual Wage component (alpha)- grid= 2 std. deviations
 	alfrhot = alfrho**(1./tlen)
@@ -350,13 +347,29 @@ subroutine setparams()
 		occwg_lev(i) = wage_lev_read(i)
 		do t=1,Tsim	
 			occwg_trend(t,i) = wage_trend_read(t,i+1)
-			if( occwg_trend(t,i) <minval(alfgrid)) occwg_trend(t,i) = minval(alfgrid)
-			if( occwg_trend(t,i) >maxval(alfgrid)) occwg_trend(t,i) = maxval(alfgrid)
+			!if( occwg_trend(t,i) <minval(alfgrid)) occwg_trend(t,i) = minval(alfgrid)
+			!if( occwg_trend(t,i) >maxval(alfgrid)) occwg_trend(t,i) = maxval(alfgrid)
 		enddo
 	enddo
 	!initialize the input to the observed
 	wage_lev = 0.!occwg_lev
 	wage_trend = occwg_trend
+
+	!Wage-trend grid-setup
+	trgrid(1) = minval(occwg_trend)*0.9_dp
+	if(ntr>1) then
+		trgrid(ntr) = maxval(occwg_trend)*1.1_dp
+		do tri=2,(ntr-1)
+			trgrid(tri) = dble(tri-1)*(trgrid(ntr)-trgrid(1))/dble(ntr-1) + trgrid(1)
+		enddo
+		! set one of the grid points to 0:
+		tri0 = minloc( abs(trgrid) ,dim=1)
+		trgrid(tri0) = 0._dp
+	else
+		trgrid(1) = 0.
+		tri0 = 1
+	endif
+
 
 
 	!read these numberrs in already
@@ -542,14 +555,14 @@ subroutine setparams()
 ! 	Asset/SSDI wealth things:
 
 	!set alfgrid(1) now that everything else is known, -1 just for good measure, so they really don't want to work
-	alfgrid(1) = (beti(1)*minval(zgrid)+(alfgrid(2))+wtau(1)+wd(nd))-1.
+	alfgrid(1) = (minval(zgrid)+(alfgrid(2))+wtau(1)+wd(nd))-1.
 
 	!Earnings Grid
 	!Make linear from lowest possible wage (disabled entrant, lowest types)
-	emin = dexp(beti(1)*minval(zgrid)+alfgrid(2)+wtau(1)+wd(nd))
+	emin = dexp(trgrid(1) +alfgrid(2)+wtau(1)+wd(nd))
 	!... to highest, maximizing over t
 	!wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
-	emax = dexp(beti(nbi)*maxval(zgrid)+maxval(alfgrid)+maxval(wtau)+wd(1))
+	emax = dexp(trgrid(ntr) +maxval(alfgrid)+maxval(wtau)+wd(1))
 	step = (emax-emin)/dble(ne-1)
 	do i=1,ne
 		egrid(i) = emin+step*dble(i-1)
