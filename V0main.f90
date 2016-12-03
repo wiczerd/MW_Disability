@@ -477,7 +477,7 @@ module helper_funs
 		real(dp), intent(out) :: hatsig2
 		integer, intent(out) :: status
 
-		integer :: nX, nY, nK, r,c
+		integer :: nX, nY, nK
 		real(dp), dimension(:,:), allocatable :: XpX,XpX_fac,XpX_inv
 		real(dp), dimension(:), allocatable :: fitted,resids
 		integer :: i
@@ -2007,7 +2007,7 @@ module sol_val
 				summer = 0.
 				wo = 0
 				aa_u = 0
-				npara = nal*nd*ne*nz
+				npara = nal*ntr*nd*ne*nz
 			!$OMP  parallel do reduction(+:summer)&
 			!$OMP& private(ipara,ial,id,ie,iz,itr,apol,ga,gadif,ia,iaa0,iaaA,iaa_k,aa_l,aa_u,aa_m,V_m,Vtest1,wagehere,iaN,ia_o) 
 				do ipara = 1,npara
@@ -2134,7 +2134,7 @@ module sol_val
 				!------------------------------------------------!
 				summer = 0.
 				wo = 0
-				npara = nal*nd*ne*nz
+				npara = nal*ntr*nd*ne*nz
 			!$OMP   parallel do reduction(+:summer) &
 			!$OMP & private(ipara,ial,id,ie,iz,itr,apol,eprime,wagehere,iee1,iee2,iee1wt,ia,iaa0,iaaA,aa_l,aa_u,iaa_k,ia_o,iaN,Vtest1,VWhere,gwdif,gw) 
 				do ipara = 1,npara
@@ -2628,6 +2628,7 @@ module sim_hists
 					enddo
 				enddo
 			else
+			jshock_ij = 0._dp
 			!do periods 2:Tsim
 				do it=2,Tsim
 					do ij=1,nj
@@ -2642,21 +2643,29 @@ module sim_hists
 						endif
 					enddo
 				enddo
-
 			!do period 1
+				it=1
 				do ij=1,nj
-					Njcumdist(ij+1,1) = occsz0(ij) + Njcumdist(ij,1)
+					Njcumdist(ij+1,it) = occsz0(ij) + Njcumdist(ij,it)
 				enddo
 
 				do i=1,Nsim
 					if( j_i(i) ==0) then !not born in 2:Tsim and so doesn't have an occupation yet
 						call random_number(draw_i)
-						j_i(i) = finder(Njcumdist(:,1),draw_i)
+						j_i(i) = finder(Njcumdist(:,it),draw_i)
 						if(j_i(i) < 1 ) j_i(i) = 1
 						if(j_i(i) > nj) j_i(i) = nj
 					endif
 				enddo
 			endif
+			!make sure everyone has a job:
+			do i=1,Nsim
+				if( j_i(i)==0 ) then 
+					call random_number(draw_i)
+					j_i(i) = nint( draw_i*(nj-1)+1 )
+				endif
+			enddo
+			
 			
 			deallocate(bdayseed)
 		else
@@ -2672,7 +2681,7 @@ module sim_hists
 
 		real(dp), intent(out) :: z_jt_innov(:) !this will drive the continuous AR process
 		real(dp), intent(out) :: z_jt_select(:) !this will select the state if we use a markov chain
-		integer	:: it=1,i=1,ij=1,iz=1,izp=1,m=1,ss=1, z_jt_t=1
+		integer	:: it=1,i=1,ij=1,iz=1,izp=1,m=1,ss=1
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
 		integer, allocatable :: bdayseed(:) 
@@ -2709,12 +2718,8 @@ module sim_hists
 		NBER_start_stop(5,1) = 27*itlen + 3*( itlen/4 ) +1
 		NBER_start_stop(5,2) = 29*itlen + 1*( itlen/4 ) +1
 		!start cycles on 1st
-		ss = 1
 
-		
-		!draw on zgrid
-		! start everyone from middle state, alternatively could start from random draw on ergodic dist
-		z_jt_t = (nzblock+1)/2
+		ss = 1
 		do it = 1,Tsim
 			if(NBER_tseq .eqv. .true. ) then
 				if((it >= NBER_start_stop(ss,1)) .and. (it <= NBER_start_stop(ss,2)) ) then
@@ -2724,7 +2729,7 @@ module sim_hists
 					z_jt_innov(it)  = 1.
 					z_jt_select(it) = 1.
 				endif
-				if(it == NBER_start_stop(ss,2)) &
+				if(it .eq. NBER_start_stop(ss,2) .and. ss < 5) &
 					& ss = ss+1
 			else
 				call random_normal(z_innov)
@@ -3106,7 +3111,7 @@ module sim_hists
 				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj),PrAl1(nz),PrAl1St3(nz),totpopz(nz)
 	
 		! Other
-		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., bet_hr=1.,z_hr=1., iiwt=1., ziwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
+		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., iiwt=1., ziwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,triwt=1.
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1,triH, &
@@ -3256,16 +3261,18 @@ module sim_hists
 			if(verbose >3) print *, "iter: ", iter
 			!set prob alpha=1 for each z state.  Only works now for z_contin == .false.
 			if(iter>1)then 
-				PrAl1= 0.
-				totpopz = 0.
+				PrAl1= 0._dp
+				totpopz = 0._dp
+				PrAl1St3 = 0._dp
 				do zi_hr=1,nz
 					do i=1,Nsim
 						do it=2,Tsim
 							if((z_jt_macroint(it)==zi_hr) .and. (age_it(i,it)>0 ).and. (status_it(i,it) <=3) ) then 
-								totpopz(zi_hr) = totpopz(zi_hr) + 1.
+								totpopz(zi_hr) = totpopz(zi_hr) + 1._dp
 								if(al_int_it_endog(i,it)==1) then
-									PrAl1(zi_hr) = PrAl1(zi_hr)+1.
-										if(status_it(i,it)==3) PrAl1St3(zi_hr) = PrAl1St3(zi_hr)+1.
+									PrAl1(zi_hr) = PrAl1(zi_hr)+1._dp
+									if(status_it(i,it)==3) &
+										& PrAl1St3(zi_hr) = PrAl1St3(zi_hr)+1._dp
 								endif
 							endif
 						enddo!it
@@ -3359,14 +3366,13 @@ module sim_hists
 								endif
 								if(w_strchng .eqv. .true.) then
 									do tri_hr = ntr,1,-1
-										if( trgrid(tri_hr)<wage_trend(it,ij) ) then
-											triH = min(tri_hr+1,ntr)
-											if(triH>tri_hr) then
-												triwt = (trgrid(triH)- wage_trend(it,ij))/(trgrid(triH) - trgrid(tri_hr))
-											else
-												triwt = 1.
-											endif
-											exit !sets tri_hr as the lower
+										if( trgrid(tri_hr)<wage_trend(it,ij) ) &
+											exit
+										triH = min(tri_hr+1,ntr)
+										if(triH>tri_hr) then
+											triwt = (trgrid(triH)- wage_trend(it,ij))/(trgrid(triH) - trgrid(tri_hr))
+										else
+											triwt = 1.
 										endif
 									enddo
 								else
@@ -3498,14 +3504,13 @@ module sim_hists
 					
 					if( w_strchng .eqv. .true.) then
 						do tri_hr = ntr,1,-1
-							if( trgrid(tri_hr)<wage_trend(it,j_hr) ) then
-								triH = min(tri_hr+1,ntr)
-								if(triH>tri_hr) then
-									triwt = (trgrid(triH)- wage_trend(it,j_hr))/(trgrid(triH) - trgrid(tri_hr))
-								else
-									triwt = 1._dp
-								endif
-								exit !sets tri_hr as the lower
+							if( trgrid(tri_hr)<wage_trend(it,j_hr) ) &
+							&	exit
+							triH = min(tri_hr+1,ntr)
+							if(triH>tri_hr) then
+								triwt = (trgrid(triH)- wage_trend(it,j_hr))/(trgrid(triH) - trgrid(tri_hr))
+							else
+								triwt = 1._dp
 							endif
 						enddo
 					!	if( ali_hr>1 ) al_hr = max(al_hr + wage_trend(it,j_hr), alfgrid(2))
@@ -3766,6 +3771,7 @@ module sim_hists
 										&   (1.-ziwt)* iiwt    *agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr )) +&
 										&	(1.-ziwt)*(1.-iiwt)*agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ))
 								endif
+								api_hr=1
 								do ii=2,na
 									if( dabs(agrid(ii)-apc_hr) <  dabs(agrid(ii)-agrid(api_hr))) api_hr = ii
 								enddo
@@ -3787,6 +3793,7 @@ module sim_hists
 										&   (1.-triwt)* iiwt    *agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
 										&	(1.-triwt)*(1.-iiwt)*agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
 								endif
+								api_hr=1
 								do ii=2,na
 									if( dabs(agrid(ii)-apc_hr) <  dabs(agrid(ii)-agrid(api_hr))) api_hr = ii
 								enddo
@@ -4968,8 +4975,8 @@ module find_params
 		
 		print_lev_old = print_lev 
 		verbose_old = verbose
-		print_lev = 0
-		verbose = 1
+!		print_lev = 0
+!		verbose = 1
 
 		
 		if(verbose_old >=1) print *, "test parameter vector", paramvec
@@ -5181,6 +5188,7 @@ program V0main
 		call vec2csv(agrid,"agrid.csv",wo)
 		call vec2csv(delgrid,'delgrid.csv',wo)
 		call vec2csv(alfgrid,'alfgrid.csv',wo)
+		call vec2csv(trgrid,'trgrid.csv',wo)
 		call vec2csv(egrid,'egrid.csv',wo)
 		call mat2csv(zgrid,'zgrid.csv',wo)
 		call veci2csv(dgrid,'dgrid.csv',wo)
@@ -5188,7 +5196,7 @@ program V0main
 		call mat2csv(piz(:,:),"piz.csv",wo)
 		call mat2csv(pialf,"pial.csv",wo)
 		call mat2csv(PrDeath,"PrDeath.csv",wo)
-		cumpid = 0.
+		cumpid = 0._dp
 		do idi=1,ndi
 		do it =1,TT-1
 		do id =1,nd
@@ -5368,8 +5376,8 @@ program V0main
 		if(verbose >0) print *, "DI rate" , moments_sim%avg_di
  
 !	set mean wage:
-		wmean = 0.
-		junk = 0.
+		wmean = 0._dp
+		junk = 0._dp
 		do i=1,Nsim
 			do it=1,Tsim
 				wagehere = hst%wage_hist(i,it)
@@ -5381,8 +5389,8 @@ program V0main
 		enddo
 		wmean = wmean/junk
 		if(verbose >1) print *, "average wage:", wmean
-			totapp_dif_hist = 0.
-			ninsur_app = 0.
+			totapp_dif_hist = 0._dp
+			ninsur_app = 0._dp
 			do i =1,Nsim
 				do it=1,Tsim
 					if(hst%status_hist(i,it)<=3 .and. mod(it,itlen) .eq. 0) ninsur_app = 1.+ninsur_app ! only count the body once every year, comparable to data
@@ -5420,12 +5428,12 @@ program V0main
 	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
 	call nlo_set_maxeval(ires,calopt,500_dp)
 	
-	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+	!call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 	
 	parvec(1) = nu
 	parvec(2) = xizcoef
 	print *, parvec
-	call nlo_optimize(ires, calopt, parvec, erval)
+!~  	call nlo_optimize(ires, calopt, parvec, erval)
 	nu = parvec(1) ! new optimum
 	xizcoef = parvec(2)
 
@@ -5436,33 +5444,33 @@ program V0main
 !~ !   Now run some experiments:
 
 	! without wage trend
-	caselabel = "wchng0"
-	print *, caselabel, " ---------------------------------------------------"
-	w_strchng = .false.
-	del_by_occ = .true.
-	demog_dat  = .true.
-	!call cal_dist(parvec,err0,shk)
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(vfs, pfs, hst,shk)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hst,moments_sim,shk)
-	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	print *, "---------------------------------------------------"
+!~ 	caselabel = "wchng0"
+!~ 	print *, caselabel, " ---------------------------------------------------"
+!~ 	w_strchng = .false.
+!~ 	del_by_occ = .true.
+!~ 	demog_dat  = .true.
+!~ 	!call cal_dist(parvec,err0,shk)
+!~ 	if(verbose >2) print *, "Simulating the model"	
+!~ 	call sim(vfs, pfs, hst,shk)
+!~ 	if(verbose >2) print *, "Computing moments"
+!~ 	call moments_compute(hst,moments_sim,shk)
+!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!~ 	print *, "---------------------------------------------------"
 
-	! without the correlation between delta and occupation
-	del_by_occ = .false.
-	w_strchng = .true.
-	demog_dat = .true.
-	caselabel = "deloc0"
-	print *, caselabel, " ---------------------------------------------------"
-	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(vfs, pfs, hst,shk)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hst,moments_sim,shk)
-	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	print *, "---------------------------------------------------"
+!~ 	! without the correlation between delta and occupation
+!~ 	del_by_occ = .false.
+!~ 	w_strchng = .true.
+!~ 	demog_dat = .true.
+!~ 	caselabel = "deloc0"
+!~ 	print *, caselabel, " ---------------------------------------------------"
+!~ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!~ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!~ 	if(verbose >2) print *, "Simulating the model"	
+!~ 	call sim(vfs, pfs, hst,shk)
+!~ 	if(verbose >2) print *, "Computing moments"
+!~ 	call moments_compute(hst,moments_sim,shk)
+!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!~ 	print *, "---------------------------------------------------"
 	
 	! without either the correlation between delta and occupation or wage trend
 !	del_by_occ = .false.

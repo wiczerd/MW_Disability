@@ -43,10 +43,10 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 5,  &!7		!Number of individual alpha types 
-			ntr = 10,  &		        !Number of occupation trend points
+integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types 
+			ntr = 5, &!5	        !Number of occupation trend points
 			ndi = 2,  &		    	!Number of individual disability risk types
-			nj  = 16, &!16          !Number of occupations
+			nj  = 16, &!16			!Number of occupations
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 50, &!100	        !Points on assets grid
@@ -113,7 +113,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		hazborn_t(Tsim), &	!hazard of being born at each point t
 		PrD3age(TT-1), &	!Fraction of D2 at each age
 		PrDeath(nd,TT),&	!Probability of death during work-life
-
+!
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
 		wage_trend(Tsim,nj),&!trend in wages
 		wage_lev(nj),&		!occupation-specific differences in wage-level
@@ -123,7 +123,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
 		occwg_trend(Tsim,nj),& !trend in occupation wage
 		occwg_lev(nj),&		!level of occupation wage
-		
+!
 		occsz0(nj),&		!Fraction in each occupation
 		occpr_trend(Tsim,nj)!trend in occupation choice
 		
@@ -155,7 +155,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
-
+!
 		proc_time1 = 3.6,&	!time to process an application 
 		proc_time2 = 28.05,&!time to process an application in stage 2 (28.05-3.6)
 		xizcoef = 0.2, &	!change in acceptance rate with z deterioration
@@ -207,15 +207,14 @@ subroutine setparams()
 	logical, parameter :: lower= .FALSE. 
 	integer:: i, j, k, t,tri
 	real(8):: summy, emin, emax, step, &
-		  node, nodei,nodek,nodemidH,nodemidL, &
-		  alfcondsig,alfcondsigt,alfrhot,alfsigt, &
+		   alfcondsig,alfcondsigt,alfrhot,alfsigt, &
 		  mean_uloss,sd_uloss
 		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: prob_age_tsim(TT,Tsim),pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(nj),avgADL, &
-		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(nj), UE_occ_read(nz,16),EU_occ_read(nz,16),apprt_read(50,2),&
-		& pid_tmp(nd,nd+1,TT-1),causal_phys_read(nj)
+	real(8) :: pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(16),avgADL, &
+		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(16), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2),&
+		& pid_tmp(nd,nd+1,TT-1),causal_phys_read(16)
 	
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -373,8 +372,8 @@ subroutine setparams()
 
 
 	!read these numberrs in already
-	seprisk = 0.
-	fndrate = 0.
+	seprisk = 0._dp
+	fndrate = 0._dp
 	do i =1,nz
 		do j=1,nj
 			k = 3-i !flip, recession is 1 and expansion is 2 in markov chain
@@ -385,8 +384,8 @@ subroutine setparams()
 
 	
 	! TFP
-	zshift = 0. 
-	zscale = 1. 
+	zshift = 0._dp
+	zscale = 1._dp
 
 	call settfp()
 
@@ -480,11 +479,11 @@ subroutine setparams()
 	enddo
 	!endif
 	!ensure it sums to 1
-	summy =0.
+	summy =0._dp
 	do j=1,nj
 		summy = occsz0(j) + summy
 	enddo
-	occsz0(j) = occsz0(j)/summy
+	forall(j=1:nj) occsz0(j) = occsz0(j)/summy
 
 ! Disability stuff	
 	forall(i=1:nd) dgrid(i) = i
@@ -719,14 +718,19 @@ subroutine settfp()
 			piblock = piz(1:nz/2,1:nz/2)
 			
 		else
-			piblock= piz
+			piblock= piz(1:nzblock,1:nzblock)
 			Zzgrid = zgrid(:,1)
 			do j=1,nj
 				zgrid(:,j) = Zzgrid*zscale(j)
 			enddo
 		endif
-
-	else
+		!DGEMM('N','N',  M,  N,    K, ALPHA,  A,     M,    B,       K,  BETA,     C,       M)
+		call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, piblock, nzblock, 0._dp, ergpi1,nzblock)
+		do i=1,10000
+				call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, ergpi1, nzblock, 0._dp, ergpi2,nzblock)
+				ergpi1 = ergpi2
+		enddo
+	else !nz=2
 		! probability of entering recession  4/(58+12+92+120+73) = 0.011267606
 		piz(2,1) = 4./(58.+12.+92.+120.+73.)
 		! probability of exit from recession 4/(6+16+8+8+18) = 0.071428571
@@ -736,20 +740,16 @@ subroutine settfp()
 		piblock = piz
 		if( z_flowrts .eqv. .true.) then
 			Zzgrid = 0.
-			zgrid = 0.
+			zgrid  = 0.
 		else
 			Zzgrid  = (/ zmu-zsig, zmu+zsig/)
 			do j=1,nj
 					zgrid(:,j) = Zzgrid*zscale(j)
 			enddo
 		endif
+		ergpi1 = 0.5_dp
 	endif
-		!DGEMM('N','N',  M,  N,    K, ALPHA,  A,     M,    B,       K,  BETA,     C,       M)
-	call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, piblock, nzblock, 0._dp, ergpi1,nzblock)
-	do i=1,10000
-			call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, ergpi1, nzblock, 0._dp, ergpi2,nzblock)
-			ergpi1 = ergpi2
-	enddo
+
 	if(z_regimes .eqv. .true.) then
 		do i=1,nz/2
 			ergpiz(i) = ergpi1(1,i)
@@ -822,7 +822,6 @@ end subroutine rouwenhorst
 subroutine rand_num_closed(harvest)
 	!ensures we're drawing uniform [0,1] on a closed interval
 	real(8), intent(inout) :: harvest
-	integer :: i
 	rngbound: do
 		call random_number(harvest)
 		harvest = harvest*1.1D0 - 0.05D0
@@ -1277,19 +1276,19 @@ subroutine hptrend(t,y,phi, yt,yd)
 	integer, intent(in)            :: t
 	integer, dimension(t+1)        :: ip
 	integer, dimension(t)          :: iwork,ju
-	integer, dimension(5*t-6)      :: ia,ja,jlu
-	integer                        :: i,j,info
+!	integer, dimension(5*t-6)      :: ia,ja,jlu
+	integer                        :: i,info
 	real(8), intent(in)               :: phi
 	real(8)                           :: eps
 	real(8), dimension(t),intent(in)  :: y
 	real(8), dimension(t),intent(out) :: yd,yt
 	real(8), dimension(t)             :: yn
 	real(8), dimension(t,t)           :: a
-	real(8), dimension(5*t-6)         :: s,alu
-	real(8), dimension(t,nm+1)        :: v
-	real(8), dimension(t-2)           :: x2
-	real(8), dimension(t-3)           :: x3
-	real(8), dimension(t-4)           :: x4
+!	real(8), dimension(5*t-6)         :: s,alu
+!	real(8), dimension(t,nm+1)        :: v
+!	real(8), dimension(t-2)           :: x2
+!	real(8), dimension(t-3)           :: x3
+!	real(8), dimension(t-4)           :: x4
 
 	external dgesv
 
