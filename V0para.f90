@@ -132,7 +132,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 5, &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 5., &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -216,7 +216,11 @@ subroutine setparams()
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(16), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2),&
 		& pid_tmp(nd,nd+1,TT-1),causal_phys_read(16)
 	
-
+	real(8) :: wr(nd),wi(nd),vl(nd,nd),vr(nd,nd),abnrm,rcondv(nd),sdec(nd,nd),rconde(nd),wrk(nd*(nd+6))
+	integer :: ilo,ihi,iwrk(nd*2-2),lwrk,status
+	
+	
+	
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	verbose = 3
 	print_lev = 2
@@ -632,19 +636,47 @@ subroutine setparams()
 	
 	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
-		do j=1,ndi
-		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i) )**(0.50_dp/tlen)) *delgrid(j)
-		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i) )**(0.50_dp/tlen)) *delgrid(j)
-		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
+	do j=1,ndi
+		sdec = pid_tmp(:,1:3,i)
+		lwrk = nd*(nd+6)
+		!want to construct right-side eigen vectors into matrix
+					!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
+		call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
+		!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
+	&	 vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
 		
-		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i) )**(0.5_dp/tlen)) 
-		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i) )**(0.5_dp/tlen)) *delgrid(j)
-		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
-		
-		pid(3,3,j,i) = 1.
-		pid(3,1:2,j,i) = 0.
-		
+		!replace vl = vr^-1
+		call invmat(vr, vl)
+		do t=1,nd
+			vr(:,t) = vr(:,t)*wr(t)**(0.5_dp/tlen)
 		enddo
+		call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
+
+		do t=1,nd
+			summy = sum(pid(t,:,j,i) )
+			pid(t,:,j,i) = pid(t,:,j,i)/summy
+		enddo
+
+		pid(1,2,j,i) = pid(1,2,j,i)*delgrid(j)
+		pid(1,3,j,i) = pid(1,3,j,i)*delgrid(j)
+		pid(1,1,j,i) = 1.-pid(1,2,j,i)-pid(1,3,j,i)
+		
+		pid(2,3,j,i) = pid(2,3,j,i)*delgrid(j)
+		pid(2,2,j,i) = 1.-pid(1,2,j,i)-pid(2,3,j,i)
+		
+		
+!~ 		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i) )**(0.5_dp/tlen)) *delgrid(j)
+!~ 		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i) )**(0.5_dp/tlen)) *delgrid(j)
+!~ 		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
+		
+!~ 		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i) )**(0.5_dp/tlen)) 
+!~ 		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i) )**(0.5_dp/tlen)) *delgrid(j)
+!~ 		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
+		
+!~ 		pid(3,3,j,i) = 1.
+!~ 		pid(3,1:2,j,i) = 0.
+		
+	enddo
 	enddo
 	
 	!was: PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
@@ -762,6 +794,7 @@ subroutine settfp()
 		
 end subroutine settfp
 
+
 !****************************************************************************************************************************************!
 !		FUNCTIONS		
 !
@@ -817,6 +850,32 @@ subroutine rouwenhorst(N,mu,rho,sigma,grid,PP)
 	grid	= (/ (i, i=0,N-1) /)
 	grid	= grid *(2.0*fi / (dble(N) - 1.0)) - fi + mu
 end subroutine rouwenhorst
+
+
+	
+	
+subroutine invmat(A, invA)
+	real(dp), dimension(:,:), intent(in) :: A
+	real(dp), dimension(size(A,1),size(A,2)), intent(out) :: invA
+	real(dp), dimension(size(A,1)*size(A,1)) :: wk
+	integer, dimension(size(A,1) + 1) :: ipiv
+	integer :: n, info
+	external DGETRF
+	external DGETRI
+
+	invA = A
+	n = size(A,1)
+
+	call DGETRF(n,n,invA,n,ipiv,info) ! first computes the LU factorization
+
+	if (info /= 0) then
+		print *, 'Matrix is singular.  Make it less singular before proceeding'
+	endif
+	call DGETRI(n,invA,n,ipiv,wk,n,info)
+	if(info /=0) then
+		print *, 'Matrix inversion failed, though it is not singular'
+	endif
+end subroutine invmat
 
 
 subroutine rand_num_closed(harvest)

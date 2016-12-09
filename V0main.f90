@@ -441,31 +441,7 @@ module helper_funs
 
 	end subroutine veci2csv
 	
-	
-	
-	subroutine invmat(A, invA)
-		real(dp), dimension(:,:), intent(in) :: A
-		real(dp), dimension(size(A,1),size(A,2)), intent(out) :: invA
-		real(dp), dimension(size(A,1)*size(A,1)) :: wk
-		integer, dimension(size(A,1) + 1) :: ipiv
-		integer :: n, info
-		external DGETRF
-		external DGETRI
-	
-		invA = A
-		n = size(A,1)
-	
-		call DGETRF(n,n,invA,n,ipiv,info) ! first computes the LU factorization
-	
-		if (info /= 0) then
-			print *, 'Matrix is singular.  Make it less singular before proceeding'
-		endif
-		call DGETRI(n,invA,n,ipiv,wk,n,info)
-		if(info /=0) then
-			print *, 'Matrix inversion failed, though it is not singular'
-		endif
-	end subroutine invmat
-	
+
 	!------------------------------------------------------------------------
 	! 12) Run an OLS regression
 	!------------------------------------------------------------------------
@@ -2477,6 +2453,9 @@ module sim_hists
 			di_int = finder(delcumwt(:,j_i(i)),delgrid_i)
 			del_i_int(i) = di_int			
 		enddo
+	
+		if(print_lev >=2) &
+		&	call mat2csv(delwt,"delwt"//trim(caselabel)//".csv")
 	
 	end subroutine set_deli
 	
@@ -4726,7 +4705,7 @@ module find_params
 		real(dp) :: urt,udur,Efrt,Esrt
 		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt0_mul,seprt1_mul
 		real(dp) :: seprt1,seprt0,s0factor,frt0,frt0_mul, avg_convergence
-		integer  :: miniter = 10
+		integer  :: miniter = 3
 		
 		allocate(jwages(Nsim))
 		allocate(dist_wgtrend_jt(Tsim,nj))
@@ -4778,7 +4757,7 @@ module find_params
 					med_wage_jt(it,ij) = med_wage_jt(it,ij) - med_wage_jt(1,ij) 
 					dist_wgtrend_jt(it,ij) = med_wage_jt(it,ij) - occwg_trend(it,ij)
 					!update the global variable : wage_trend
-					wage_trend(it,ij) = -upd_wgtrnd*dabs(dist_wgtrend_jt(it,ij)) + wage_trend(it,ij) 
+					wage_trend(it,ij) = -upd_wgtrnd*(dist_wgtrend_jt(it,ij)) + wage_trend(it,ij) 
 					
 					if(wage_trend(it,ij) <= minval(trgrid)) then
 						wage_trend(it,ij) = minval(trgrid)
@@ -4795,7 +4774,7 @@ module find_params
 				enddo
 			enddo !ij 
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
-			if(iter>100) avg_convergence = dabs( sum(dist_wgtrend_iter(iter-100:iter)) - dist_wgtrend_iter(iter)) !in case not making progress
+			if(iter>100) avg_convergence = dabs( sum(dist_wgtrend_iter(iter-100:iter))/100. - dist_wgtrend_iter(iter)) !in case not making progress
 			if((dist_wgtrend_iter(iter)<simtol*100 .and. iter>miniter) .or. avg_convergence<1e-4) then !cannot get too close because also relies on sim converging
 				exit
 			endif
@@ -4910,7 +4889,7 @@ module find_params
 		endif
 		
 		!I only want to iterate on the wage trend if I have a good set of parameters
-		!call iter_wgtrend(vfs, pfs, hst,shk)
+		call iter_wgtrend(vfs, pfs, hst,shk)
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -4956,7 +4935,6 @@ module find_params
 		moments_sim%init_di= moments_sim%init_di/ninsur_app
 		moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/napp_t
 		
-		!errvec(1) =  totapp_dif_hist - apprt_target
 		errvec(1) = (moments_sim%init_di - dirt_target)/dirt_target
 		errvec(2) = (moments_sim%init_hlth_acc - hlth_accept)/hlth_accept
 		
@@ -4975,8 +4953,8 @@ module find_params
 		
 		print_lev_old = print_lev 
 		verbose_old = verbose
-!		print_lev = 0
-!		verbose = 1
+		print_lev = 0
+		verbose = 1
 
 		
 		if(verbose_old >=1) print *, "test parameter vector", paramvec
@@ -5235,24 +5213,24 @@ program V0main
 				do id = 1,nd-1
 					wagehere = wage(0._dp,alfgrid(ial),id,zgrid(iz,ij),it)
 					write(1, "(G20.12)", advance='no') wagehere
-					if(wagehere > maxwin) &
-						maxwin = wagehere
-					if(wagehere < minwin) &
-						minwin = wagehere
+!~ 					if(wagehere > maxwin) &
+!~ 						maxwin = wagehere
+!~ 					if(wagehere < minwin) &
+!~ 						minwin = wagehere
 				enddo
 				id = nd
 				wagehere = wage(0._dp,alfgrid(ial),id,zgrid(iz,ij),it)
 				write(1,*) wagehere
-				if(wagehere > maxwin) &
-					maxwin = wagehere
-				if(wagehere < minwin) &
-					minwin = wagehere
 			enddo
 			write(1,*) " "! trailing space
 		enddo	
 		close(1)
-		minwin = minwin * exp(minval(wage_lev)) *0.99_dp
-		maxwin = maxwin * exp(maxval(wage_lev)) *1.01_dp
+		id =3
+		it =1
+		minwin = wage(trgrid(1)+ minval(wage_lev),alfgrid(2),id, minval(zgrid),it) !minwin * exp(minval(wage_lev)) *0.99_dp
+		id =1
+		it = 3
+		maxwin = wage(trgrid(ntr)+ minval(wage_lev),alfgrid(2),id, maxval(zgrid),it) !maxwin * exp(maxval(wage_lev)) *1.01_dp
 		
 		open(1, file="xi.csv")
 		open(2, file="xi_hlth.csv")
@@ -5405,10 +5383,10 @@ program V0main
 			
 		parvec(1) = nu
 		parvec(2) = xizcoef
-		err0 = 0.
-!~  		call cal_dist(parvec,err0,shk)
+!~ 		err0 = 0.
+!~ 		call cal_dist(parvec,err0,shk)
 		
-!~  		print *, err0
+  		print *, err0
 		
 		if(verbose > 2) then
 			call CPU_TIME(t2)
@@ -5428,12 +5406,12 @@ program V0main
 	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
 	call nlo_set_maxeval(ires,calopt,500_dp)
 	
-	!call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 	
 	parvec(1) = nu
 	parvec(2) = xizcoef
 	print *, parvec
-!~  	call nlo_optimize(ires, calopt, parvec, erval)
+  	call nlo_optimize(ires, calopt, parvec, erval)
 	nu = parvec(1) ! new optimum
 	xizcoef = parvec(2)
 
@@ -5444,33 +5422,33 @@ program V0main
 !~ !   Now run some experiments:
 
 	! without wage trend
-!~ 	caselabel = "wchng0"
-!~ 	print *, caselabel, " ---------------------------------------------------"
-!~ 	w_strchng = .false.
-!~ 	del_by_occ = .true.
-!~ 	demog_dat  = .true.
-!~ 	!call cal_dist(parvec,err0,shk)
-!~ 	if(verbose >2) print *, "Simulating the model"	
-!~ 	call sim(vfs, pfs, hst,shk)
-!~ 	if(verbose >2) print *, "Computing moments"
-!~ 	call moments_compute(hst,moments_sim,shk)
-!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-!~ 	print *, "---------------------------------------------------"
+	caselabel = "wchng0"
+	print *, caselabel, " ---------------------------------------------------"
+	w_strchng = .false.
+	del_by_occ = .true.
+	demog_dat  = .true.
+	!call cal_dist(parvec,err0,shk)
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(vfs, pfs, hst,shk)
+	if(verbose >2) print *, "Computing moments"
+	call moments_compute(hst,moments_sim,shk)
+	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	print *, "---------------------------------------------------"
 
-!~ 	! without the correlation between delta and occupation
-!~ 	del_by_occ = .false.
-!~ 	w_strchng = .true.
-!~ 	demog_dat = .true.
-!~ 	caselabel = "deloc0"
-!~ 	print *, caselabel, " ---------------------------------------------------"
-!~ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-!~ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-!~ 	if(verbose >2) print *, "Simulating the model"	
-!~ 	call sim(vfs, pfs, hst,shk)
-!~ 	if(verbose >2) print *, "Computing moments"
-!~ 	call moments_compute(hst,moments_sim,shk)
-!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-!~ 	print *, "---------------------------------------------------"
+	! without the correlation between delta and occupation
+	del_by_occ = .false.
+	w_strchng = .true.
+	demog_dat = .true.
+	caselabel = "deloc0"
+	print *, caselabel, " ---------------------------------------------------"
+	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	if(verbose >2) print *, "Simulating the model"	
+	call sim(vfs, pfs, hst,shk)
+	if(verbose >2) print *, "Computing moments"
+	call moments_compute(hst,moments_sim,shk)
+	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	print *, "---------------------------------------------------"
 	
 	! without either the correlation between delta and occupation or wage trend
 !	del_by_occ = .false.
