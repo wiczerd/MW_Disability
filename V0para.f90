@@ -67,7 +67,7 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  zj_contin	 = .false.,& !make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
 					  ineligNoNu = .false.,&! do young ineligable also pay the nu cost when they are ineligable?
-					  dieyoung   = .false.
+					  dieyoung   = .true.
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
@@ -156,9 +156,9 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
 !
-		proc_time1 = 3.6,&	!time to process an application 
-		proc_time2 = 28.05,&!time to process an application in stage 2 (28.05-3.6)
-		xizcoef = 0.2, &	!change in acceptance rate with z deterioration
+		proc_time1 = 14.12,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
+		proc_time2 = 14.12,&!The average time to decision	(could be 28.05 for appeal that continues)
+		xizcoef = 0.1, &	!change in acceptance rate with z deterioration
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
 		voc_age	= 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
@@ -199,7 +199,7 @@ integer :: print_lev, verbose
 logical :: simp_concav = .false.
 
 real(8) ::  Vtol = 5e-6 	!Tolerance on V-dist
-real(8) ::  simtol = 5.e-5_dp !tolerance on simulations
+real(8) ::  simtol = 5.e-6_dp !tolerance on simulations
 
 contains
 subroutine setparams()
@@ -624,8 +624,6 @@ subroutine setparams()
 	pid_tmp(2,:,5) = (/ .3665, .5391, .0818, .0126/)
 	pid_tmp(3,:,5) = (/   0.0,   0.0, .9701, .0299/)
 	
-
-	
 	
 	! make stochastic--minus that death probability
 	do t =1,TT-1
@@ -659,10 +657,10 @@ subroutine setparams()
 
 		pid(1,2,j,i) = pid(1,2,j,i)*delgrid(j)
 		pid(1,3,j,i) = pid(1,3,j,i)*delgrid(j)
-		pid(1,1,j,i) = 1.-pid(1,2,j,i)-pid(1,3,j,i)
+		pid(1,1,j,i) = 1._dp-pid(1,2,j,i)-pid(1,3,j,i)
 		
 		pid(2,3,j,i) = pid(2,3,j,i)*delgrid(j)
-		pid(2,2,j,i) = 1.-pid(1,2,j,i)-pid(2,3,j,i)
+		pid(2,2,j,i) = 1._dp-pid(2,1,j,i)-pid(2,3,j,i)
 		
 		
 !~ 		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i) )**(0.5_dp/tlen)) *delgrid(j)
@@ -682,7 +680,7 @@ subroutine setparams()
 	!was: PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
 	PrD3age = (/0.0444_dp,0.0756_dp,0.0933_dp,0.1201_dp,0.1617_dp /)
 	
-	PrDeath(:,1:(TT-1)) = 1.-(1._dp-pid_tmp(:,4,:))**(0.5_dp/tlen)
+	PrDeath(:,1:(TT-1)) = 1._dp-(1._dp-pid_tmp(:,4,:))**(0.5_dp/tlen)
 	PrDeath(:,TT) = PrDeath(:,TT-1)
 	
 end subroutine setparams

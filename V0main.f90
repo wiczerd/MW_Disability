@@ -193,20 +193,22 @@ module helper_funs
 		
 		!stage 1-3
 		xifunH = xi_d(idin)
-		xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
+	!	xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
 		if(present(hlthprob) .eqv. .true.) &
 			hlthprob = xifunH
 		
 		!vocational stages 4-5
 		if(itin>=(TT-2)) then
-			xifunV =  max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef*(1.+xiagecoef)
+			xifunV =  (maxwin-win)/(1._dp+(maxwin-win))*xizcoef*(1.+xiagecoef)
 		else
-			xifunV =  max(0._dp,(maxwin-win)/(maxwin-minwin))*xizcoef
+			xifunV =  (maxwin-win)/(1._dp+(maxwin-win))*xizcoef
 		endif
 		!adjust for time aggregation
-		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
+	!	xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 		
-		xifun = xifunV + xifunH*(1.-xifunV)
+		xifun = xifunV*(1.-xifunH) + xifunH
+	
+		xifun = 1._dp - max(0._dp,1._dp-xifun)**(1._dp/proc_time1)
 		
 		xifun = min(xifun,1._dp)
 
@@ -3432,14 +3434,15 @@ module sim_hists
 					endif
 					
 					if(dead .eqv. .true.) then
-							age_it(i,it) = -1
-							a_it(i,it) = 0.
-							a_it_int(i,it) = 0
+!~ 							age_it(i,it) = -1 !if I change thins, then I have to reset for the next iteration
+							a_it(i,it) = minval(agrid)
+							a_it_int(i,it) = 1
 							d_it(i,it) = 0
 							app_dif_it(i,it) = 0.						
 							work_dif_it(i,it) = 0.
 							status_it(i,it) = -1
-							exit
+							dead = .true.
+							cycle
 					endif
 
 					!figure out where to evaluate z
@@ -3851,7 +3854,7 @@ module sim_hists
 					endif
 				else !age_it(i,it) <= 0, they've not been born
 					a_it(i,it) = 0.
-					a_it_int(i,it) = 0
+					a_it_int(i,it) = 1
 					d_it(i,it) = 0
 					app_dif_it(i,it) = 0.						
 					work_dif_it(i,it) = 0.
@@ -3900,7 +3903,6 @@ module sim_hists
 				enddo
 				a_var(age_hr) = a_var(age_hr)/junk
 				d_var(age_hr) = d_var(age_hr)/junk
-
 			enddo
 			if( final_iter .eqv. .true. ) then 
 				if(verbose > 2) print *, "prob al1" ,PrAl1(1), ",", PrAl1(2)
@@ -4848,7 +4850,8 @@ module find_params
 		!zrho = paramvec(1)
 		!zsig = paramvec(2)
 		nu   = paramvec(1)
-		xizcoef = paramvec(2)
+		if( size(paramvec)>1 ) &
+		&	xizcoef = paramvec(2)
 		
 		call alloc_econ(vfs,pfs,hst)
 
@@ -4889,7 +4892,7 @@ module find_params
 		endif
 		
 		!I only want to iterate on the wage trend if I have a good set of parameters
-		call iter_wgtrend(vfs, pfs, hst,shk)
+	!	call iter_wgtrend(vfs, pfs, hst,shk)
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -4933,10 +4936,15 @@ module find_params
 			enddo
 		enddo
 		moments_sim%init_di= moments_sim%init_di/ninsur_app
-		moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/napp_t
+		if(napp_t > 0.) then
+			moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/napp_t
+		else
+			moments_sim%init_hlth_acc= 1._dp
+		endif
 		
 		errvec(1) = (moments_sim%init_di - dirt_target)/dirt_target
-		errvec(2) = (moments_sim%init_hlth_acc - hlth_accept)/hlth_accept
+		if(size(errvec)>1) &
+		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_accept)/hlth_accept
 		
 		call dealloc_econ(vfs,pfs,hst)
 
@@ -4957,17 +4965,17 @@ module find_params
 		verbose = 1
 
 		
-		if(verbose_old >=1) print *, "test parameter vector", paramvec
+		if(verbose_old >=1) print *, "test parameter vector ", paramvec
 		if(print_lev_old >=1) then
 			open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
-			write(fcallog,*) "test parameter vector", paramvec
+			write(fcallog,*) "test parameter vector ", paramvec
 		endif
 		
 		call cal_dist(paramvec, errvec,shk)
 
-		if(verbose_old >=1) print *, "         error vector", errvec
+		if(verbose_old >=1) print *, "         error vector ", errvec
 		if(print_lev_old >=1) then
-			write(fcallog,*)  "         error vector", errvec
+			write(fcallog,*)  "         error vector ", errvec
 			close(unit=fcallog)
 		endif
 
@@ -4978,7 +4986,6 @@ module find_params
 			fval = errvec(i)**2*paramwt(i) + fval
 		enddo
 		if( need_grad .ne. 0) then
-
 			do i=1,nparam
 				gradstep (i) = min( dabs( paramvec(i)*(5.e-5_dp) ) ,5.e-5_dp)
 				paramvecH(i) = paramvec(i) + gradstep(i)
@@ -4993,7 +5000,11 @@ module find_params
 				enddo
 				gradvec(i) =  (fvalH - fvalL)/(2._dp * gradstep(i))
 			enddo
-			
+			if(verbose_old >=1) print *, "             gradient ", gradvec
+			if(print_lev_old >=1) then
+				open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
+				write(fcallog,*) "             gradient ", gradvec
+			endif
 		endif
 		print_lev = print_lev_old
 		verbose = verbose_old	
@@ -5141,7 +5152,7 @@ program V0main
 		logical :: sol_once = .true.
 	! NLopt stuff
 		integer(8) :: calopt=0,ires=0
-		real(dp) :: lb(2),ub(2),parvec(2), erval
+		real(dp) :: lb(2),ub(2),parvec(2), erval,lb_1(1),ub_1(1),parvec_1(1),ervec_1(1)
 !		external :: cal_dist_nloptwrap
 
 		
@@ -5345,7 +5356,7 @@ program V0main
 		endif
 		
 		if(verbose>2) print *, "iterating to find wage trend"
-		call iter_wgtrend(vfs, pfs, hst,shk)
+!~ 		call iter_wgtrend(vfs, pfs, hst,shk)
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -5386,7 +5397,7 @@ program V0main
 !~ 		err0 = 0.
 !~ 		call cal_dist(parvec,err0,shk)
 		
-  		print *, err0
+!~ 		print *, err0
 		
 		if(verbose > 2) then
 			call CPU_TIME(t2)
@@ -5397,11 +5408,14 @@ program V0main
 	
 	endif !sol_once
 	
-	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
-	lb = (/1._dp, 0.0_dp/)
-	call nlo_set_lower_bounds(ires,calopt,lb)
-	ub = (/ 7._dp, 0.75_dp /)
-	call nlo_set_upper_bounds(ires,calopt,ub)
+!	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
+	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
+	lb = (/0.1_dp, 0.0_dp/)
+	lb_1 = (/.1/)
+	call nlo_set_lower_bounds(ires,calopt,lb_1)
+	ub = (/ 7._dp, 0.5_dp /)
+	ub_1 = (/7./)
+	call nlo_set_upper_bounds(ires,calopt,ub_1)
 	call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
 	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
 	call nlo_set_maxeval(ires,calopt,500_dp)
@@ -5410,45 +5424,49 @@ program V0main
 	
 	parvec(1) = nu
 	parvec(2) = xizcoef
+	parvec_1(1) = nu
 	print *, parvec
-  	call nlo_optimize(ires, calopt, parvec, erval)
-	nu = parvec(1) ! new optimum
+	open(unit=fcallog, file=callog)
+	write(fcallog,*) " "
+	close(unit=fcallog)
+!~   	call nlo_optimize(ires, calopt, parvec_1, erval)
+	nu = parvec_1(1) ! new optimum
 	xizcoef = parvec(2)
 
- 	call cal_dist(parvec,err0,shk)
+ 	call cal_dist(parvec_1,ervec_1,shk)
 
 	
 !~ !****************************************************************************
 !~ !   Now run some experiments:
 
 	! without wage trend
-	caselabel = "wchng0"
-	print *, caselabel, " ---------------------------------------------------"
-	w_strchng = .false.
-	del_by_occ = .true.
-	demog_dat  = .true.
-	!call cal_dist(parvec,err0,shk)
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(vfs, pfs, hst,shk)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hst,moments_sim,shk)
-	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	print *, "---------------------------------------------------"
+!~ 	caselabel = "wchng0"
+!~ 	print *, caselabel, " ---------------------------------------------------"
+!~ 	w_strchng = .false.
+!~ 	del_by_occ = .true.
+!~ 	demog_dat  = .true.
+!~ 	!call cal_dist(parvec,err0,shk)
+!~ 	if(verbose >2) print *, "Simulating the model"	
+!~ 	call sim(vfs, pfs, hst,shk)
+!~ 	if(verbose >2) print *, "Computing moments"
+!~ 	call moments_compute(hst,moments_sim,shk)
+!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!~ 	print *, "---------------------------------------------------"
 
-	! without the correlation between delta and occupation
-	del_by_occ = .false.
-	w_strchng = .true.
-	demog_dat = .true.
-	caselabel = "deloc0"
-	print *, caselabel, " ---------------------------------------------------"
-	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	if(verbose >2) print *, "Simulating the model"	
-	call sim(vfs, pfs, hst,shk)
-	if(verbose >2) print *, "Computing moments"
-	call moments_compute(hst,moments_sim,shk)
-	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	print *, "---------------------------------------------------"
+!~ 	! without the correlation between delta and occupation
+!~ 	del_by_occ = .false.
+!~ 	w_strchng = .true.
+!~ 	demog_dat = .true.
+!~ 	caselabel = "deloc0"
+!~ 	print *, caselabel, " ---------------------------------------------------"
+!~ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!~ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!~ 	if(verbose >2) print *, "Simulating the model"	
+!~ 	call sim(vfs, pfs, hst,shk)
+!~ 	if(verbose >2) print *, "Computing moments"
+!~ 	call moments_compute(hst,moments_sim,shk)
+!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!~ 	print *, "---------------------------------------------------"
 	
 	! without either the correlation between delta and occupation or wage trend
 !	del_by_occ = .false.
