@@ -5350,8 +5350,7 @@ program V0main
 				do it=2,Tsim
 					jshift(:,it) = jshift(:,1)
 				enddo
-			endif
-				
+			endif	
 			if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 		endif
 		

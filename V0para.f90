@@ -53,12 +53,10 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			nz  = 2,  &		        !Number of aggregate shock states
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000, &!1000*nj !how many agents to draw
-			Ndat = 5000, &          !size of data, for estimation
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10
-			
 
 
 ! thse relate to how we compute it
