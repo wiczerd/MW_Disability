@@ -51,8 +51,8 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 50, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
-			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 16000, &!1000*nj !how many agents to draw
+			maxiter = 2, &		!Tolerance parameter	
+			Nsim = 160, &!1000*nj !how many agents to draw
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
@@ -110,6 +110,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		prborn_t(Tsim),&	!probability of being born at each point t
 		hazborn_t(Tsim), &	!hazard of being born at each point t
 		PrD3age(TT-1), &	!Fraction of D2 at each age
+		PrDage(nd,TT-1), &	!Fraction of each D at each age
 		PrDeath(nd,TT),&	!Probability of death during work-life
 !
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
@@ -212,7 +213,8 @@ subroutine setparams()
 
 	real(8) :: pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(16), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2),&
-		& pid_tmp(nd,nd+1,TT-1),causal_phys_read(16)
+		& pid_tmp(nd,nd+1,TT-1),causal_phys_read(16), PrD_Age_read(5,4),PrDDp_Age_read(15,4)
+	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,p1,p2,p3,junk
 	
 	real(8) :: wr(nd),wi(nd),vl(nd,nd),vr(nd,nd),abnrm,rcondv(nd),sdec(nd,nd),rconde(nd),wrk(nd*(nd+6))
 	integer :: ilo,ihi,iwrk(nd*2-2),lwrk,status
@@ -258,6 +260,7 @@ subroutine setparams()
 	read(fread,*) age_read(:)
 	close(fread)
 
+	!wage levels and trends by occupation
 	open(unit= fread, file = "wageTrend.csv")
 	do t=1,Tsim
 		read(fread,*) wage_trend_read(t,:)
@@ -280,6 +283,20 @@ subroutine setparams()
 	do j=1,nj
 		read(fread, *,iostat=k) causal_phys_read(j)
 	enddo
+	close(fread)
+
+	!read in the disability rates by age
+	open(unit=fread, file="PrD_Age.csv")
+	do j=1,5 
+		read(fread, *,iostat=k) PrD_Age_read(j,:)
+	enddo	
+	close(fread)
+	
+	!read in the disability rates by age 
+	open(unit=fread, file="PrDDp_Age.csv")
+	do j=1,15
+		read(fread, *,iostat=k) PrDDp_Age_read(j,:)
+	enddo	
 	close(fread)
 	
 	!Read in the disability application rates
@@ -623,12 +640,33 @@ subroutine setparams()
 	pid_tmp(3,:,5) = (/   0.0,   0.0, .9701, .0299/)
 	
 	
+	!transition matrix
+	do t=1,TT-1
+		pid_tmp(:,:,t) = PrDDp_Age_read( 1+(t-1)*3:3+(t-1)*3 , :)
+		!rows add to 1
+		do i=1,3
+			pid_tmp(i,:,t) = pid_tmp(i,:,t)/sum(pid_tmp(i,:,t))
+		enddo
+	enddo
+	
 	! make stochastic--minus that death probability
 	do t =1,TT-1
 		do i=1,3
 			pid_tmp(i,1:3,t) = pid_tmp(i,1:3,t)/(1. - pid_tmp(i,4,t))
 		enddo
 	enddo
+
+	
+	!was: PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
+	!then was PrD3age = (/0.0444_dp,0.0756_dp,0.0933_dp,0.1201_dp,0.1617_dp /)
+	do t=1,TT-1
+		PrDage(:,t) = PrD_Age_read(t,1:nd)/sum(PrD_Age_read(t,1:nd))
+		PrD3age(t) = PrDage(nd,t)
+	enddo
+	
+	PrDeath(:,1:(TT-1)) = 1._dp-(1._dp-pid_tmp(:,4,:))**(0.5_dp/tlen)
+	PrDeath(:,TT) = PrDeath(:,TT-1)
+	
 	
 	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
@@ -643,44 +681,70 @@ subroutine setparams()
 		
 		!replace vl = vr^-1
 		call invmat(vr, vl)
+		!vr = vr*wr^(1/24)
 		do t=1,nd
 			vr(:,t) = vr(:,t)*wr(t)**(0.5_dp/tlen)
 		enddo
+		!pid = vr * wr^1/24* vr^-1
 		call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
 
 		do t=1,nd
 			summy = sum(pid(t,:,j,i) )
 			pid(t,:,j,i) = pid(t,:,j,i)/summy
 		enddo
+		
+		!use steady state to fill in most of the pid terms. Uses birth rate in period 2
+		if(i>1) then
+			agein1  = PrDage(1,i-1)*(1.-ptau(i-1))
+			agein2  = PrDage(2,i-1)*(1.-ptau(i-1))
+			agein3  = PrDage(3,i-1)*(1.-ptau(i-1))
+		else
+			agein1 = 0.
+			agein2 = 0.
+			agein3 = 0.
+		endif
+		ageout1 = PrDage(1,i)*(1.-ptau(i))
+		ageout2 = PrDage(2,i)*(1.-ptau(i))
+		ageout3 = PrDage(3,i)*(1.-ptau(i))
+		p1 = PrDage(1,i)
+		p2 = PrDage(2,i)
+		p3 = PrDage(3,i)
 
+		pid(1,1,j,i) = -(agein1 - ageout1 + prborn_t(2) - 2*p1 + p2*pid(2,1,j,i))/(2*p1)
+		pid(1,2,j,i) = -(ageout1 - agein2 - 2*agein3 - agein1 + ageout2 + 2*ageout3 - prborn_t(2) +&
+					& 2*PrDeath(1,i)*p1+ 2*PrDeath(2,i)*p2 + 4*PrDeath(3,i)*p3 + p2*pid(2,1,j,i))/p1
+		
+		pid(1,3,j,i) = (ageout1 - 2*agein2 - 4*agein3 - agein1 + 2*ageout2 + 4*ageout3 - prborn_t(2) +&
+					& 2*PrDeath(1,i)*p1 + 4*PrDeath(2,i)*p2 + 8*PrDeath(3,i)*p3 + 3*p2*pid(2,1,j,i))/(2*p1)
+		
+		pid(2,2,j,i) = (ageout1 - 2*agein2 - 2*agein3 - agein1 + 2*ageout2 + 2*ageout3 - prborn_t(2) +&
+					& 2*p2 + 2*PrDeath(1,i)*p1 + 2*PrDeath(2,i)*p2 + 4*PrDeath(1,3)*p3 + p2*pid(2,1,j,i))/(2*p2)
+		
+		pid(2,3,j,i) = -(ageout1 - 2*agein2 - 2*agein3 - agein1 + 2*ageout2 + 2*ageout3 - prborn_t(2)  +&
+					& 2*PrDeath(1,i)*p1 + 4*PrDeath(2,i)*p2 + 4*PrDeath(1,3)*p3 + 3*p2*pid(2,1,j,i))/(2*p2)
+		
+		
+		!make it add to 1 (because probability of death is not in pid)
+		do t=1,nd
+			pid(t,:,j,i) = pid(t,:,j,i)/(1.-PrDeath(t,i))
+			!just to be sure
+			summy = sum(pid(t,:,j,i) )
+			pid(t,:,j,i) = pid(t,:,j,i)/summy
+		enddo
+		
 		pid(1,2,j,i) = pid(1,2,j,i)*delgrid(j)
 		pid(1,3,j,i) = pid(1,3,j,i)*delgrid(j)
 		pid(1,1,j,i) = 1._dp-pid(1,2,j,i)-pid(1,3,j,i)
 		
 		pid(2,3,j,i) = pid(2,3,j,i)*delgrid(j)
-		pid(2,2,j,i) = 1._dp-pid(2,1,j,i)-pid(2,3,j,i)
-		
-		
-!~ 		pid(1,2,j,i) = (1. - ( 1.-pid_tmp(1,2,i) )**(0.5_dp/tlen)) *delgrid(j)
-!~ 		pid(1,3,j,i) = (1. - ( 1.-pid_tmp(1,3,i) )**(0.5_dp/tlen)) *delgrid(j)
-!~ 		pid(1,1,j,i) = 1.- pid(1,2,j,i) - pid(1,3,j,i)
-		
-!~ 		pid(2,1,j,i) = (1. - ( 1.-pid_tmp(2,1,i) )**(0.5_dp/tlen)) 
-!~ 		pid(2,3,j,i) = (1. - ( 1.-pid_tmp(2,3,i) )**(0.5_dp/tlen)) *delgrid(j)
-!~ 		pid(2,2,j,i) = 1. - pid(2,1,j,i) - pid(2,3,j,i)
-		
-!~ 		pid(3,3,j,i) = 1.
-!~ 		pid(3,1:2,j,i) = 0.
+		!pid(2,2,j,i) = 1._dp-pid(2,1,j,i)-pid(2,3,j,i)
+		junk = (1._dp-pid(2,3,j,i))/(pid(2,1,j,i)+pid(2,2,j,i) )
+		pid(2,1,j,i) = junk*pid(2,1,j,i) 
+		pid(2,2,j,i) = junk*pid(2,2,j,i)
 		
 	enddo
 	enddo
-	
-	!was: PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
-	PrD3age = (/0.0444_dp,0.0756_dp,0.0933_dp,0.1201_dp,0.1617_dp /)
-	
-	PrDeath(:,1:(TT-1)) = 1._dp-(1._dp-pid_tmp(:,4,:))**(0.5_dp/tlen)
-	PrDeath(:,TT) = PrDeath(:,TT-1)
-	
+
 end subroutine setparams
 
 subroutine settfp()
