@@ -51,21 +51,22 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 50, &!100	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
-			maxiter = 2, &		!Tolerance parameter	
-			Nsim = 160, &!1000*nj !how many agents to draw
+			maxiter = 2000, &		!Tolerance parameter	
+			Nsim = 16000, &!1000*nj !how many agents to draw
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10
 
 
-! thse relate to how we compute it
+! thse relate to how we compute it. Mostly for debugging purposes
 logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
 					  z_flowrts	 = .true.,& !make zj just control flow rates and not productivity (makes the next irrelevant)
 					  zj_contin	 = .false.,& !make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
 					  ineligNoNu = .false.,&! do young ineligable also pay the nu cost when they are ineligable?
-					  dieyoung   = .true.
+					  dieyoung   = .true.,&!do the young die (rate associated with health state)
+					  pid_ss	 = .true.  !do health transition rates preserve steady state
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
@@ -109,8 +110,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		prob_age(TT), &		!Probability of being in each age group to start
 		prborn_t(Tsim),&	!probability of being born at each point t
 		hazborn_t(Tsim), &	!hazard of being born at each point t
-		PrD3age(TT-1), &	!Fraction of D2 at each age
-		PrDage(nd,TT-1), &	!Fraction of each D at each age
+		PrD3age(TT), &	!Fraction of D2 at each age
+		PrDage(nd,TT), &	!Fraction of each D at each age
 		PrDeath(nd,TT),&	!Probability of death during work-life
 !
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
@@ -213,8 +214,8 @@ subroutine setparams()
 
 	real(8) :: pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(16), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2),&
-		& pid_tmp(nd,nd+1,TT-1),causal_phys_read(16), PrD_Age_read(5,4),PrDDp_Age_read(15,4)
-	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,p1,p2,p3,junk
+		& pid_tmp(nd,nd+1,TT-1),causal_phys_read(16), PrD_Age_read(6,4),PrDDp_Age_read(15,4)
+	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3
 	
 	real(8) :: wr(nd),wi(nd),vl(nd,nd),vr(nd,nd),abnrm,rcondv(nd),sdec(nd,nd),rconde(nd),wrk(nd*(nd+6))
 	integer :: ilo,ihi,iwrk(nd*2-2),lwrk,status
@@ -287,7 +288,7 @@ subroutine setparams()
 
 	!read in the disability rates by age
 	open(unit=fread, file="PrD_Age.csv")
-	do j=1,5 
+	do j=1,6 
 		read(fread, *,iostat=k) PrD_Age_read(j,:)
 	enddo	
 	close(fread)
@@ -595,52 +596,8 @@ subroutine setparams()
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!Make 2-year Markov transition matrices with all wierd invidual stuff
 	!Disability: pid(id,id';i,t) <---indv. type and age specific
-	!  					& 0 & 1 & 2 & dead\\
-!    pid_tmp(1,:,1) = (/0.978 , 0.018 , 0.003 , 0.001/)
-!    pid_tmp(2,:,1) = (/0.417 , 0.527 , 0.056 , 0.000/)
-!    pid_tmp(3,:,1) = (/0.000 , 0.000 , 0.952 , 0.048/)
-!    !\multicolumn{4}{c}{Age \quad 22-45}\\
-
-!    pid_tmp(1,:,2) = (/0.960 , 0.024 , 0.014 , 0.002/)
-!    pid_tmp(2,:,2) = (/0.305 , 0.603 , 0.071 , 0.022/)
-!    pid_tmp(3,:,2) = (/0.000 , 0.000 , 0.950 , 0.050/)
-    
-!    pid_tmp(1,:,3) = (/0.960 , 0.024 , 0.014 , 0.002/)
-!    pid_tmp(2,:,3) = (/0.305 , 0.603 , 0.071 , 0.022/)
-!    pid_tmp(3,:,3) = (/0.000 , 0.000 , 0.950 , 0.050/)
-!    !\multicolumn{4}{c}{Age \quad 46-55}\\
-
-!    pid_tmp(1,:,4) =  (/0.945 , 0.038 , 0.010 , 0.008/)
-!    pid_tmp(2,:,4) =  (/0.375 , 0.455 , 0.134 , 0.037/)
-!    pid_tmp(3,:,4) =  (/0.000 , 0.000 , 0.985 , 0.015/)
-!    !\multicolumn{4}{c}{Age \quad 56-60}\\
-
-!    pid_tmp(1,:,5) =  (/0.896 , 0.072 , 0.017 , 0.016/)
-!    pid_tmp(2,:,5) =  (/0.174 , 0.692 , 0.089 , 0.045/)
-!    pid_tmp(3,:,5) =  (/0.000 , 0.000 , 0.986 , 0.014/)
-    !\multicolumn{4}{c}{Age \quad 61-65}\\
-	pid_tmp(1,:,1) = (/ .9562 ,  .0344  , .0084, 9.8e-04/)
-	pid_tmp(2,:,1) = (/ .5528 ,  .3662  , .0801, 9.2e-04/)
-	pid_tmp(3,:,1) = (/	  0.  ,    0.   , .9979,   .0021/)
 	
-	pid_tmp(1,:,2) = (/ .9378, .0468, .0137, .0018/)
-	pid_tmp(2,:,2) = (/ .4429, .4325, .1198, .0048/)
-	pid_tmp(3,:,2) = (/   0.0,   0.0, .9852, .0148/)
-
-	pid_tmp(1,:,3) = (/ .9378, .0468, .0137, .0018/)
-	pid_tmp(2,:,3) = (/ .4429, .4325, .1198, .0048/)
-	pid_tmp(3,:,3) = (/   0.0,   0.0, .9852, .0148/)
-
-	pid_tmp(1,:,4) = (/ .9293, .0518, .0159, .0029/)
-	pid_tmp(2,:,4) = (/ .4545, .3929, .1338, .0188/)
-	pid_tmp(3,:,4) = (/   0.0,   0.0, .9947, .0053/)
-	
-	pid_tmp(1,:,5) = (/ .8944, .0797, .0213, .0046/)
-	pid_tmp(2,:,5) = (/ .3665, .5391, .0818, .0126/)
-	pid_tmp(3,:,5) = (/   0.0,   0.0, .9701, .0299/)
-	
-	
-	!transition matrix
+	!read in transition matrix
 	do t=1,TT-1
 		pid_tmp(:,:,t) = PrDDp_Age_read( 1+(t-1)*3:3+(t-1)*3 , :)
 		!rows add to 1
@@ -659,25 +616,83 @@ subroutine setparams()
 	
 	!was: PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
 	!then was PrD3age = (/0.0444_dp,0.0756_dp,0.0933_dp,0.1201_dp,0.1617_dp /)
-	do t=1,TT-1
+	do t=1,TT
 		PrDage(:,t) = PrD_Age_read(t,1:nd)/sum(PrD_Age_read(t,1:nd))
 		PrD3age(t) = PrDage(nd,t)
 	enddo
 	
-	PrDeath(:,1:(TT-1)) = 1._dp-(1._dp-pid_tmp(:,4,:))**(0.5_dp/tlen)
+	PrDeath(:,1:(TT-1)) = pid_tmp(:,4,:)!1._dp-(1._dp-pid_tmp(:,4,:))**(0.5_dp/tlen)
 	PrDeath(:,TT) = PrDeath(:,TT-1)
 	
-	
+	pid = 0.
 	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
 	do j=1,ndi
-		sdec = pid_tmp(:,1:3,i)
+		if( pid_ss .eqv. .true.) then
+			!use steady state to fill in most of the pid terms. Uses birth rate in period 2
+			if(i>1) then
+				agein1  = PrDage(1,i-1)*(1.-ptau(i-1)**(itlen*2))
+				agein2  = PrDage(2,i-1)*(1.-ptau(i-1)**(itlen*2))
+				agein3  = PrDage(3,i-1)*(1.-ptau(i-1)**(itlen*2))
+				bornin  = 0.
+			else
+				agein1 = 0.
+				agein2 = 0.
+				agein3 = 0.
+				bornin = 1.- (1.-prborn_t(2))**(2*itlen)
+			endif
+			ageout1 = PrDage(1,i)*(1.-ptau(i)**(itlen*2))
+			ageout2 = PrDage(2,i)*(1.-ptau(i)**(itlen*2))
+			ageout3 = PrDage(3,i)*(1.-ptau(i)**(itlen*2))
+			d1  = PrDeath(1,i)
+			d2  = PrDeath(2,i)
+			d3  = PrDeath(3,i)
+			p1  = PrDage(1,i)
+			p2  = PrDage(2,i)
+			p3  = PrDage(3,i)
+			pi21= pid_tmp(2,1,i)
+			!interpolate the difference between pX and pXp in 2 year chunks (match up with pi21) 
+			p1p = (PrDage(1,i+1)-PrDage(1,i))/(agegrid(i+1)-agegrid(i))*2+PrDage(1,i)
+			p2p = (PrDage(2,i+1)-PrDage(2,i))/(agegrid(i+1)-agegrid(i))*2+PrDage(2,i)
+			p3p = (PrDage(3,i+1)-PrDage(3,i))/(agegrid(i+1)-agegrid(i))*2+PrDage(3,i)
+		
+			
+			pid(1,1,j,i) = (-agein1 + ageout1 - bornin + d1*p1 + p1 + p1p - p2*pi21)/(2*p1)
+		
+			pid(1,2,j,i) = (agein1 + agein2 + 2*agein3 - ageout1 - ageout2 - 2*ageout3 + bornin - d1*p1 - d2*p2 - 2*d3*p3 + p1 - p1p - p2*(pi21 - 1) - p2p + 2*p3 - 2*p3p)/p1
+		
+			pid(1,3,j,i) = (-agein1 - 2*agein2 - 4*agein3 + ageout1 + 2*ageout2 + 4*ageout3 - bornin + d1*p1 + 2*d2*p2 + 4*d3*p3 - p1 + p1p + 3*p2*pi21 - 2*p2 + 2*p2p - 4*p3 + 4*p3p)/(2*p1)
+			
+			pid(2,1,j,i) = pi21
+			
+			pid(2,2,j,i) = (-agein1 - 2*agein2 - 2*agein3 + ageout1 + 2*ageout2 + 2*ageout3 - bornin + d1*p1 + 2*d2*p2 + 2*d3*p3 - p1 + p1p + p2*pi21 + 2*p2p - 2*p3 + 2*p3p)/(2*p2)
+
+		
+			pid(2,3,j,i) = (agein1 + 2*agein2 + 2*agein3 - ageout1 - 2*ageout2 - 2*ageout3 + bornin - d1*p1 - 2*d2*p2 - 2*d3*p3 + p1 - p1p - p2*pi21 - 2*p2*(pi21 - 1) - 2*p2p + 2*p3 - 2*p3p)/(2*p2)
+			
+			pid(3,:,j,i) = 0.
+			pid(3,3,j,i) = 1.
+		
+			!make it add to 1 (because probability of death is not in pid)
+			do t=1,nd
+!				pid(t,:,j,i) = pid(t,:,j,i)/(1.-PrDeath(t,i) - (1.-ptau(i)) )
+				!just to be sure
+				summy = sum(pid(t,:,j,i) )
+				pid(t,:,j,i) = pid(t,:,j,i)/summy
+			enddo
+		else
+			pid(:,:,j,i) = pid_tmp(:,1:3,i)
+		endif
+		!conver the time
+		
+		sdec = pid(:,:,j,i)
+		
 		lwrk = nd*(nd+6)
 		!want to construct right-side eigen vectors into matrix
 					!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
 		call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
 		!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
-	&	 vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
+		& vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
 		
 		!replace vl = vr^-1
 		call invmat(vr, vl)
@@ -689,45 +704,6 @@ subroutine setparams()
 		call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
 
 		do t=1,nd
-			summy = sum(pid(t,:,j,i) )
-			pid(t,:,j,i) = pid(t,:,j,i)/summy
-		enddo
-		
-		!use steady state to fill in most of the pid terms. Uses birth rate in period 2
-		if(i>1) then
-			agein1  = PrDage(1,i-1)*(1.-ptau(i-1))
-			agein2  = PrDage(2,i-1)*(1.-ptau(i-1))
-			agein3  = PrDage(3,i-1)*(1.-ptau(i-1))
-		else
-			agein1 = 0.
-			agein2 = 0.
-			agein3 = 0.
-		endif
-		ageout1 = PrDage(1,i)*(1.-ptau(i))
-		ageout2 = PrDage(2,i)*(1.-ptau(i))
-		ageout3 = PrDage(3,i)*(1.-ptau(i))
-		p1 = PrDage(1,i)
-		p2 = PrDage(2,i)
-		p3 = PrDage(3,i)
-
-		pid(1,1,j,i) = -(agein1 - ageout1 + prborn_t(2) - 2*p1 + p2*pid(2,1,j,i))/(2*p1)
-		pid(1,2,j,i) = -(ageout1 - agein2 - 2*agein3 - agein1 + ageout2 + 2*ageout3 - prborn_t(2) +&
-					& 2*PrDeath(1,i)*p1+ 2*PrDeath(2,i)*p2 + 4*PrDeath(3,i)*p3 + p2*pid(2,1,j,i))/p1
-		
-		pid(1,3,j,i) = (ageout1 - 2*agein2 - 4*agein3 - agein1 + 2*ageout2 + 4*ageout3 - prborn_t(2) +&
-					& 2*PrDeath(1,i)*p1 + 4*PrDeath(2,i)*p2 + 8*PrDeath(3,i)*p3 + 3*p2*pid(2,1,j,i))/(2*p1)
-		
-		pid(2,2,j,i) = (ageout1 - 2*agein2 - 2*agein3 - agein1 + 2*ageout2 + 2*ageout3 - prborn_t(2) +&
-					& 2*p2 + 2*PrDeath(1,i)*p1 + 2*PrDeath(2,i)*p2 + 4*PrDeath(1,3)*p3 + p2*pid(2,1,j,i))/(2*p2)
-		
-		pid(2,3,j,i) = -(ageout1 - 2*agein2 - 2*agein3 - agein1 + 2*ageout2 + 2*ageout3 - prborn_t(2)  +&
-					& 2*PrDeath(1,i)*p1 + 4*PrDeath(2,i)*p2 + 4*PrDeath(1,3)*p3 + 3*p2*pid(2,1,j,i))/(2*p2)
-		
-		
-		!make it add to 1 (because probability of death is not in pid)
-		do t=1,nd
-			pid(t,:,j,i) = pid(t,:,j,i)/(1.-PrDeath(t,i))
-			!just to be sure
 			summy = sum(pid(t,:,j,i) )
 			pid(t,:,j,i) = pid(t,:,j,i)/summy
 		enddo
@@ -925,7 +901,9 @@ subroutine invmat(A, invA)
 
 	invA = A
 	n = size(A,1)
-
+	ipiv = 0
+	wk = 0.
+	info = 0
 	call DGETRF(n,n,invA,n,ipiv,info) ! first computes the LU factorization
 
 	if (info /= 0) then

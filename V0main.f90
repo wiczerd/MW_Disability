@@ -6,7 +6,8 @@
 !-----------------------------------------------------
 !************************************************************************************************!
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -lnlopt -o V0main.out  
-!       	     ifort -mkl -openmp -parallel -O3 V0para.f90 V0main.f90 -lnlopt -o V0main_dbg.out
+!       	     ifort -mkl -openmp -parallel -O3 -xhost V0para.f90 V0main.f90 -lnlopt -o V0main.out
+!       	     ifort -mkl -init=snan -init=array -g V0para.f90 V0main.f90 -lnlopt -o V0main.out
 ! val grind line: valgrind --leak-check=yes --error-limit=no --track-origins=yes --log-file=V0valgrind.log ./V0main_dbg.out &
 module helper_funs
 	
@@ -3309,7 +3310,7 @@ module sim_hists
 				invol_un = 0
 				dead = .false.
 				do it=1,Tsim
-				if(age_it(i,it) > 0) then !they've been born 
+				if(age_it(i,it) > 0 ) then !they've been born 
 					
 					if((born_it(i,it).eq. 1 .and. it> 1) .or. (age_it(i,it)>0 .and. it==1)) then
 					! no one is ``born'' in the first period, but they make a decision as if just born
@@ -3434,15 +3435,17 @@ module sim_hists
 					endif
 					
 					if(dead .eqv. .true.) then
-!~ 							age_it(i,it) = -1 !if I change thins, then I have to reset for the next iteration
-							a_it(i,it) = minval(agrid)
+							!print *, 'DEAD!!!'
+							!age_it(i,it) = -1 !if I change this, then I have to reset for the next iteration
+							a_it(i,it) = 0.
 							a_it_int(i,it) = 1
-							d_it(i,it) = 0
+							d_it(i,it) = 1
 							app_dif_it(i,it) = 0.						
 							work_dif_it(i,it) = 0.
 							status_it(i,it) = -1
 							dead = .true.
 							cycle
+!~ 							exit
 					endif
 
 					!figure out where to evaluate z
@@ -3710,7 +3713,6 @@ module sim_hists
 							endif
 
 						endif
-
 						!evaluate the asset policy
 						if(status_hr .eq. 4) then
 							api_hr = aD( d_hr,ei_hr,ai_hr,age_hr )
@@ -3852,10 +3854,10 @@ module sim_hists
 							d_it(i,it+1) = d_hr
 						endif
 					endif
-				else !age_it(i,it) <= 0, they've not been born
+				else !age_it(i,it) <= 0, they've not been born or they are dead
 					a_it(i,it) = 0.
 					a_it_int(i,it) = 1
-					d_it(i,it) = 0
+					d_it(i,it) = 1
 					app_dif_it(i,it) = 0.						
 					work_dif_it(i,it) = 0.
 					status_it(i,it) = -1
@@ -3863,7 +3865,7 @@ module sim_hists
 				enddo !1,Tsim
 			enddo! 1,Nsim
 			!$OMP  end parallel do 
-
+			
 			if(print_lev >=3)then
 				call vec2csv(val_hr_it,"val_hr.csv")
 				call mat2csv (e_it,"e_it.csv")
@@ -5432,9 +5434,9 @@ program V0main
 	nu = parvec_1(1) ! new optimum
 	xizcoef = parvec(2)
 
- 	call cal_dist(parvec_1,ervec_1,shk)
+!~  	call cal_dist(parvec_1,ervec_1,shk)
 
-	
+
 !~ !****************************************************************************
 !~ !   Now run some experiments:
 
