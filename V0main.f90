@@ -2269,12 +2269,16 @@ module sol_val
 				!------------------------------------------------!
 				!Check |V-V0|<eps
 				!------------------------------------------------!
-				if(verbose > 3 .or. (verbose >2 .and. mod(iter,100).eq. 0)) then
+				if(verbose > 3 .and. mod(iter,100).eq. 0) then
 					write(*,*) summer, iter, it, ij
 					write(*,*) maxer_v, maxer_i(1)
 				endif
 				if (summer < Vtol ) then
-					exit !Converged
+					if(verbose >= 2) then
+						write(*,*) summer, iter, it, ij
+						write(*,*) maxer_v, maxer_i(1)
+					endif
+					exit !Converged				
 				endif
 
 				iter=iter+1
@@ -3865,7 +3869,6 @@ module sim_hists
 				enddo !1,Tsim
 			enddo! 1,Nsim
 			!$OMP  end parallel do 
-			
 			if(print_lev >=3)then
 				call vec2csv(val_hr_it,"val_hr.csv")
 				call mat2csv (e_it,"e_it.csv")
@@ -3881,7 +3884,7 @@ module sim_hists
 			a_var = 0.
 			d_var = 0.
 			do age_hr = 1,TT-1
-				junk = 0.
+				junk = 1.
 				do i=1,Nsim
 					do it = 1,Tsim
 						if( age_hr .eq. age_it(i,it) ) then
@@ -3897,7 +3900,7 @@ module sim_hists
 				s_mean(age_hr) = s_mean(age_hr)/junk
 				do i=1,Nsim
 					do it = 1,Tsim
-						if( age_hr .eq. age_it(i,it) ) then
+						if( age_hr .eq. age_it(i,it) .and. a_it(i,it)>0._dp) then
 							a_var(age_hr) = (dlog(a_it(i,it)) - dlog(a_mean(age_hr)))**2 + a_var(age_hr)
 							d_var(age_hr) = (d_it(i,it) - d_mean(age_hr))**2+ d_var(age_hr)
 						endif
@@ -5171,6 +5174,7 @@ program V0main
 		read( arg_in, * ) nu
 	endif
 
+
 	caselabel = ""
 	agrid(1) = .05*(agrid(1)+agrid(2))
 	if(print_lev >= 2) then
@@ -5395,10 +5399,10 @@ program V0main
 			
 		parvec(1) = nu
 		parvec(2) = xizcoef
-!~ 		err0 = 0.
-!~ 		call cal_dist(parvec,err0,shk)
+		err0 = 0.
+		call cal_dist(parvec,err0,shk)
 		
-!~ 		print *, err0
+		print *, err0
 		
 		if(verbose > 2) then
 			call CPU_TIME(t2)
@@ -5408,6 +5412,23 @@ program V0main
 		endif
 	
 	endif !sol_once
+	
+	!set up the grid over which to check derivatives 
+	open(unit=fcallog)
+	write(fcallog,*) nu, err0
+	close(unit=fcallog)
+	do i=1,10
+		verbose=2
+		print_lev =1
+		open(unit=fcallog, file = callog ,ACCESS='APPEND', POSITION='APPEND')
+		nu = 0.4_dp + dble(i)/5._dp
+		call cal_dist(parvec,err0,shk)
+		write(fcallog,*) nu, err0
+		print *, nu, err0
+		close(unit=fcallog)
+	enddo
+	
+	
 	
 !	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
@@ -5431,10 +5452,10 @@ program V0main
 	write(fcallog,*) " "
 	close(unit=fcallog)
 !~   	call nlo_optimize(ires, calopt, parvec_1, erval)
-	nu = parvec_1(1) ! new optimum
-	xizcoef = parvec(2)
+!~ 	nu = parvec_1(1) ! new optimum
+!~ 	xizcoef = parvec(2)
 
-!~  	call cal_dist(parvec_1,ervec_1,shk)
+!~   	call cal_dist(parvec_1,ervec_1,shk)
 
 
 !~ !****************************************************************************
