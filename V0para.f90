@@ -43,15 +43,16 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types 
-			ntr = 5, &!5	        !Number of occupation trend points
+integer, parameter ::	nal = 4,  &!5		!Number of individual alpha types 
+			ntr = 4, &!5	        !Number of occupation trend points
 			ndi = 2,  &		    	!Number of individual disability risk types
-			nj  = 16, &!16			!Number of occupations
+			nl	= 2,  &				!Number of finding/separation rates
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 50, &!50	        !Points on assets grid
+			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			na  = 30, &!50	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
-			maxiter = 2000, &		!Tolerance parameter	
+			nj  = 16, &!16			!Number of occupations
+			maxiter = 200, &		!Tolerance parameter	
 			Nsim = 16000, &!1000*nj !how many agents to draw
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
@@ -61,12 +62,13 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 
 ! thse relate to how we compute it. Mostly for debugging purposes
 logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
-					  z_flowrts	 = .true.,& !make zj just control flow rates and not productivity (makes the next irrelevant)
-					  zj_contin	 = .false.,& !make zj draws continous
+					  z_flowrts	 = .true.,&	!make zj just control flow rates and not productivity (makes the next irrelevant)
+					  zj_contin	 = .false.,&!make zj draws continous
 					  z_regimes	 = .false.,&!different z regimes?
-					  ineligNoNu = .false.,&! do young ineligable also pay the nu cost when they are ineligable?
-					  dieyoung   = .true.,&!do the young die (rate associated with health state)
-					  pid_ss	 = .true.  !do health transition rates preserve steady state
+					  ineligNoNu = .false.,&!do young ineligable also pay the nu cost when they are ineligable?
+					  dieyoung   = .true.,&	!do the young die (rate associated with health state)
+					  pid_ss	 = .true.,&	!do health transition rates preserve steady state
+					  precal_bisnu=.false. 	!before doing the full calibration of 
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
@@ -76,6 +78,7 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
 					  demog_dat	 = .true.,& !do the demographics follow 
 					  NBER_tseq  = .true.	!just feed in NBER recessions?
+
 					  
 
 
@@ -117,6 +120,11 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
 		wage_trend(Tsim,nj),&!trend in wages
 		wage_lev(nj),&		!occupation-specific differences in wage-level
+		sepgrid(nl,nz),&		!grid for separation rates
+		fndgrid(nl,nz),&		!grid for finding rates
+		sepwt(nl,nj,nz),&		!grid for separation rates
+		fndwt(nl,nj,nz),&		!grid for finding rates
+
 
 !		targets for occupations
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
@@ -223,7 +231,7 @@ subroutine setparams()
 	
 	
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	verbose = 3
+	verbose = 1
 	print_lev = 2
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -373,8 +381,6 @@ subroutine setparams()
 		occwg_lev(i) = wage_lev_read(i)
 		do t=1,Tsim	
 			occwg_trend(t,i) = wage_trend_read(t,i+1)
-			!if( occwg_trend(t,i) <minval(alfgrid)) occwg_trend(t,i) = minval(alfgrid)
-			!if( occwg_trend(t,i) >maxval(alfgrid)) occwg_trend(t,i) = maxval(alfgrid)
 		enddo
 	enddo
 	!initialize the input to the observed
@@ -409,6 +415,14 @@ subroutine setparams()
 		enddo
 	enddo
 
+	do i=1,nz
+		do j=1,nl
+		
+			fndgrid(j,i) = (maxval(fndrate(i,:))-minval(fndrate(i,:))) *dble( j-1 )/dble(nl-1) + minval(fndrate(i,:))
+			sepgrid(j,i) = (maxval(seprisk(i,:))-minval(seprisk(i,:))) *dble( j-1 )/dble(nl-1) + minval(seprisk(i,:))
+		
+		enddo
+	enddo
 	
 	! TFP
 	zshift = 0._dp
