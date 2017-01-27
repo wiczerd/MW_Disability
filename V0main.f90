@@ -566,18 +566,18 @@ module helper_funs
 		allocate(pfs%aD(nd,ne,na,TT-1), stat=pfs%alloced)
 
 		! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
-		allocate(vfs%VN(nj*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
-		allocate(vfs%VU(nj*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
-		allocate(vfs%VW(nj*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
-		allocate(vfs%V(nj*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
-		allocate(pfs%aN(nj*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
-		allocate(pfs%aW(nj*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
-		allocate(pfs%aU(nj*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
-		allocate(pfs%gwork(nj*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
-		allocate(pfs%gapp(nj*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
+		allocate(vfs%VN(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
+		allocate(vfs%VU(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
+		allocate(vfs%VW(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
+		allocate(vfs%V(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
+		allocate(pfs%aN(nl*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
+		allocate(pfs%aW(nl*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
+		allocate(pfs%aU(nl*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
+		allocate(pfs%gwork(nl*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
+		allocate(pfs%gapp(nl*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
 
-		allocate(pfs%gapp_dif(nj*ntr,ndi*nal,nd,ne,na,nz,TT), stat=pfs%alloced)
-		allocate(pfs%gwork_dif(nj*ntr,ndi*nal,nd,ne,na,nz,TT), stat=pfs%alloced)
+		allocate(pfs%gapp_dif(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=pfs%alloced)
+		allocate(pfs%gwork_dif(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=pfs%alloced)
 		
 		call alloc_hist(hst)
 
@@ -597,8 +597,8 @@ module helper_funs
 		allocate(shk%fndsep_i_draw(Nsim,2))
 		allocate(shk%fndsep_i_int(Nsim,2,nz))
 		!this must be big enough that we are sure it's big enough that can always find a worker
-		allocate(shk%drawi_ititer(Nsim,600)) 
-		allocate(shk%drawt_ititer(Nsim,600))
+		allocate(shk%drawi_ititer(Nsim,1000)) 
+		allocate(shk%drawt_ititer(Nsim,1000))
 		allocate(shk%j_i(Nsim), stat=shk%alloced)
 		allocate(shk%jshock_ij(Nsim,nj), stat=shk%alloced)
 		allocate(shk%status_it_innov(Nsim,Tsim), stat=shk%alloced)
@@ -1153,8 +1153,8 @@ module sol_val
 		Vout = Vtest1
 	end subroutine maxVD
 
-	subroutine maxVU(ij,itr,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0,iaa0,iaaA,apol,Vout)
-		integer, intent(in) :: ij,itr,idi,ial,id,ie,ia,iz,it
+	subroutine maxVU(il,itr,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0,iaa0,iaaA,apol,Vout)
+		integer, intent(in) :: il,itr,idi,ial,id,ie,ia,iz,it
 		integer, intent(in) :: iaa0, iaaA 
 		integer, intent(out) :: apol
 		real(dp), intent(out) :: Vout
@@ -1173,21 +1173,21 @@ module sol_val
 				do ialal = ialL,nal !Loop over alpha_i'
 				
 					if(ial > ialUn) then !unemp by choice
-						Vc1 = (1._dp-ptau(it))*(pphi*VN0((ij-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) &
-							& 	            +(1-pphi)*V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) )  !Age and might go LTU
-						Vc1 = ptau(it)*(pphi*     VN0((ij-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it) & 
-							&	      +(1-pphi)*   V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
+						Vc1 = (1._dp-ptau(it))*(pphi*VN0((il-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) &
+							& 	            +(1-pphi)*V0((il-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) )  !Age and might go LTU
+						Vc1 = ptau(it)*(pphi*     VN0((il-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it) & 
+							&	      +(1-pphi)*   V0((il-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it) ) + Vc1    !Don't age, maybe LTU
 					else !unemployed exogenously
-						Vc1 = (1._dp-ptau(it))*(pphi*     VN0((ij-1)*ntr+itr,(idi-1)*nal+ialUn,id,ie,iaa,izz,it+1) &
-							& 	+(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) +&
-									 (1.- fndrate(iz,ij))*VU0((ij-1)*ntr+itr,(idi-1)*nal+ialUn,id,ie,iaa,izz,it+1)  ) )  !Age and might go LTU
+						Vc1 = (1._dp-ptau(it))*(pphi*     VN0((il-1)*ntr+itr,(idi-1)*nal+ialUn,id,ie,iaa,izz,it+1) &
+							& 	+(1-pphi)*( fndgrid(il,iz)*V0((il-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it+1) +&
+									 (1.- fndgrid(il,iz))*VU0((il-1)*ntr+itr,(idi-1)*nal+ialUn,id,ie,iaa,izz,it+1)  ) )  !Age and might go LTU
 
-						Vc1 = ptau(it)*(pphi*             VN0((ij-1)*ntr+itr,(idi-1)*nal+ialUn,id,ie,iaa,izz,it) & 
-							  & +(1-pphi)*( fndrate(iz,ij)*V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it) +&
-							  &		  (1.-fndrate(iz,ij))*VU0((ij-1)*ntr+itr,(idi-1)*nal+ialUn,id,ie,iaa,izz,it) ) ) + Vc1    !Don't age, maybe LTU
+						Vc1 = ptau(it)*(pphi*             VN0((il-1)*ntr+itr,(idi-1)*nal+ialUn,id,ie,iaa,izz,it) & 
+							  & +(1-pphi)*( fndgrid(il,iz)*V0((il-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it) +&
+							  &		  (1.-fndgrid(il,iz))*VU0((il-1)*ntr+itr,(idi-1)*nal+ialUn,id,ie,iaa,izz,it) ) ) + Vc1    !Don't age, maybe LTU
 					endif
 
-					!Vc1 = (1.-fndrate(iz,ij))*Vc1 + fndrate(iz,ij)*V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it)
+					!Vc1 = (1.-fndgrid(il,iz))*Vc1 + fndgrid(il,iz)*V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it)
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal)*Vc1  !Probability of alpha_i X z_i draw 
 				enddo
 				enddo
@@ -1205,8 +1205,8 @@ module sol_val
 		Vout = Vtest1
 	end subroutine maxVU
 
-	subroutine maxVN(ij,itr,idi,ial,id,ie,ia,iz,it, VN0, VD0, V0,wagehere, iaa0,iaaA,apol,gapp_pol,gapp_dif,Vout  )
-		integer, intent(in) :: ij,itr,idi,ial,id,ie,ia,iz,it
+	subroutine maxVN(il,itr,idi,ial,id,ie,ia,iz,it, VN0, VD0, V0,wagehere, iaa0,iaaA,apol,gapp_pol,gapp_dif,Vout  )
+		integer, intent(in) :: il,itr,idi,ial,id,ie,ia,iz,it
 		integer, intent(in) :: iaa0, iaaA 
 		integer, intent(out) :: apol,gapp_pol
 		real(dp), intent(out) :: gapp_dif
@@ -1230,15 +1230,15 @@ module sol_val
 				do ialal = ialL,nal !Loop over alpha_i'
 					if(ial == ialUn) ialalhr = ialUn
 					if(ial > ialUn)  ialalhr = ialal
-					VNhr    =   	VN0((ij-1)*ntr+itr,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it+1)
-					maxVNV0 = max(   V0((ij-1)*ntr+itr,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it+1),VNhr)
+					VNhr    =   	VN0((il-1)*ntr+itr,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it+1)
+					maxVNV0 = max(   V0((il-1)*ntr+itr,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it+1),VNhr)
 
-					Vc1 = (1-ptau(it))*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 ) !Age and might go on DI
+					Vc1 = (1-ptau(it))*( (1-lrho*fndgrid(il,iz) )*VNhr +lrho*fndgrid(il,iz)*maxVNV0 ) !Age and might go on DI
 
-					VNhr    =   	VN0((ij-1)*ntr+itr,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it)
-					maxVNV0 = max(   V0((ij-1)*ntr+itr,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it),VNhr)
+					VNhr    =   	VN0((il-1)*ntr+itr,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it)
+					maxVNV0 = max(   V0((il-1)*ntr+itr,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it),VNhr)
 
-					Vc1 = Vc1+ptau(it)*((1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0)     !Don't age, might go on DI
+					Vc1 = Vc1+ptau(it)*((1-lrho*fndgrid(il,iz))*VNhr +lrho*fndgrid(il,iz)*maxVNV0)     !Don't age, might go on DI
 					
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal)*Vc1 
 				enddo
@@ -1263,7 +1263,7 @@ module sol_val
 			write(*,*) "ruh roh!"
 			write(*,*) "Vnapp, aNapp: ", Vnapp, aNapp
 			write(*,*) "VD: ",id,ie,iaa,it
-			write(*,*) "VN: ",ij,itr,idi,ial,id,ie,ia,iz,it
+			write(*,*) "VN: ",il,itr,idi,ial,id,ie,ia,iz,it
 		endif
 	
 		!**********Value if apply for DI 
@@ -1272,7 +1272,7 @@ module sol_val
 		nuhr = nu
 		if(it== TT-1) nuhr = nu*(ptau(it)) !only pay nu for non-retired state
 		minvalVD = minval(VD0)
-		minvalVN = minval(VN0((ij-1)*ntr+itr,((idi-1)*nal+1):(idi*nal),:,:,:,:,it))
+		minvalVN = minval(VN0((il-1)*ntr+itr,((idi-1)*nal+1):(idi*nal),:,:,:,:,it))
 		Vtest1 = -1e6
 		apol = iaa0
 		do iaa = iaa0,iaaA
@@ -1284,18 +1284,18 @@ module sol_val
 				do ialal = ialL,nal !Loop over alpha_i'
 					if(ial == ialUn) ialalhr = ialUn
 					if(ial > ialUn)  ialalhr = ialal					
-					VNhr    =   	VN0((ij-1)*ntr+itr,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it+1)				
-					maxVNV0 = max(	 V0((ij-1)*ntr+itr,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it+1), VNhr)
+					VNhr    =   	VN0((il-1)*ntr+itr,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it+1)				
+					maxVNV0 = max(	 V0((il-1)*ntr+itr,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it+1), VNhr)
 
 					VDhr    = max(VD0(id,ie,iaa,it+1),VNhr)
-					Vc1 =   (1-ptau(it))*(1-xihr)*( (1-lrho*fndrate(iz,ij) )*VNhr +lrho*fndrate(iz,ij)*maxVNV0 )&
+					Vc1 =   (1-ptau(it))*(1-xihr)*( (1-lrho*fndgrid(il,iz) )*VNhr +lrho*fndgrid(il,iz)*maxVNV0 )&
 						& + (1-ptau(it))*xihr    *VDhr !Age and might go on DI
 
-					VNhr    =   	VN0((ij-1)*ntr+itr,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it)
-					maxVNV0 = max(	 V0((ij-1)*ntr+itr,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it),VNhr)
+					VNhr    =   	VN0((il-1)*ntr+itr,(idi-1)*nal +ialalhr,id,ie,iaa,izz,it)
+					maxVNV0 = max(	 V0((il-1)*ntr+itr,(idi-1)*nal +ialal  ,id,ie,iaa,izz,it),VNhr)
 
 					VDhr    = max(VD0(id,ie,iaa,it),VNhr)
-					Vc1 = Vc1 +	    ptau(it)*(1-xihr)*( (1-lrho*fndrate(iz,ij))*VNhr +lrho*fndrate(iz,ij)*maxVNV0 ) &
+					Vc1 = Vc1 +	    ptau(it)*(1-xihr)*( (1-lrho*fndgrid(il,iz))*VNhr +lrho*fndgrid(il,iz)*maxVNV0 ) &
 						&     + 	ptau(it)*xihr    * VDhr     !Don't age, might go on DI		
 
 			!		if(it<TT-1) Vc1 = Vc1/ptau(it)
@@ -1303,11 +1303,11 @@ module sol_val
 				enddo
 				enddo
 				Vtest2 = util(chere,id,iw) + Vtest2 &
-					!& - nu*dabs( VN0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,iaa,iz,it) ) !<-- application cost (was nu * VN0)
+					!& - nu*dabs( VN0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,iaa,iz,it) ) !<-- application cost (was nu * VN0)
 					!& - nu*(VD0(id,ie,iaa,it) - minvalVD)
-					!& - nu*exp(VN0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,iaa,iz,it))/(1+exp(VN0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,iaa,iz,it)))
+					!& - nu*exp(VN0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,iaa,iz,it))/(1+exp(VN0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,iaa,iz,it)))
 					& - nuhr
-					!& - nu*(VN0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,iaa,iz,it)*(1.-beta)*(1-gam))**(1/(1-gam))
+					!& - nu*(VN0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,iaa,iz,it)*(1.-beta)*(1-gam))**(1/(1-gam))
 				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then	
 					apol = iaa
 					Vtest1 = Vtest2
@@ -1326,7 +1326,7 @@ module sol_val
 			write(*,*) "ruh roh!"
 			write(*,*) "Vapp, aapp: ", Vapp, aapp
 			write(*,*) "VD: ",id,ie,iaa,it
-			write(*,*) "VN: ",ij,itr,idi,ialal,id,ie,iaa,izz,it
+			write(*,*) "VN: ",il,itr,idi,ialal,id,ie,iaa,izz,it
 		endif
 
 		!******************************************************
@@ -1354,8 +1354,8 @@ module sol_val
 
 	end subroutine maxVN
 
-	subroutine maxVW(ij,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt,iaa0,iaaA,apol,gwork_pol,gwork_dif,Vout ,VWout )
-		integer, intent(in) :: ij,itr,idi,ial,id,ie,ia,iz,it
+	subroutine maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt,iaa0,iaaA,apol,gwork_pol,gwork_dif,Vout ,VWout )
+		integer, intent(in) :: il,itr,idi,ial,id,ie,ia,iz,it
 		integer, intent(in) :: iaa0, iaaA,iee1,iee2
 		real(dp), intent(in) :: iee1wt,wagehere
 		integer, intent(out) :: apol,gwork_pol
@@ -1379,21 +1379,21 @@ module sol_val
 				do ialal = ialL,nal  !Loop over alpha_i'
 				do idd  = 1,nd	 !Loop over d'
 					!Linearly interpolating on e'
-					vL = (1-ptau(it))*V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,idd,iee1,iaa,izz,it+1) & 
-						& +ptau(it)  *V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,idd,iee1,iaa,izz,it)
-					vH = (1-ptau(it))*V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,idd,iee2,iaa,izz,it+1) & 
-						& +ptau(it)  *V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,idd,iee2,iaa,izz,it)
+					vL = (1-ptau(it))*V0((il-1)*ntr+itr,(idi-1)*nal+ialal,idd,iee1,iaa,izz,it+1) & 
+						& +ptau(it)  *V0((il-1)*ntr+itr,(idi-1)*nal+ialal,idd,iee1,iaa,izz,it)
+					vH = (1-ptau(it))*V0((il-1)*ntr+itr,(idi-1)*nal+ialal,idd,iee2,iaa,izz,it+1) & 
+						& +ptau(it)  *V0((il-1)*ntr+itr,(idi-1)*nal+ialal,idd,iee2,iaa,izz,it)
 					!if become unemployed here - 
-					uL = (1-ptau(it))*VU((ij-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it+1) & 
-						& +ptau(it)  *VU((ij-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it)
-					uH = (1-ptau(it))*VU((ij-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it+1) & 
-						& +ptau(it)  *VU((ij-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it)
-					!uL = VU((ij-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it)
-					!uH = VU((ij-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it)	
+					uL = (1-ptau(it))*VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it+1) & 
+						& +ptau(it)  *VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it)
+					uH = (1-ptau(it))*VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it+1) & 
+						& +ptau(it)  *VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it)
+					!uL = VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it)
+					!uH = VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it)	
 						
 					Vc1 = piz(iz,izz)*pialf(ial,ialal)*pid(id,idd,idi,it) &
-						& * (  (1.-seprisk(iz,ij))*(vH*(1._dp - iee1wt) + vL*iee1wt) &
-							+  seprisk(iz,ij)*     (uH*(1._dp - iee1wt) + uL*iee1wt) ) &
+						& * (  (1.-sepgrid(il,iz))*(vH*(1._dp - iee1wt) + vL*iee1wt) &
+							+  sepgrid(il,iz)*     (uH*(1._dp - iee1wt) + uL*iee1wt) ) &
 						& + Vc1
 				enddo
 				enddo
@@ -1414,7 +1414,7 @@ module sol_val
 		enddo	!iaa
 
 		VWhere = Vtest1
-		VUhere = VU((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+		VUhere = VU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
 		
 		!------------------------------------------------!
 		!Calculate V with solved vals of VW and VU -- i.e. can quit into unemployment
@@ -1449,7 +1449,7 @@ module sol_val
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: i, j, ia, ie, id, it, ga,gw, anapp,aapp, apol, itr, ial, ij , idi,  &
+		integer  :: i, j, ia, ie, id, it, ga,gw, anapp,aapp, apol, itr, ial, il , idi,  &
 			    iee1, iee2, iz, iw,wo, iter,npara,ipara, iaa_k,iaa0,iaaA,iaN, iter_timeout
 		integer, dimension(5) :: maxer_i
 
@@ -1495,10 +1495,10 @@ module sol_val
 		! (disability extent, earn hist, assets)
 		allocate(VR0(nd,ne,na))
 		allocate(VD0(nd,ne,na,TT))
-		allocate(VN0(nj*ntr,ndi*nal,nd,ne,na,nz,TT))
-		allocate(VU0(nj*ntr,ndi*nal,nd,ne,na,nz,TT))
-		allocate(VW0(nj*ntr,ndi*nal,nd,ne,na,nz,TT))
-		allocate(V0(nj*ntr,ndi*nal,nd,ne,na,nz,TT))
+		allocate(VN0(nl*ntr,ndi*nal,nd,ne,na,nz,TT))
+		allocate(VU0(nl*ntr,ndi*nal,nd,ne,na,nz,TT))
+		allocate(VW0(nl*ntr,ndi*nal,nd,ne,na,nz,TT))
+		allocate(V0(nl*ntr,ndi*nal,nd,ne,na,nz,TT))
 		! there must be a way to use pointers, but it doesn't seem to work
 		VR => val_funs%VR
 		aR => pol_funs%aR
@@ -1801,7 +1801,7 @@ module sol_val
 
 		
 		! Begin loop over occupations
-		do ij = 1,nj
+		do il = 1,nl
 		! And individual disability type
 		do idi = 1,ndi
 
@@ -1810,7 +1810,7 @@ module sol_val
 		do it=TT-1,1,-1
 			!----Initialize---!
 			
-			if( ij==1 .and. idi>1) then
+			if( il==1 .and. idi>1) then
 				do ial=1,nal
 				do itr = 1,ntr 				
 				do id =1,nd
@@ -1820,10 +1820,10 @@ module sol_val
 					
 				!Guess once, then use last occupation as guess (order occupations intelligently)
 				! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
-					VW0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW0((ij-1)*ntr+itr,(idi-2)*nal+ial,id,ie,ia,iz,it)  
-					VU0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU0((ij-1)*ntr+itr,(idi-2)*nal+ial,id,ie,ia,iz,it)
-					VN0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VN0((ij-1)*ntr+itr,(idi-2)*nal +ial,id,ie,ia,iz,it)
-					V0 ((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = V0 ((ij-1)*ntr+itr,(idi-2)*nal+ial,id,ie,ia,iz,it)
+					VW0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW0((il-1)*ntr+itr,(idi-2)*nal+ial,id,ie,ia,iz,it)  
+					VU0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU0((il-1)*ntr+itr,(idi-2)*nal+ial,id,ie,ia,iz,it)
+					VN0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VN0((il-1)*ntr+itr,(idi-2)*nal +ial,id,ie,ia,iz,it)
+					V0 ((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = V0 ((il-1)*ntr+itr,(idi-2)*nal+ial,id,ie,ia,iz,it)
 
 				enddo	!ia
 				enddo	!iz
@@ -1831,7 +1831,7 @@ module sol_val
 				enddo 	!id
 				enddo 	!itr
 				enddo	!ial
-			elseif( ij>1 ) then
+			elseif( il>1 ) then
 				do ial=1,nal
 				do itr = 1,ntr 
 				do id =1,nd
@@ -1841,10 +1841,10 @@ module sol_val
 					
 				!Guess once, then use last occupation as guess (order occupations intelligently)
 				! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
-					VW0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW0((ij-2)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  
-					VU0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU0((ij-2)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
-					VN0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VN0((ij-2)*ntr+itr,(idi-1)*nal +ial,id,ie,ia,iz,it)
-					V0 ((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = V0 ((ij-2)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+					VW0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW0((il-2)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  
+					VU0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU0((il-2)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+					VN0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VN0((il-2)*ntr+itr,(idi-1)*nal +ial,id,ie,ia,iz,it)
+					V0 ((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = V0 ((il-2)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
 
 				enddo	!ia
 				enddo	!iz
@@ -1852,7 +1852,7 @@ module sol_val
 				enddo 	!id
 				enddo	!itr
 				enddo	!ial
-			else  ! should be only (ij ==1 .and. idi == 1)  then
+			else  ! should be only (il ==1 .and. idi == 1)  then
 				do ial=1,nal
 				do itr = 1,ntr 
 				do id =1,nd
@@ -1862,10 +1862,10 @@ module sol_val
 					
 				!Guess once, then use next period same occupation/beta as guess
 				! for it = 1, should be TT-1+1 =TT -> VU,Vw,VN = VR
-					VW0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VW ((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
-					VU0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VU ((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
-					VN0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VN ((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
-					V0 ((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VW0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+					VW0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VW ((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+					VU0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VU ((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+					VN0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VN ((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it+1)
+					V0 ((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)  = VW0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
 
 				enddo	!ia
 				enddo	!iz
@@ -1910,7 +1910,7 @@ module sol_val
 						ia = 1
 						iaa0 = 1
 						iaaA = na
-						call maxVU(ij,itr,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0, iaa0,iaaA,apol,Vtest1)
+						call maxVU(il,itr,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0, iaa0,iaaA,apol,Vtest1)
 						V_m(ia) = Vtest1
 						aa_m(ia) = apol !agrid(apol)
 						iaN = iaN+1
@@ -1919,7 +1919,7 @@ module sol_val
 						ia = na
 						iaa0 = aa_m(1)
 						iaaA = na
-						call maxVU(ij,itr,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0, iaa0,iaaA,apol,Vtest1)
+						call maxVU(il,itr,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0, iaa0,iaaA,apol,Vtest1)
 						V_m(ia) = Vtest1
 						aa_m(ia) = apol !agrid(apol)
 						iaN = iaN+1
@@ -1942,7 +1942,7 @@ module sol_val
 								ia = aa_u(iaa_k)
 								iaa0 = aa_m( aa_l(iaa_k-1) )
 								iaaA = aa_m( aa_u(iaa_k-1) )
-								call maxVU(ij,itr,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0, iaa0,iaaA,apol,Vtest1)
+								call maxVU(il,itr,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0, iaa0,iaaA,apol,Vtest1)
 								V_m(ia) = Vtest1
 								aa_m(ia) = apol !agrid(apol)
 								iaN = iaN+1
@@ -1960,14 +1960,14 @@ module sol_val
 							aa_u(iaa_k) = aa_u(iaa_k-1)
 						end do outerVU
 						
-						aU((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) = aa_m
-						VU((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) = V_m
+						aU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) = aa_m
+						VU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) = V_m
 							
 						if((iz>nz .or. ie>ne .or. id>nd .or. ial>nal) .and. verbose > 2) then
 							print *, "ipara is not working right", iz,ie,id,ial
 						endif
-						Vtest1 = sum( (VU((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) &
-							& - VU0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
+						Vtest1 = sum( (VU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) &
+							& - VU0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
 						summer = Vtest1 + summer
 						if(print_lev >3) then
 							call veci2csv(ia_o,"ia_o_VU.csv",wo)
@@ -1983,7 +1983,7 @@ module sol_val
 				do ie=1,ne	!Loop over earnings index
 				do iz=1,nz	!Loop over TFP
 					do ia =1,na
-						VU0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+						VU0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
 					enddo	!ia
 				enddo !ial <- these are not in order
 				enddo !itr
@@ -1997,8 +1997,8 @@ module sol_val
 					do id=1,nd	!Loop over disability index
 					do ie=1,ne	!Loop over earnings index
 					do iz=1,nz	!Loop over TFP
-						call veci2csv(aU((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it),"aU.csv",wo)
-						call vec2csv(VU((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it),"VU.csv",wo)
+						call veci2csv(aU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it),"aU.csv",wo)
+						call vec2csv(VU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it),"VU.csv",wo)
 						if(wo == 0) wo = 1 
 					enddo
 					enddo
@@ -2023,18 +2023,18 @@ module sol_val
 					itr= mod(ipara-1,nz*ne*nd*ntr)/(nz*ne*nd) +1
 					ial= mod(ipara-1,nz*ne*nd*ntr*nal)/(nz*ne*nd*ntr)+1
 
-					wagehere = wage(wage_lev(ij)+trgrid(itr),alfgrid(ial),id,zgrid(iz,ij),it)
+					wagehere = wage(trgrid(itr),alfgrid(ial),id,zgrid(iz,1),it) !<-zgrid should be parameterized by ij!
 					!----------------------------------------------------------------
 					!Loop over current state: assets
 					iaN=0
 					ia = 1
 					iaa0 = 1
 					iaaA = na
-					call maxVN(ij,itr,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0,wagehere,iaa0,iaaA,apol,ga,gadif,Vtest1)
+					call maxVN(il,itr,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0,wagehere,iaa0,iaaA,apol,ga,gadif,Vtest1)
 					aa_m(ia) = apol
 					V_m(ia) = Vtest1
-					gapp((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
-					gapp_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
+					gapp((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
+					gapp_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
 					iaN = iaN+1
 					ia_o(iaN) = ia
 					
@@ -2042,11 +2042,11 @@ module sol_val
 					ia = na
 					iaa0 = aa_m(1)
 					iaaA = na
-					call maxVN(ij,itr,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0,wagehere,iaa0,iaaA,apol,ga,gadif,Vtest1)
+					call maxVN(il,itr,idi,ial,id,ie,ia,iz,it, VN0, VD0,V0,wagehere,iaa0,iaaA,apol,ga,gadif,Vtest1)
 					V_m(ia) = Vtest1
 					aa_m(ia) = apol !agrid(apol)
-					gapp((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
-					gapp_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
+					gapp((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
+					gapp_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
 					iaN = iaN+1
 					ia_o(iaN) = ia
 					
@@ -2065,11 +2065,11 @@ module sol_val
 							ia = aa_u(iaa_k)
 							iaa0 = aa_m( aa_l(iaa_k-1) )
 							iaaA = aa_m( aa_u(iaa_k-1) )
-							call maxVN(ij,itr,idi,ial,id,ie,ia,iz,it, VN0,VD0,V0,wagehere,iaa0,iaaA,apol,ga,gadif,Vtest1)
+							call maxVN(il,itr,idi,ial,id,ie,ia,iz,it, VN0,VD0,V0,wagehere,iaa0,iaaA,apol,ga,gadif,Vtest1)
 							V_m(ia) = Vtest1
 							aa_m(ia) = apol !agrid(apol)
-							gapp((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
-							gapp_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
+							gapp((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = ga
+							gapp_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gadif
 							iaN = iaN+1
 							ia_o(iaN) = ia
 					
@@ -2084,11 +2084,11 @@ module sol_val
 						aa_u(iaa_k) = aa_u(iaa_k-1)
 					end do outerVN
 
-					aN((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) = aa_m
-					VN((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) = V_m
+					aN((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) = aa_m
+					VN((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) = V_m
 					
-					Vtest1 = sum((VN((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) &
-						& - VN0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
+					Vtest1 = sum((VN((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) &
+						& - VN0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
 					summer = Vtest1 + summer
 					if(print_lev >3) then
 						call veci2csv(ia_o,"ia_o_VN.csv", wo)
@@ -2107,12 +2107,12 @@ module sol_val
 					do ie=1,ne	!Loop over earnings index
 					do iz=1,nz	!Loop over TFP
 						! matrix in disability index and assets
-						call mat2csv(VN((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VN_it.csv",wo)
-						call mati2csv(aN((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aN_it.csv",wo)
-						call mat2csv(VN((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VU_it.csv",wo)
-						call mati2csv(aN((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aU_it.csv",wo)
-						call mati2csv(gapp((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_it.csv",wo)
-						call mat2csv(gapp_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_dif_it.csv",wo)
+						call mat2csv(VN((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VN_it.csv",wo)
+						call mati2csv(aN((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aN_it.csv",wo)
+						call mat2csv(VN((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VU_it.csv",wo)
+						call mati2csv(aN((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aU_it.csv",wo)
+						call mati2csv(gapp((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_it.csv",wo)
+						call mat2csv(gapp_dif((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_dif_it.csv",wo)
 
 						if(wo == 0 ) wo =1		  		
 					enddo !iz 
@@ -2127,7 +2127,7 @@ module sol_val
 				do ie=1,ne	!Loop over earnings index
 				do iz=1,nz	!Loop over TFP
 					do ia =1,na
-						VN0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VN((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+						VN0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VN((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
 					enddo	!ia
 				enddo !ial
 				enddo !itr
@@ -2151,7 +2151,7 @@ module sol_val
 					ial= mod(ipara-1,nz*ne*nd*ntr*nal)/(nz*ne*nd*ntr)+1
 
 					!Earnings evolution independent of choices.
-					wagehere = wage(wage_lev(ij)+trgrid(itr),alfgrid(ial),id,zgrid(iz,ij),it)
+					wagehere = wage(trgrid(itr),alfgrid(ial),id,zgrid(iz,1),it) !<- zgrid should be index by ij
 					eprime = Hearn(it,ie,wagehere)
 					!linear interpolate for the portion that blocks off bounds on assets
 					if((eprime > emin) .and. (eprime < emax)) then  ! this should be the same as if(eprime > minval(egrid) .and. eprime < maxval(egrid))
@@ -2178,27 +2178,27 @@ module sol_val
 					ia = 1
 					iaa0 = 1
 					iaaA = na
-					call maxVW(ij,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
+					call maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
 						& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
-					V	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-					VW	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
-					gwork	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
-					gwork_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
-					aW	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+					V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+					VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
+					gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
+					gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
+					aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
 					iaN = iaN+1
 					ia_o(iaN) = ia
 					
 
 					ia = na
-					iaa0 = aW((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,1,iz,it)
+					iaa0 = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,1,iz,it)
 					iaaA = na
-					call maxVW(ij,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
+					call maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
 						& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
-					V	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-					VW	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
-					gwork	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
-					gwork_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
-					aW	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+					V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+					VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
+					gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
+					gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
+					aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
 					iaN = iaN+1
 					ia_o(iaN) = ia
 					
@@ -2214,15 +2214,15 @@ module sol_val
 							aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
 							!search given ia from iaa0 to iaaA
 							ia = aa_u(iaa_k)
-							iaa0 = aW((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,  aa_l(iaa_k-1)  ,iz,it)
-							iaaA = aW((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,  aa_u(iaa_k-1)  ,iz,it)
-							call maxVW(ij,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
+							iaa0 = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,  aa_l(iaa_k-1)  ,iz,it)
+							iaaA = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,  aa_u(iaa_k-1)  ,iz,it)
+							call maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
 								& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
-							V	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-							VW	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
-							gwork	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
-							gwork_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)= gwdif
-							aW	((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+							V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+							VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
+							gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
+							gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)= gwdif
+							aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
 							iaN = iaN+1
 							ia_o(iaN) = ia
 						enddo
@@ -2235,13 +2235,13 @@ module sol_val
 						aa_u(iaa_k) = aa_u(iaa_k-1)
 					end do outerVW
 					
-					Vtest1 = sum((V((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) &
-						& - V0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
+					Vtest1 = sum((V((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) &
+						& - V0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
 
 					summer = Vtest1	+ summer
 
 					do ia=1,na
-						maxer(ia,iz,ie,id,ial) = (V((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)-V0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it))**2
+						maxer(ia,iz,ie,id,ial) = (V((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)-V0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it))**2
 					enddo
 					if(print_lev >3) then
 						call veci2csv(ia_o,"ia_o_VW.csv", wo)
@@ -2261,8 +2261,8 @@ module sol_val
 				do ie=1,ne	!Loop over earnings index
 				do iz=1,nz	!Loop over TFP
 				do ia =1,na
-					VW0((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
-					V0 ((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) =  V((ij-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+					VW0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+					V0 ((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) =  V((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
 				enddo !ia		  	
 				enddo !ial
 				enddo !itr
@@ -2278,10 +2278,10 @@ module sol_val
 					do ie=1,ne	!Loop over earnings index
 					do iz=1,nz	!Loop over TFP
 						! matrix in disability and assets
-						call mat2csv(VW((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VW_it.csv",wo)
-						call mati2csv(aW((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aW_it.csv",wo)
-						call mati2csv(gwork((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_it.csv",wo)
-						call mat2csv(gwork_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_idf_it.csv",wo)
+						call mat2csv(VW((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VW_it.csv",wo)
+						call mati2csv(aW((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aW_it.csv",wo)
+						call mati2csv(gwork((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_it.csv",wo)
+						call mat2csv(gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_idf_it.csv",wo)
 						if(wo==0) wo =1
 					enddo !iz 
 					enddo !ie 
@@ -2297,12 +2297,12 @@ module sol_val
 				!Check |V-V0|<eps
 				!------------------------------------------------!
 				if(verbose > 3 .and. mod(iter,100).eq. 0) then
-					write(*,*) summer, iter, it, ij
+					write(*,*) summer, iter, it, il
 					write(*,*) maxer_v, maxer_i(1)
 				endif
 				if (summer < Vtol ) then
 					if(verbose >= 2) then
-						write(*,*) summer, iter, it, ij
+						write(*,*) summer, iter, it, il
 						write(*,*) maxer_v, maxer_i(1)
 					endif
 					exit !Converged				
@@ -2312,18 +2312,18 @@ module sol_val
 				if(iter>=maxiter-1) iter_timeout = iter_timeout+1
 				smthV0param = smthV0param*1.5_dp !tighten up the discrete choice
 			enddo	!iter: V-iter loop
-	!WRITE(*,*) ij, itr, idi, it
+	!WRITE(*,*) il, itr, idi, it
 		enddo	!t loop, going backwards
 
 		enddo	!idi
 
-		enddo	!ij
+		enddo	!il
 
 		if(verbose>1 .and. iter_timeout>0) print*, "did not converge ", iter_timeout, " times"
 		! this plots work-rest and di application on the cross product of alphai and deltai and di
 		if(print_lev >1) then
 			itr = tri0
-			ij  = 2
+			il  = 1
 			wo  = 0
 
 			do id  = 1,nd
@@ -2345,22 +2345,22 @@ module sol_val
 			do iz=1,nz	!Loop over TFP
 				do it = TT-1,1,-1
 					! matrix in disability and assets
-					call mat2csv(V((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"V"//trim(caselabel)//".csv",wo)
+					call mat2csv(V((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"V"//trim(caselabel)//".csv",wo)
 
-					call mat2csv(VW((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VW"//trim(caselabel)//".csv",wo)
-					call mati2csv(aW((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aW"//trim(caselabel)//".csv",wo)
+					call mat2csv(VW((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VW"//trim(caselabel)//".csv",wo)
+					call mati2csv(aW((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aW"//trim(caselabel)//".csv",wo)
 
-					call mat2csv(VU((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VU"//trim(caselabel)//".csv",wo)
-					call mati2csv(aU((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aU"//trim(caselabel)//".csv",wo)
+					call mat2csv(VU((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VU"//trim(caselabel)//".csv",wo)
+					call mati2csv(aU((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aU"//trim(caselabel)//".csv",wo)
 
-					call mat2csv(VN((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VN"//trim(caselabel)//".csv",wo)
-					call mati2csv(aN((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aN"//trim(caselabel)//".csv",wo)
+					call mat2csv(VN((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"VN"//trim(caselabel)//".csv",wo)
+					call mati2csv(aN((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"aN"//trim(caselabel)//".csv",wo)
 
-					call mati2csv(gwork((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork"//trim(caselabel)//".csv",wo)
-					call mat2csv(gwork_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_dif"//trim(caselabel)//".csv",wo)
+					call mati2csv(gwork((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork"//trim(caselabel)//".csv",wo)
+					call mat2csv(gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gwork_dif"//trim(caselabel)//".csv",wo)
 
-					call mati2csv(gapp((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp"//trim(caselabel)//".csv",wo)
-					call mat2csv(gapp_dif((ij-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_dif"//trim(caselabel)//".csv",wo)
+					call mati2csv(gapp((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp"//trim(caselabel)//".csv",wo)
+					call mat2csv(gapp_dif((il-1)*ntr+itr,(idi-1)*nal+ial,:,ie,:,iz,it) ,"gapp_dif"//trim(caselabel)//".csv",wo)
 
 					if(wo==0) wo =1
 				enddo !it
@@ -3187,7 +3187,7 @@ module sim_hists
 		
 		logical, optional :: occaggs
 
-		integer :: i=1, ii=1, iter=1, it=1, it_old=1, ij=1, idi=1, id=1, Tret=1,wo=1, &
+		integer :: i=1, ii=1, iter=1, it=1, it_old=1, ij=1,il=1, idi=1, id=1, Tret=1,wo=1, &
 			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5,Ncol=100,nomatch=0
 
 
@@ -3207,6 +3207,7 @@ module sim_hists
 		integer, pointer     :: born_it(:,:) ! born status, drawn randomly		
 		real(dp), pointer	 ::	del_i_draw(:)
 		integer, pointer     :: del_i_int(:)  ! integer valued shocks
+		integer, pointer     :: fndsep_i_int(:,:,:)  ! integer valued shocks
 		integer, pointer     :: status_it(:,:)	!track W,U,N,D,R : 1,2,3,4,5
 		integer, pointer     :: age_it(:,:)	! ages, drawn randomly
 		integer, pointer     :: j_i(:)		! occupation, maybe random
@@ -3247,8 +3248,8 @@ module sim_hists
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., iiwt=1., ziwt=1., j_val=1.,j_val_ij=1.,jwt=1., cumval=1., &
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,triwt=1.
 
-		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1, j_hr=1, ai_hr=1,api_hr=1,ei_hr=1,triH, &
-			& tri=1, tri_hr=1,status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0
+		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1, ai_hr=1,api_hr=1,ei_hr=1,triH, &
+			& tri=1, tri_hr=1,fnd_hr(nz),sep_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0
 			
 		logical :: w_strchng_old = .false., final_iter = .false.,occaggs_hr =.true.
 		
@@ -3298,6 +3299,7 @@ module sim_hists
 		z_jt_innov  => shk%z_jt_innov
 		z_jt_select => shk%z_jt_select
 		del_i_int   => shk%del_i_int
+		fndsep_i_int   => shk%fndsep_i_int
 		del_i_draw  => shk%del_i_draw
 		j_i         => shk%j_i
 		al_it       => shk%al_hist
@@ -3453,14 +3455,16 @@ module sim_hists
 
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,tri_hr,apc_hr,ep_hr, &
-			!$OMP& iiH, iiwt, ziwt,ziH,triwt,triH, ij,j_val,j_val_ij,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr,hlthprob,ii,sepi,fndi,invol_un,dead,status_tmrw) 
+			!$OMP& iiH, iiwt, ziwt,ziH,triwt,triH,il,fnd_hr, sep_hr, il_hr,j_val,j_val_ij,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr,hlthprob,ii,sepi,fndi,invol_un,dead,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
 				!set a j to correspond to the probabilities.  This will get overwritten if born
 				j_hr = j_i(i)
 				del_hr = del_i_int(i)
-				
+				fnd_hr = fndsep_i_int(i,1,:)
+				sep_hr = fndsep_i_int(i,2,:)
+				il_hr = fnd_hr(2)
 				!initialize stuff
 				it = 1
 				it_old = 1
@@ -3478,84 +3482,87 @@ module sim_hists
 						e_hr 	= 0.
 						ai_hr 	= 1
 						status_it(i,it) = 1 !start out working
-						if(j_rand .eqv. .false. ) then !choose occupation
-							j_val  = -1.e6_dp
-							j_hr = 1 !initial value
-							if(it< (struc_brk*itlen)) iiH = 1
-							if(it>=(struc_brk*itlen)) iiH = 2
-							al_hr	= al_it(i,it)
-							ali_hr	= al_it_int(i,it)					
-							do ij = 1,nj
-								j_val_ij = 0.
-								if(zj_contin .eqv. .true.)then
-									z_hr	= z_jt_panel(it,ij)
-									do zi_hr = nz,1,-1
-										if(zgrid(zi_hr,ij)<z_hr) exit
-									enddo
-									ziH  = min(zi_hr+1,nz)
-									ziwt = (zgrid(ziH,ij)- z_hr)/( zgrid(ziH,ij) -   zgrid(zi_hr,ij) )
-									if(zi_hr == ziH) ziwt = 1.
-								else
-									zi_hr = z_jt_macroint(it)
-								endif
+						
+!~						!-------------------------------------------
+!~						! This is not updated to have il index the separation rate
+!~ 						if(j_rand .eqv. .false. ) then !choose occupation
+!~ 							j_val  = -1.e6_dp
+!~ 							j_hr = 1 !initial value
+!~ 							if(it< (struc_brk*itlen)) iiH = 1
+!~ 							if(it>=(struc_brk*itlen)) iiH = 2
+!~ 							al_hr	= al_it(i,it)
+!~ 							ali_hr	= al_it_int(i,it)					
+!~ 							do ij = 1,nj
+!~ 								j_val_ij = 0.
+!~ 								if(zj_contin .eqv. .true.)then
+!~ 									z_hr	= z_jt_panel(it,ij)
+!~ 									do zi_hr = nz,1,-1
+!~ 										if(zgrid(zi_hr,ij)<z_hr) exit
+!~ 									enddo
+!~ 									ziH  = min(zi_hr+1,nz)
+!~ 									ziwt = (zgrid(ziH,ij)- z_hr)/( zgrid(ziH,ij) -   zgrid(zi_hr,ij) )
+!~ 									if(zi_hr == ziH) ziwt = 1.
+!~ 								else
+!~ 									zi_hr = z_jt_macroint(it)
+!~ 								endif
 
-								if(it==1 ) then
-									pialf_conddist = ergpialf
-								else
-									pialf_conddist = pialf(ali_hr,:)
-								endif
-								if(w_strchng .eqv. .true.) then
-									do tri_hr = ntr,1,-1
-										if( trgrid(tri_hr)<wage_trend(it,ij) ) &
-											exit
-										triH = min(tri_hr+1,ntr)
-										if(triH>tri_hr) then
-											triwt = (trgrid(triH)- wage_trend(it,ij))/(trgrid(triH) - trgrid(tri_hr))
-										else
-											triwt = 1.
-										endif
-									enddo
-								else
-									tri_hr = tri0
-								endif
+!~ 								if(it==1 ) then
+!~ 									pialf_conddist = ergpialf
+!~ 								else
+!~ 									pialf_conddist = pialf(ali_hr,:)
+!~ 								endif
+!~ 								if(w_strchng .eqv. .true.) then
+!~ 									do tri_hr = ntr,1,-1
+!~ 										if( trgrid(tri_hr)<wage_trend(it,ij) ) &
+!~ 											exit
+!~ 										triH = min(tri_hr+1,ntr)
+!~ 										if(triH>tri_hr) then
+!~ 											triwt = (trgrid(triH)- wage_trend(it,ij))/(trgrid(triH) - trgrid(tri_hr))
+!~ 										else
+!~ 											triwt = 1.
+!~ 										endif
+!~ 									enddo
+!~ 								else
+!~ 									tri_hr = tri0
+!~ 								endif
 								
-								do idi = 1,ndi !expectations over delta and alpha
-								do ali_hr = 1,nal
-									if( zj_contin .eqv. .true. ) then
-										j_val_ij = ziwt     * V((ij-1)*ntr+tri0,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
-												& (1.-ziwt) * V((ij-1)*ntr+tri0,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
-												&	j_val_ij
-									elseif(w_strchng .eqv. .true.) then
+!~ 								do idi = 1,ndi !expectations over delta and alpha
+!~ 								do ali_hr = 1,nal
+!~ 									if( zj_contin .eqv. .true. ) then
+!~ 										j_val_ij = ziwt     * V((ij-1)*ntr+tri0,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
+!~ 												& (1.-ziwt) * V((ij-1)*ntr+tri0,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
+!~ 												&	j_val_ij
+!~ 									elseif(w_strchng .eqv. .true.) then
 									
-										j_val_ij = triwt    * V((ij-1)*ntr+tri_hr,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
-												& (1.-triwt)* V((ij-1)*ntr+triH  ,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
-												&	j_val_ij
-									else
-										j_val_ij = V((ij-1)*ntr+tri0,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr)+j_val_ij
-									endif
-								enddo
-								enddo
-								j_val_ij = (j_val_ij + jshift(ij,it))/(amenityscale*vscale) + jshock_ij(i,ij)
-								if(j_val< j_val_ij ) then
-									j_hr = ij
-									j_val = j_val_ij
-								endif
-							enddo !choose j
-							j_i(i) = j_hr
-							val_hr_it(i) = j_val
-							! now draw a del
+!~ 										j_val_ij = triwt    * V((ij-1)*ntr+tri_hr,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
+!~ 												& (1.-triwt)* V((ij-1)*ntr+triH  ,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
+!~ 												&	j_val_ij
+!~ 									else
+!~ 										j_val_ij = V((ij-1)*ntr+tri0,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr)+j_val_ij
+!~ 									endif
+!~ 								enddo
+!~ 								enddo
+!~ 								j_val_ij = (j_val_ij + jshift(ij,it))/(amenityscale*vscale) + jshock_ij(i,ij)
+!~ 								if(j_val< j_val_ij ) then
+!~ 									j_hr = ij
+!~ 									j_val = j_val_ij
+!~ 								endif
+!~ 							enddo !choose j
+!~ 							j_i(i) = j_hr
+!~ 							val_hr_it(i) = j_val
+!~ 							! now draw a del
 							
-							!put del_i into 0,1
-							junk = del_i_draw(i) 
-							do ii=1,ndi
-								if(junk < delcumwt(ii+1,j_hr)  ) then
-									del_hr = ii
-									exit
-								endif
-							enddo
+!~ 							!put del_i into 0,1
+!~ 							junk = del_i_draw(i) 
+!~ 							do ii=1,ndi
+!~ 								if(junk < delcumwt(ii+1,j_hr)  ) then
+!~ 									del_hr = ii
+!~ 									exit
+!~ 								endif
+!~ 							enddo
 
-							del_i_int(i) = del_hr
-						endif !choosing occupation j_i
+!~ 							del_i_int(i) = del_hr
+!~ 						endif !choosing occupation j_i
 						
 
 
@@ -3692,30 +3699,30 @@ module sim_hists
 							
 							!check for rest unemployment
 							if((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
-								work_dif_hr = iiwt   *gwork_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-										&	(1.-iiwt)*gwork_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								work_dif_hr = iiwt   *gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	(1.-iiwt)*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .true.) .and. (w_strchng .eqv. .false.)) then
-								work_dif_hr = ziwt    * iiwt    *gwork_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-										&	  ziwt    *(1.-iiwt)*gwork_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-										&	 (1.-ziwt)* iiwt    *gwork_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
-										&	 (1.-ziwt)*(1.-iiwt)*gwork_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr )
+								work_dif_hr = ziwt    * iiwt    *gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	  ziwt    *(1.-iiwt)*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	 (1.-ziwt)* iiwt    *gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
+										&	 (1.-ziwt)*(1.-iiwt)*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr )
 							elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.)) then
-								work_dif_hr = triwt    * iiwt    *gwork_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-										&	  triwt    *(1.-iiwt)*gwork_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-										&	 (1.-triwt)* iiwt    *gwork_dif( (j_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-										&	 (1.-triwt)*(1.-iiwt)*gwork_dif( (j_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								work_dif_hr = triwt    * iiwt    *gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	  triwt    *(1.-iiwt)*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	 (1.-triwt)* iiwt    *gwork_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	 (1.-triwt)*(1.-iiwt)*gwork_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							else!if(al_contin .eqv. .false. ) then
-								work_dif_hr = gwork_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								work_dif_hr = gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							endif
 							work_dif_it(i,it) = work_dif_hr
 							
 							!draws for exog find and sep
 							if( zj_contin .eqv. .true.) then
-								fndi = ziwt*fndrate(zi_hr,j_hr) + (1.-ziwt)*fndrate(ziH,j_hr)
-								sepi = ziwt*seprisk(zi_hr,j_hr) + (1.-ziwt)*seprisk(ziH,j_hr)
+								fndi = ziwt*fndgrid(fnd_hr(zi_hr),zi_hr) + (1.-ziwt)*fndgrid(fnd_hr(ziH),ziH)
+								sepi = ziwt*sepgrid(sep_hr(zi_hr),zi_hr) + (1.-ziwt)*sepgrid(sep_hr(zi_hr),zi_hr)
 							else
-								fndi = fndrate(zi_hr,j_hr)
-								sepi = seprisk(zi_hr,j_hr)
+								fndi = fndgrid(fnd_hr(zi_hr),zi_hr) !fndrate(zi_hr,j_hr)
+								sepi = sepgrid(sep_hr(zi_hr),zi_hr)!seprisk(zi_hr,j_hr)
 							endif
 							
 							
@@ -3786,20 +3793,20 @@ module sim_hists
 								endif
 								!evaluate application choice
 								if((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
-									app_dif_hr = iiwt    *gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+									app_dif_hr = iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .true.) .and. (w_strchng .eqv. .false.) ) then
-									app_dif_hr = ziwt    * iiwt    *gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	 ziwt    *(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-ziwt)*  iiwt   *gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
-											&	(1.-ziwt)*(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) 
+									app_dif_hr = ziwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	 ziwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-ziwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
+											&	(1.-ziwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) 
 								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
-									app_dif_hr = triwt    * iiwt    *gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	 triwt    *(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-triwt)*  iiwt   *gapp_dif( (j_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-triwt)*(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) 
+									app_dif_hr = triwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	 triwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-triwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-triwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) 
 								else! if ((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
-									app_dif_hr = gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+									app_dif_hr = gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 								endif
 								
 								app_dif_it(i,it) = app_dif_hr
@@ -3828,11 +3835,11 @@ module sim_hists
 									endif
 								! want to search? find a job?
 								elseif(work_dif_hr >0) then
-									if(status_it_innov(i,it) <=lrho*fndrate(zi_hr,j_hr) ) then 
+									if(status_it_innov(i,it) <=lrho*fndi ) then 
 										status_tmrw = 1
 										if(invol_un == 1) invol_un = 0
 									endif
-									if(status_it_innov(i,it) > lrho*fndrate(zi_hr,j_hr) ) status_tmrw = status_hr
+									if(status_it_innov(i,it) > lrho*fndi ) status_tmrw = status_hr
 								! not apply for DI and not search
 								else
 									status_tmrw = status_hr
@@ -3840,22 +3847,22 @@ module sim_hists
 							end select
 							
 							if((status_hr <= 2) .and. (print_lev >=2)) then
-								!evaluate application choice (for diagnostics, would the workers want to apply?)
+								!evaluate application choice for diagnostics (would the workers want to apply? even if they can't)
 								if((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
-									app_dif_hr = iiwt    *gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+									app_dif_hr = iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .true.) .and. (w_strchng .eqv. .false.)) then
-									app_dif_hr = ziwt    * iiwt    *gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	 ziwt    *(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-ziwt)*  iiwt   *gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
-											&	(1.-ziwt)*(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) 
+									app_dif_hr = ziwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	 ziwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-ziwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
+											&	(1.-ziwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) 
 								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.)) then
-									app_dif_hr = triwt    * iiwt    *gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	 triwt    *(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-triwt)*  iiwt   *gapp_dif( (j_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-triwt)*(1.-iiwt)*gapp_dif( (j_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) 
+									app_dif_hr = triwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	 triwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-triwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	(1.-triwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) 
 								else! if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
-									app_dif_hr = gapp_dif( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+									app_dif_hr = gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 								endif
 								app_dif_it(i,it) = app_dif_hr
 							endif
@@ -3882,14 +3889,14 @@ module sim_hists
 							!INTERPOLATE!!!!!	
 							if((al_contin .eqv. .true.)  .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
 								if(status_hr .eq. 1) then
-									apc_hr = iiwt    *agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-										&	(1.-iiwt)*agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ))
+									apc_hr = iiwt    *agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
+										&	(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ))
 								elseif(status_hr .eq. 2) then
-									apc_hr = iiwt    *agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&	(1.-iiwt)*agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
+									apc_hr = iiwt    *agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&	(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
 								elseif(status_hr .eq. 3) then
-									apc_hr = iiwt    *agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&	(1.-iiwt)*agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
+									apc_hr = iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&	(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
 								endif
 								api_hr = 1
 								do ii=2,na
@@ -3898,20 +3905,20 @@ module sim_hists
 								api_hr = min(max(ali_hr,1),na)
 							elseif((al_contin .eqv. .true.)  .and. (zj_contin .eqv. .true.) .and. (w_strchng .eqv. .false.)) then
 								if(status_hr .eq. 1) then
-									apc_hr = ziwt    * iiwt    *agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-										&	 ziwt    *(1.-iiwt)*agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-										&	(1.-ziwt)* iiwt    *agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr  )) +&
-										&	(1.-ziwt)*(1.-iiwt)*agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr  ))
+									apc_hr = ziwt    * iiwt    *agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
+										&	 ziwt    *(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
+										&	(1.-ziwt)* iiwt    *agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr  )) +&
+										&	(1.-ziwt)*(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr  ))
 								elseif(status_hr .eq. 2) then
-									apc_hr = ziwt    * iiwt    *agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&	 ziwt    *(1.-iiwt)*agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&   (1.-ziwt)* iiwt    *agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr )) +&
-										&	(1.-ziwt)*(1.-iiwt)*agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ))
+									apc_hr = ziwt    * iiwt    *agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&	 ziwt    *(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&   (1.-ziwt)* iiwt    *agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr )) +&
+										&	(1.-ziwt)*(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ))
 								elseif(status_hr .eq. 3) then
-									apc_hr = ziwt    * iiwt    *agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&	 ziwt    *(1.-iiwt)*agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&   (1.-ziwt)* iiwt    *agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr )) +&
-										&	(1.-ziwt)*(1.-iiwt)*agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ))
+									apc_hr = ziwt    * iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&	 ziwt    *(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&   (1.-ziwt)* iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr )) +&
+										&	(1.-ziwt)*(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ))
 								endif
 								api_hr=1
 								do ii=2,na
@@ -3920,20 +3927,20 @@ module sim_hists
 								api_hr = min(max(api_hr,1),na)
 							elseif((al_contin .eqv. .true.)  .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.)) then
 								if(status_hr .eq. 1) then
-									apc_hr = triwt    * iiwt    *agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-										&	 triwt    *(1.-iiwt)*agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-										&	(1.-triwt)* iiwt    *agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-										&	(1.-triwt)*(1.-iiwt)*agrid( aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ))
+									apc_hr = triwt    * iiwt    *agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
+										&	 triwt    *(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
+										&	(1.-triwt)* iiwt    *agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
+										&	(1.-triwt)*(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ))
 								elseif(status_hr .eq. 2) then
-									apc_hr = triwt    * iiwt    *agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&	 triwt    *(1.-iiwt)*agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&   (1.-triwt)* iiwt    *agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&	(1.-triwt)*(1.-iiwt)*agrid( aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
+									apc_hr = triwt    * iiwt    *agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&	 triwt    *(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&   (1.-triwt)* iiwt    *agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&	(1.-triwt)*(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
 								elseif(status_hr .eq. 3) then
-									apc_hr = triwt    * iiwt    *agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&	 triwt    *(1.-iiwt)*agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&   (1.-triwt)* iiwt    *agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-										&	(1.-triwt)*(1.-iiwt)*agrid( aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
+									apc_hr = triwt    * iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&	 triwt    *(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&   (1.-triwt)* iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+										&	(1.-triwt)*(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
 								endif
 								api_hr=1
 								do ii=2,na
@@ -3942,11 +3949,11 @@ module sim_hists
 								api_hr = min(max(api_hr,1),na)
 							else !if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.)) then
 								if(status_hr .eq. 1) then
-									api_hr = aw( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
+									api_hr = aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )
 								elseif(status_hr .eq. 2) then
-									api_hr = aU( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+									api_hr = aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 								elseif(status_hr .eq. 3) then
-									api_hr = aN( (j_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+									api_hr = aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 								endif
 								apc_hr = agrid(api_hr)
 							endif
@@ -5012,8 +5019,11 @@ module find_params
 			seprt1_mul = upd_wgtrnd*seprt1_mul + (1.-upd_wgtrnd)*seprt0_mul
 			
 			
-			seprisk = seprisk/seprt0_mul*seprt1_mul
-			fndrate = fndrate/fndrt_mul0*fndrt_mul1
+			!seprisk = seprisk/seprt0_mul*seprt1_mul
+			!fndrate = fndrate/fndrt_mul0*fndrt_mul1
+			sepgrid = sepgrid/seprt0_mul*seprt1_mul
+			fndgrid = fndgrid/fndrt_mul0*fndrt_mul1
+			
 			
 			seprt0_mul = seprt1_mul
 			fndrt_mul0 = fndrt_mul1
@@ -5619,7 +5629,7 @@ program V0main
 			
 		parvec(1) = nu
 		parvec(2) = xizcoef
-		parvec_1(1) = xizcoef
+		parvec_1(1) = nu
 		err0 = 0.
 		call cal_dist(parvec_1,ervec_1,shk)
 		
@@ -5643,7 +5653,7 @@ program V0main
 		verbose=1
 		print_lev =1
 		open(unit=fcallog, file = callog ,ACCESS='APPEND', POSITION='APPEND')
-		parvec_1 = 0.4_dp + dble(i)/5._dp
+		parvec_1 = 0.0_dp + dble(i)/5._dp
 		call cal_dist(parvec_1,ervec_1,shk)
 		write(fcallog,*) nu, ervec_1(1)
 		print *, nu, ervec_1(1)
