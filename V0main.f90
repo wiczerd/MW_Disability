@@ -3375,7 +3375,7 @@ module sim_hists
 		a_it_int = 1
 		e_it = egrid(1)
 		e_it_int = 1
-		status_it = 0 ! just to initialize on the first round 
+		status_it = 1 ! just to initialize on the first round 
 		do i=1,Nsim
 			do it=1,Tsim
 				if(age_it(i,it)>=TT) status_it(i,it) = 5
@@ -3406,7 +3406,7 @@ module sim_hists
 				do zi_hr=1,nz
 					do i=1,Nsim
 						do it=2,Tsim
-							if((z_jt_macroint(it)==zi_hr) .and. (age_it(i,it)>0 ).and. (status_it(i,it) <=3) ) then 
+							if((z_jt_macroint(it)==zi_hr) .and. (age_it(i,it)>0 ).and. (status_it(i,it) <=3  .and. status_it(i,it)>0 ) ) then 
 								totpopz(zi_hr) = totpopz(zi_hr) + 1._dp
 								if(al_int_it_endog(i,it)==1) then
 									PrAl1(zi_hr) = PrAl1(zi_hr)+1._dp
@@ -3424,7 +3424,7 @@ module sim_hists
 			nomatch = 0
 			junk =0.
 			do i =1,Nsim
-				!for the population that is pre-existing in the first period 
+				!for the population that is pre-existing in the first period , it=1 and age>0
 				!need to draw these from age-specific distributions for iterations > 1
 				if((iter>1) .and. (age_it(i,it)  > 0 )) then
 					!use status_it_innov(i,Tsim) to identify the d state, along with age of this guy
@@ -3435,7 +3435,7 @@ module sim_hists
 					do ii=1,Ncol
 						drawi = drawi_ititer(i,ii)!iter-1
 						drawt = drawt_ititer(i,ii)!iter-1
-						if( d_it(drawi,drawt) .eq. d_hr) then 
+						if( d_it(drawi,drawt) .eq. d_hr .and. status_it(drawi,drawt)>0) then 
 							exit
 						elseif(ii==Ncol) then
 							nomatch = nomatch+1
@@ -3473,7 +3473,7 @@ module sim_hists
 				do it=1,Tsim
 				if(age_it(i,it) > 0 ) then !they've been born 
 					
-					if((born_it(i,it).eq. 1 .and. it> 1) .or. (age_it(i,it)>0 .and. it==1)) then
+					if((born_it(i,it) .eq. 1 .and. it> 1) .or. (age_it(i,it)>0 .and. it==1)) then
 					! no one is ``born'' in the first period, but they make a decision as if just born
 						age_hr	= 1
 						d_hr	= 1
@@ -3481,7 +3481,7 @@ module sim_hists
 						ei_hr	= 1
 						e_hr 	= 0.
 						ai_hr 	= 1
-						status_it(i,it) = 1 !start out working
+						if( it>1 .or. iter==1) status_it(i,it) = 1 !start out working
 						
 !~						!-------------------------------------------
 !~						! This is not updated to have il index the separation rate
@@ -3566,13 +3566,14 @@ module sim_hists
 						
 
 
-						if(it == 1) then !these were born, 
+						if(it == 1) then !these were already born
 							age_hr	= age_it(i,it)
 							d_hr	= d_it(i,it)
 							a_hr 	= a_it(i,it)
 							ei_hr	= e_it_int(i,it)
 							e_hr 	= e_it(i,it)
 							ai_hr 	= a_it_int(i,it)
+							!do not set status, because that comes from above
 						endif
 					else !already born, just load state
 						age_hr	= age_it(i,it)
@@ -5624,16 +5625,16 @@ program V0main
 			enddo
 			totapp_dif_hist = totapp_dif_hist/ninsur_app
 		if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
-			
+
 		Vtol = 1e-6
-			
+
 		parvec(1) = nu
 		parvec(2) = xizcoef
 		parvec_1(1) = nu
 		err0 = 0.
 		call cal_dist(parvec_1,ervec_1,shk)
 		
-		print *, err0
+		print *, ervec_1
 		
 		if(verbose > 2) then
 			call CPU_TIME(t2)
@@ -5645,30 +5646,30 @@ program V0main
 	endif !sol_once
 	
 	!set up the grid over which to check derivatives 
-	open(unit=fcallog, file=callog)
-	write(fcallog,*) nu, err0
-	close(unit=fcallog)
-	do i=1,10
-		precal_bisnu = .false.
-		verbose=1
-		print_lev =1
-		open(unit=fcallog, file = callog ,ACCESS='APPEND', POSITION='APPEND')
-		parvec_1 = 0.0_dp + dble(i)/5._dp
-		call cal_dist(parvec_1,ervec_1,shk)
-		write(fcallog,*) nu, ervec_1(1)
-		print *, nu, ervec_1(1)
-		close(unit=fcallog)
-	enddo
+!~ 	open(unit=fcallog, file=callog)
+!~ 	write(fcallog,*) nu, err0
+!~ 	close(unit=fcallog)
+!~ 	do i=1,10
+!~ 		precal_bisnu = .false.
+!~ 		verbose=1
+!~ 		print_lev =1
+!~ 		open(unit=fcallog, file = callog ,ACCESS='APPEND', POSITION='APPEND')
+!~ 		parvec_1 = 0.0_dp + dble(i)/5._dp
+!~ 		call cal_dist(parvec_1,ervec_1,shk)
+!~ 		write(fcallog,*) nu, ervec_1(1)
+!~ 		print *, nu, ervec_1(1)
+!~ 		close(unit=fcallog)
+!~ 	enddo
 	
 	
 	
 !	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
-	lb = (/0.1_dp, 0.0_dp/)
-	lb_1 = (/.1/)
+	lb = (/0.01_dp, 0.0_dp/)
+	lb_1 = (/.01/)
 	call nlo_set_lower_bounds(ires,calopt,lb_1)
 	ub = (/ 7._dp, 0.5_dp /)
-	ub_1 = (/7./)
+	ub_1 = (/5./)
 	call nlo_set_upper_bounds(ires,calopt,ub_1)
 	call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
 	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
@@ -5680,14 +5681,14 @@ program V0main
 	parvec(2) = xizcoef
 	parvec_1(1) = nu
 
-!~ 	open(unit=fcallog, file=callog)
-!~ 	write(fcallog,*) " "
-!~ 	close(unit=fcallog)
-!~   	call nlo_optimize(ires, calopt, parvec_1, erval)
-!~ 	nu = parvec_1(1) ! new optimum
-!~ 	xizcoef = parvec(2)
+	open(unit=fcallog, file=callog)
+	write(fcallog,*) " "
+	close(unit=fcallog)
+  	call nlo_optimize(ires, calopt, parvec_1, erval)
+	nu = parvec_1(1) ! new optimum
+	xizcoef = parvec(2)
 
-!~   	call cal_dist(parvec_1,ervec_1,shk)
+  	call cal_dist(parvec_1,ervec_1,shk)
 
 
 !~ !****************************************************************************
