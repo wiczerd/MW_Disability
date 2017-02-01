@@ -53,7 +53,7 @@ integer, parameter ::	nal = 4,  &!5		!Number of individual alpha types
 			nz  = 2,  &		        !Number of aggregate shock states
 			nj  = 16, &!16			!Number of occupations
 			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 16000, &!1000*nj !how many agents to draw
+			Nsim = 160000, &!10000*nj !how many agents to draw
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
@@ -107,13 +107,13 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		pialf(nal,nal),&	!Alpha_i transition matrix
 		ergpialf(nal),&		!Alpha_i ergodic distribution
 		piz(nz,nz),&		!TFP transition matrix
-		ergpiz(nz),& !ergodic TFP distribution
-		pid(nd,nd,ndi,TT-1),&	!Disability transition matrix
+		ergpiz(nz),& 		!ergodic TFP distribution
+		pid(nd,nd,ndi,TT-1),&!Disability transition matrix
 !
-		prob_age(TT), &		!Probability of being in each age group to start
+		prob_age(TT-1,Tsim), &!Probability of being in each age group over the whole history
 		prborn_t(Tsim),&	!probability of being born at each point t
 		hazborn_t(Tsim), &	!hazard of being born at each point t
-		PrD3age(TT), &	!Fraction of D2 at each age
+		PrD3age(TT), &		!Fraction of D2 at each age
 		PrDage(nd,TT), &	!Fraction of each D at each age
 		PrDeath(nd,TT),&	!Probability of death during work-life
 !
@@ -220,10 +220,12 @@ subroutine setparams()
 		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(TT), maxADL_read(16),avgADL, &
+	real(8) :: pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(35,TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(16), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2),&
-		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15);
-	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3
+		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(35)
+		
+	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3 
+	real(8) :: pNy,pNm,Ny,Nm,dy,dm, Nbar,totborn,prH,prL, bN(Tsim)
 	
 	real(8) :: wr(nd),wi(nd),vl(nd,nd),vr(nd,nd),abnrm,rcondv(nd),sdec(nd,nd),rconde(nd),wrk(nd*(nd+6))
 	integer :: ilo,ihi,iwrk(nd*2-2),lwrk,status
@@ -265,8 +267,10 @@ subroutine setparams()
 	enddo
 	close(fread)
 	!read initial distribution of age 
-	open(unit= fread, file = "AGES_80.csv")
-	read(fread,*) age_read(:)
+	open(unit= fread, file = "PrAge.csv")
+	do i=1,35
+		read(fread,*) age_read(i,:)
+	enddo
 	close(fread)
 
 	!wage levels and trends by occupation
@@ -455,33 +459,71 @@ subroutine setparams()
 	enddo
 	! rate exit retirement (only one way to go.... down)
 	ptau(TT) = 1-((Longev-(youngD+oldN*oldD))*tlen)**(-1)
-
-	!initial age structure
-	prob_age = age_read
-	!prob_age(TT) = 1. - (youngD+oldN*oldD)/Longev ! balanced fraction of retirees to begin
-	!prob_age(1) = age_occ_read(1,nj+1)/100./(1.-prob_age(TT) ) ! balanced : youngD/Longev
-	!do i=2,TT-1
-	!	prob_age(i) = age_occ_read(i,nj+1)/100. /(1.-prob_age(TT) )
-	!enddo
-	
-	prob_age = prob_age/sum(prob_age) !just to be sure it adds to 1
-	pop_size(1) = sum(prob_age(1:TT-1))
-	!evolution of age-structure
-!	prob_age_tsim(:,1) = prob_age
-	cumprnborn_t = 1.
-	!prob of getting born
-	do t=2,Tsim
-		i=1
-		prborn_t(t) = 1.-(1.-0.005)**(1./tlen) +  1.-ptau(TT) !1% per year
-		!prborn_t(t) = prob_age_tsim(TT-1,t-1)*(1.-ptau(TT-1)) !keeps const labor force.  
-		!prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prborn_t(t)
-		!do i = 2,TT
-		!	prob_age_tsim(i,t) = prob_age_tsim(i,t-1)*ptau(i) + prob_age_tsim(i-1,t-1)*(1.-ptau(i-1))
-		!enddo
-		!pop_size(t) = sum(prob_age_tsim(:,t)) !should always be 1
-		!prborn_t(t) = hazborn_t(t)*cumprnborn_t(t-1) !not actually hazard yet because not have initial prob
+	! prob of death by health, age
+	do t=1,(TT-1)
+		PrDeath(:,t) = PrDeath_in_read(1+(t-1)*3:3+(t-1)*3)
 	enddo
-	prborn_t(1) =  product(1.-prborn_t(2:Tsim)) ! need to have some positive mass alive when the survey starts
+	PrDeath(:,TT) = PrDeath(:,TT-1)
+	
+
+	!age structure extrapolate over periods
+	age_read(:,1) = age_read(:,1)-age_read(1,1)
+	do i=1,TT-1
+		call spline( age_read(:,1),age_read(:,i+1),age_read_wkr)
+		do t=1,Tsim
+			prob_age(i,t) = splint(age_read(:,1),age_read(:,i+1),age_read_wkr, dble(t-1)/tlen ) !prob_age(TT-1,Tsim)
+		enddo
+	enddo
+	
+	pop_size(1) = sum(prob_age(:,1))
+	!evolution of age-structure!!!!!!!!!!!!!!!!!!!!!!
+
+	dy = PrDeath(1,1)
+	dm = 0.9d+0*sum(PrDeath(1,2:TT-1))/dble(TT-2) + 0.1d+0*sum(PrDeath(nd,2:TT-1))/dble(TT-2) !die
+	dm = (1.d+0-dm)*((tlen*oldN*oldD)**(-1)) + dm !don't die, but age
+		
+!	junk = 1.-(1.-0.005)**(1./tlen) +  1.-ptau(TT) !1% per year as a starting guess
+!	Nbar = (1.-junk)**(Tsim)*Nsim
+!	prborn_t(1) = (1.-junk)**(Tsim)
+!	Ny = prborn_t(1)*Nsim*prob_age(1,1)
+!	Nm = prborn_t(1)*Nsim*(1.-prob_age(1,1))
+!	brt(1) = 0.
+!	totborn = Nbar
+	
+	!now bisection on Nbar 0
+	prH = 0.2d+0
+	prL = 0.d+0
+	do i =1,maxiter	
+		!prob of getting born
+		prborn_t(1) = 0.5d+0*(prH + prL)
+		bN(1) = prborn_t(1)*dble(Nsim)
+		Ny = bN(1)*prob_age(1,1)
+		Nm = bN(1)*(1.-prob_age(1,1))
+		totborn = prborn_t(1)*dble(Nsim)
+		do t=2,Tsim
+			pNy = Ny*ptau(1)*(1.d+0-dy)
+			pNm	= Nm*(1.d+0-dm) + Ny*(1.d+0-ptau(1))*(1.d+0-dy)
+		
+			bN(t) = (prob_age(1,t)*(pNy+pNm)-pNy)/(1.-prob_age(1,t))
+			prborn_t(t) = bN(t)/(Nsim - totborn) !prborn*(remaining unborn) = bN
+			Nm = pNm
+			Ny = pNm + bN(t)
+
+			totborn = bN(t) + totborn
+		enddo
+		junk = prborn_t(1)
+		prborn_t(1) =  (dble(Nsim) - (totborn - prborn_t(1)*Nsim ))/dble(Nsim) ! need to have some positive mass alive when the survey starts
+		
+		if(prborn_t(1)<0) prborn_t(1) = 0.d+0
+		if(dabs(junk - prborn_t(1))<1e-4) then 
+			exit !iterate on the numberr alive in period 1
+		elseif( totborn > dble(Nsim) ) then
+			prH = junk
+		else! totborn<Nsim 
+			prL = junk
+		endif
+		
+	enddo
 	cumprnborn_t(1) = 1. - prborn_t(1)
 	hazborn_t(1) = prborn_t(1)
 	do t=2,Tsim
@@ -636,11 +678,7 @@ subroutine setparams()
 		PrDage(:,t) = PrD_Age_read(t,1:nd)/sum(PrD_Age_read(t,1:nd))
 		PrD3age(t) = PrDage(nd,t)
 	enddo
-	do t=1,(TT-1)
-		PrDeath(:,t) = PrDeath_in_read(1+(t-1)*3:3+(t-1)*3)
-	enddo
-	PrDeath(:,TT) = PrDeath(:,TT-1)
-	
+
 	pid = 0.
 	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
@@ -1410,7 +1448,7 @@ recursive subroutine quicksort(a, first, last)
 ! License: GPLv3
 ! Gist: https://gist.github.com/t-nissie/479f0f16966925fa29ea
 	implicit none
-	real*8  a(*), x, t
+	real(8)  a(*), x, t
 	integer first, last
 	integer i, j
 
@@ -1433,6 +1471,366 @@ recursive subroutine quicksort(a, first, last)
 	if (j+1 < last)  call quicksort(a, j+1, last)
 end subroutine quicksort
 
+
+! Local functional approximation by cubic and linear splines
+subroutine spline(x,y,y2,yp1,ypn)
+! this is the NR version of the spline
+
+	IMPLICIT NONE
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y
+	REAL(8), DIMENSION(:), INTENT(OUT) :: y2
+	REAL(8), INTENT(IN), OPTIONAL :: yp1,ypn
+	REAL(8), DIMENSION(size(x)-1) :: u
+	real(8) :: p,qn,si,un
+	INTEGER :: n,i,k,info
+	n=size(x)
+	IF (size(y)/=n .or. size(y2)/=n) THEN
+		PRINT *, 'spline: x,y and y2 must be of the same size'
+		STOP 'program terminated by spline'
+	END IF
+
+	IF (present(yp1)) THEN
+		y2(1)=-0.5
+		u(1) = (1.0/(x(2)-x(1) ))*( (y(2)-y(1))/(x(2)-x(1))-yp1)
+	ELSE
+		y2(1)=0.0
+		u(1)=0.0
+	END IF
+	do i =2,n-1
+		si	= (x(i)-x(i-1))/(x(i+1)-x(i-1))
+		p	= si*y2(i-1)+2.0
+		y2(i)	= (si-1.0)/p
+		u(i)	= (6.0*((y(i+1)-y(i))/(x(i+1)-x(i))-(y(i)-y(i-1)) &
+			& /(x(i)-x(i-1)))/(x(i+1)-x(i-1))-si*u(i-1))/p
+	enddo
+
+	IF (present(ypn)) THEN
+		qn = 0.5
+		un = (3.0/(x(n)-x(n-1)))*( ypn-(y(n)-y(n-1))/(x(n)-x(n-1)) )
+	ELSE
+		qn = 0.0
+		un = 0.0
+!		y2(n)=y2(n-1)
+!		a(n-1)=0.0
+	END IF
+	y2(n) = (un-qn*u(n-1))/(qn*y2(n-1)+1.0)
+	do k=n-1,1,-1
+		y2(k) = y2(k)*y2(k+1)+u(k)
+	enddo
+
+
+
+end subroutine spline
+
+
+FUNCTION splint(x,y,y2,xi)
+! cubic interpolation of function y on grid x at interpolation point xi
+	IMPLICIT NONE
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y,y2
+	REAL(8), INTENT(IN) :: xi
+	REAL(8) :: splint
+	REAL(8) :: a,b,d,xhr
+	INTEGER :: n,i
+	n=size(x)
+	IF (size(y)/=n .or. size(y2)/=n) THEN
+		PRINT *, 'splint: x,y and y2 must be of the same size'
+		STOP 'program terminated by splint'
+	END IF
+	i=max(min(locate(x,xi),n-1),1)
+	d=x(i+1)-x(i)
+	xhr = xi
+	! push it back if too much extrapolation
+	if(xi-x(n) .ge. d) then
+		xhr = x(n)+d
+	elseif(-xi+x(1) .ge. d) then
+		xhr = x(1)-d
+	endif
+	
+	if (d == 0.0) STOP 'bad x input in splint'
+	a=(x(i+1)-xhr)/d
+	b=(xhr-x(i))/d
+	if((xhr .ge. x(1)) .and. (xhr .le. x(n))) then
+		splint=a*y(i)+b*y(i+1)+((a**3-a)*y2(i)+(b**3-b)*y2(i+1))*(d**2)/6.0
+	elseif( xhr .ge. x(n) ) then
+		splint = (y(n)-y(n-1))/(x(n)-x(n-1))*(xhr -x(n)) + y(n)
+	elseif( xhr .le. x(1) ) then
+		splint = (y(2)-y(1))/(x(2)-x(1))*(xhr -x(1)) + y(1)
+	endif
+	
+END FUNCTION splint
+
+FUNCTION dsplint(x,y,y2,xi)
+! derivative implied by cubic interpolation of function y on grid x at interpolation point xi
+	IMPLICIT NONE
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y,y2
+	REAL(8), INTENT(IN) :: xi
+	REAL(8) :: dsplint
+	REAL(8) :: a,b,d, xhr
+	INTEGER :: n,i
+	n=size(x)
+	IF (size(y)/=n .or. size(y2)/=n) THEN
+		PRINT *, 'splint: x,y and y2 must be of the same size'
+		STOP 'program terminated by splint'
+	END IF
+	i=max(min(locate(x,xi),n-1),1)
+	d=x(i+1)-x(i)
+	xhr = xi
+	if(xi-x(n) .ge. d) xhr = x(n)+d
+	if (d == 0.0) STOP 'bad x input in dsplint'
+	a=(x(i+1)-xhr)/d
+	b=(xhr-x(i))/d
+	dsplint=(y(i+1)-y(i))/d+((3*b**2-1)*y2(i+1)-(3*a**2-1)*y2(i))*d/6.0
+END FUNCTION dsplint
+
+FUNCTION linint(x,y,xi)
+! linear interpolation of function y on grid x at interpolation point xi
+	IMPLICIT NONE
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y
+	REAL(8), INTENT(IN) :: xi
+	REAL(8) :: linint
+	REAL(8) :: a,b,d,xhr
+	INTEGER :: n,i
+	n=size(x)
+	IF (size(y)/=n) THEN
+		PRINT *, 'linint: x and y must be of the same size'
+		STOP 'program terminated by linint'
+	END IF
+	i=max(min(locate(x,xi),n-1),1)
+	d=x(i+1)-x(i)
+	xhr = xi
+	if(xi-x(n) .ge. d) xhr = x(n)+d	
+	IF (d == 0.0) STOP 'bad x input in splint'
+	a=(x(i+1)-xhr)/d
+	b=(xhr-x(i))/d
+	linint=a*y(i)+b*y(i+1)
+END FUNCTION linint
+
+
+FUNCTION dlinint(x,y,xi)
+! derivative implied by linear interpolation of function y on grid x at interpolation point xi
+	IMPLICIT NONE
+	REAL(8), DIMENSION(:), INTENT(IN) :: x,y
+	REAL(8), INTENT(IN) :: xi
+	REAL(8) :: dlinint
+	REAL(8) :: dx,dy
+	INTEGER :: n,i
+	n=size(x)
+	IF (size(y)/=n) THEN
+		PRINT *, 'linint: x and y must be of the same size'
+		STOP 'program terminated by linint'
+	END IF
+	i=max(min(locate(x,xi),n-1),1)
+	dx=x(i+1)-x(i)
+	IF (dx == 0.0) STOP 'bad x input in splint'
+	dy= y(i+1) - y(i)
+	dlinint=dy/dx
+END FUNCTION dlinint
+
+
+SUBROUTINE linintv(x,y,xi,yi)
+! linear interpolation of function y on grid x at interpolation vector xi
+    IMPLICIT NONE
+    REAL(8), DIMENSION(:), INTENT(IN)  :: x,y,xi
+    REAL(8), DIMENSION(:), INTENT(OUT) :: yi
+    REAL(8) :: a,b,d
+    INTEGER :: m,n,i,j
+    n=size(x)
+    IF (size(y)/=n) THEN
+        PRINT *, 'linintv: x and y must be of the same size'
+        STOP 'program terminated by linintv'
+    END IF
+    m=size(xi)
+    IF (size(yi)/=m) THEN
+        PRINT *, 'linintv: xi and yi must be of the same size'
+        STOP 'program terminated by linintv'
+    END IF
+    DO j=1,m
+        i=max(min(locate(x,xi(j)),n-1),1)
+        d=x(i+1)-x(i)
+        IF (d == 0.0) THEN
+            STOP 'bad x input in linintv'
+        END IF
+        a=(x(i+1)-xi(j))/d
+        b=(xi(j)-x(i))/d
+        yi(j)=a*y(i)+b*y(i+1)
+    END DO
+END SUBROUTINE linintv
+
+function bilinint(x,y,f,xiyi)
+	implicit none
+	real(8), dimension(:), intent(in) :: x,y
+	real(8), dimension(:,:), intent(in) :: f
+	real(8), dimension(:), intent(in) :: xiyi
+	real(8) :: fq11,fq21,fq12,fq22, dx,dy
+	
+	real(8) :: bilinint
+	integer  :: x1,x2,y1,y2
+
+	if(size(x)/=size(f,1)) stop 'x,f grids not the same length in bilinear interpolation'
+	if(size(y)/=size(f,2)) stop 'y,f grids not the same length in bilinear interpolation'
+	
+	x1 = locate(x,xiyi(1))
+	if(x1 .ge. size(x)) then
+		x2 = x1
+		x1 = x1 - 1 
+	else 
+		x2 = x1+1
+	endif
+	y1 = locate(y,xiyi(2))
+	if(y1 .ge. size(y)) then
+		y2 = y1
+		y1 = y1-1
+	else
+		y2 = y1+1
+	endif
+	
+	dx = x(x2) - x(x1)
+	dy = y(y2) - y(y1)
+
+	fq11 = f(x1,y1)
+	fq21 = f(x2,y1)
+	fq12 = f(x1,y2)
+	fq22 = f(x2,y2)
+	
+	bilinint = (fq11*(x(x2)-xiyi(1))*(y(y2)-xiyi(2)) &
+		&+ fq21*(xiyi(1)-x(x1))*(y(y2)-xiyi(2))  &
+		&+ fq12*(x(x2)-xiyi(1))*(xiyi(2)-y(y1))  &
+		&+ fq22*(xiyi(1)-x(x1))*(xiyi(2)-y(y1)))/(dx*dy)
+end function
+
+subroutine dbilinint(x,y,f,xiyi,dxdy)
+	implicit none
+	real(8), dimension(:), intent(in) :: x,y
+	real(8), dimension(:,:), intent(in) :: f
+	real(8), dimension(:), intent(in) :: xiyi
+	real(8) :: fq11,fq21,fq12,fq22, dx,dy
+	
+	real(8), dimension(2) :: dxdy
+	integer  :: x1,x2,y1,y2
+
+	if(size(x)/=size(f,1)) stop 'x,f grids not the same length in bilinear interpolation'
+	if(size(y)/=size(f,2)) stop 'y,f grids not the same length in bilinear interpolation'
+	
+	x1 = locate(x,xiyi(1))
+	if(x1 .ge. size(x)) then
+		x2 = x1
+		x1 = x1 - 1 
+	else 
+		x2 = x1+1
+	endif
+	y1 = locate(y,xiyi(2))
+	if(y1 .ge. size(y)) then
+		y2 = y1
+		y1 = y1-1
+	else
+		y2 = y1+1
+	endif
+	
+	dx = x(x2) - x(x1)
+	dy = y(y2) - y(y1)
+
+	fq11 = f(x1,y1)
+	fq21 = f(x2,y1)
+	fq12 = f(x1,y2)
+	fq22 = f(x2,y2)
+	
+	dxdy(1) = ( -fq11*(y(y2)-xiyi(2)) &
+		&+ fq21*(y(y2)-xiyi(2))  &
+		&- fq12*(xiyi(2)-y(y1))  &
+		&+ fq22*(xiyi(2)-y(y1)))/(dx*dy)
+		
+	dxdy(2) = (-fq11*(x(x2)-xiyi(1)) &
+		&+ fq21*(xiyi(1)-x(x1))  &
+		&- fq12*(x(x2)-xiyi(1))  &
+		&+ fq22*(xiyi(1)-x(x1)))/(dx*dy)		
+	
+end subroutine
+
+function bilinint_v(x,y,f,xiyi)
+	implicit none
+	real(8), dimension(:), intent(in) :: x,y
+	real(8), dimension(:), intent(in) :: f
+	real(8), dimension(:), intent(in) :: xiyi
+	real(8) :: fq11,fq21,fq12,fq22, dx,dy
+	
+	real(8) :: bilinint_v
+	integer  :: x1,x2,y1,y2,Nx,Ny
+
+	Nx = size(x)
+	Ny = size(y)
+	if(Nx*Ny/=size(f,1)) stop 'x,f grids not the same length in bilinear interpolation'
+	
+		
+	
+	x1 = locate(x,xiyi(1))
+	if(x1 .ge. size(x)) then
+		x2 = x1
+		x1 = x1 - 1 
+	else 
+		x2 = x1+1
+	endif
+	y1 = locate(y,xiyi(2))
+	if(y1 .ge. size(y)) then
+		y2 = y1
+		y1 = y1-1
+	else
+		y2 = y1+1
+	endif
+	
+	dx = x(x2) - x(x1)
+	dy = y(y2) - y(y1)
+
+	fq11 = f((x1-1)*Ny+y1)
+	fq21 = f((x2-1)*Ny+y1)
+	fq12 = f((x1-1)*Ny+y2)
+	fq22 = f((x2-1)*Ny+y2)
+	
+	bilinint_v = (fq11*(x(x2)-xiyi(1))*(y(y2)-xiyi(2)) &
+		&+ fq21*(xiyi(1)-x(x1))*(y(y2)-xiyi(2))  &
+		&+ fq12*(x(x2)-xiyi(1))*(xiyi(2)-y(y1))  &
+		&+ fq22*(xiyi(1)-x(x1))*(xiyi(2)-y(y1)))/(dx*dy)
+end function
+
+
+function bisplint(x,y,f,coefs,xiyi)
+!This is just a place holder, just calls bilinear interpolation right now
+	implicit none
+	real(8), dimension(:), intent(in) :: x,y
+	real(8), dimension(:,:), intent(in) :: f,coefs
+	real(8), dimension(:), intent(in) :: xiyi
+
+	real(8) :: bisplint
+	
+	bisplint = bilinint(x,y,f,xiyi)
+
+end function bisplint
+
+PURE FUNCTION locate(xx,x)
+	IMPLICIT NONE
+	REAL(8), DIMENSION(:), INTENT(IN) :: xx
+	REAL(8), INTENT(IN) :: x
+	INTEGER :: locate
+	INTEGER :: n,il,im,iu
+	n=size(xx)
+	il=0
+	iu=n+1
+	do
+		if (iu-il <= 1) exit
+			im=(iu+il)/2
+		if (x >= xx(im)) then
+			il=im
+		else
+			iu=im
+		end if
+	end do
+	if (x <= xx(1)+epsilon(xx(1))) then
+		locate=1
+	else if (x >= xx(n)-epsilon(xx(n))) then
+		locate=n-1
+	else
+		locate=il
+	end if
+END FUNCTION locate
 
 end module V0para
 

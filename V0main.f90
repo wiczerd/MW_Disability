@@ -7,7 +7,7 @@
 !************************************************************************************************!
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -lnlopt -o V0main.out  
 !       	     ifort -mkl -openmp -parallel -O3 -xhost V0para.f90 V0main.f90 -lnlopt -o V0main.out
-!       	     ifort -mkl -init=snan -init=array -g V0para.f90 V0main.f90 -lnlopt -o V0main.out
+!       	     ifort -mkl -init=snan -init=array -g V0para.f90 V0main.f90 -lnlopt -o V0main_dbg.out
 ! val grind line: valgrind --leak-check=yes --error-limit=no --track-origins=yes --log-file=V0valgrind.log ./V0main_dbg.out &
 module helper_funs
 	
@@ -2907,12 +2907,11 @@ module sim_hists
 		!set up cumulative probabilities for t0 and conditional draws
 		!not begining with anyone from TT
 		if(demog_dat .eqv. .true.) then
-			forall(it=1:TT-1) prob_age_nTT(it) = prob_age(it)/(1-prob_age(TT))
+			prob_age_nTT = prob_age(:,1)
 			!also include TT
 			!prob_age_nTT = prob_age
-			hazborn_hr_t = hazborn_t
 			prborn_hr_t  = prborn_t
-		else
+		else !solve for a flat age profile
 			prob_age_nTT(1) = youngD/(youngD+oldD*dble(oldN)) 
 			forall(it=2:TT-1) prob_age_nTT(it) = oldD/(youngD+oldD*dble(oldN))
 			prborn_hr_t(2:Tsim) = 1.-ptau(1)
@@ -2941,7 +2940,7 @@ module sim_hists
 				m1 = mod(m+Nm/4,Nm)+1
 				m2 = mod(m+Nm/2,Nm)+1
 				m3 = mod(m+(3*Nm)/4,Nm)+1
-				if(rand_born < hazborn_hr_t(1)) then 
+				if(rand_born < prborn_hr_t(1)) then 
 					born_it(i,it) = 0 ! no one is "born" in the first period
 					bn_i = 1
 					!draw an age
@@ -2954,7 +2953,7 @@ module sim_hists
 				do it=2,Tsim
 					if(age_it(i,it-1)<TT) then
 						rand_born = age_draw(i,m2 )
-						if((rand_born < hazborn_hr_t(it)) .and.( bn_i == 0) ) then
+						if((rand_born < prborn_hr_t(it)) .and.( bn_i == 0) ) then
 							age_it(i,it) =1
 							born_it(i,it) = 1
 							bn_i = 1
@@ -5445,7 +5444,7 @@ program V0main
 		
 		call vec2csv(occsz0, "occsz0.csv")
 		call vec2csv(occdel, "occdel.csv")
-		call vec2csv(prob_age, "prob_age.csv")
+		call mat2csv(prob_age, "prob_age.csv")
 		call mat2csv(occpr_trend,"occpr_trend.csv")
 		call mat2csv(wage_trend,"occwg_trend.csv")
 
