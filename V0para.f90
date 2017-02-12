@@ -49,7 +49,7 @@ integer, parameter ::	nal = 4,  &!5		!Number of individual alpha types
 			nl	= 2,  &				!Number of finding/separation rates
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 30, &!50	        !Points on assets grid
+			na  = 50, &!50	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			nj  = 16, &!16			!Number of occupations
 			maxiter = 2000, &		!Tolerance parameter	

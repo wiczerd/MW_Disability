@@ -6,7 +6,7 @@
 !-----------------------------------------------------
 !************************************************************************************************!
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -lnlopt -o V0main.out  
-!       	     ifort -mkl -openmp -parallel -O3 -xhost V0para.f90 V0main.f90 -lnlopt -o V0main.out
+!       	     ifort -mkl -qopenmp -parallel -O3 -xhost V0para.f90 V0main.f90 -lnlopt -o V0main.out
 !       	     ifort -mkl -init=snan -init=array -g V0para.f90 V0main.f90 -lnlopt -o V0main_dbg.out
 ! val grind line: valgrind --leak-check=yes --error-limit=no --track-origins=yes --log-file=V0valgrind.log ./V0main_dbg.out &
 module helper_funs
@@ -83,6 +83,7 @@ module helper_funs
 
 	type hist_struct
 		real(dp), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
+		real(dp), allocatable :: di_prob_hist(:,:) !choose apply or not * prob of getting it-- latent value
 		integer, allocatable :: hlth_voc_hist(:,:)
 		real(dp), allocatable :: wage_hist(:,:) !realized wages
 		integer, allocatable :: z_jt_macroint(:) !endogenous realization of shocks given a sequence
@@ -535,6 +536,7 @@ module helper_funs
 		allocate(hst%wage_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%work_dif_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%app_dif_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%di_prob_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%hlth_voc_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%status_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%d_hist(Nsim,Tsim), stat=hst%alloced)
@@ -594,11 +596,11 @@ module helper_funs
 		allocate(shk%born_hist(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%del_i_int(Nsim), stat=shk%alloced)
 		allocate(shk%del_i_draw(Nsim), stat=shk%alloced)
-		allocate(shk%fndsep_i_draw(Nsim,2))
-		allocate(shk%fndsep_i_int(Nsim,2,nz))
+		allocate(shk%fndsep_i_draw(Nsim,2), stat=shk%alloced)
+		allocate(shk%fndsep_i_int(Nsim,2,nz), stat=shk%alloced)
 		!this must be big enough that we are sure it's big enough that can always find a worker
-		allocate(shk%drawi_ititer(Nsim,1000)) 
-		allocate(shk%drawt_ititer(Nsim,1000))
+		allocate(shk%drawi_ititer(Nsim,1000), stat=shk%alloced) 
+		allocate(shk%drawt_ititer(Nsim,1000), stat=shk%alloced)
 		allocate(shk%j_i(Nsim), stat=shk%alloced)
 		allocate(shk%jshock_ij(Nsim,nj), stat=shk%alloced)
 		allocate(shk%status_it_innov(Nsim,Tsim), stat=shk%alloced)
@@ -617,6 +619,7 @@ module helper_funs
 		deallocate(hst%wage_hist , stat=hst%alloced)
 		deallocate(hst%work_dif_hist , stat=hst%alloced)
 		deallocate(hst%app_dif_hist , stat=hst%alloced)
+		deallocate(hst%di_prob_hist , stat=hst%alloced)
 		deallocate(hst%hlth_voc_hist, stat=hst%alloced)
 		deallocate(hst%status_hist , stat=hst%alloced)
 		deallocate(hst%d_hist , stat=hst%alloced)
@@ -626,7 +629,6 @@ module helper_funs
 		deallocate(hst%occgrow_jt, stat=hst%alloced)
 		deallocate(hst%occshrink_jt, stat=hst%alloced)
 		deallocate(hst%occsize_jt, stat=hst%alloced)
-
 		hst%alloced = 0
 		
 	end subroutine dealloc_hist
@@ -1029,6 +1031,10 @@ module model_data
 			do i=1,Nsim
 				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
 					if(hst%status_hist(i,it) == 4) moments_sim%init_di= moments_sim%init_di+1.
+					if(hst%status_hist(i,it) == 3) then
+						if(hst%app_dif_hist(i,it)>(-100.) .and. hst%app_dif_hist(i,it)<100.) &
+							moments_sim%init_di= moments_sim%init_di+ hst%di_prob_hist(i,it)*dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
+					endif
 					ninsur_app = 1. + ninsur_app
 					if( hst%hlth_voc_hist(i,it) >0) then
 						napp_t = napp_t+1.
@@ -2422,7 +2428,6 @@ module sim_hists
 		enddo
 
 		call set_fndsepi(fndsep_i_int,fndsep_i_draw,j_i)
-		
 		success = 0
 		deallocate(bdayseed)
 	end subroutine draw_fndsepi
@@ -2432,12 +2437,11 @@ module sim_hists
 		real(dp), dimension(:,:), intent(in) :: fndsep_i_draw
 		integer , dimension(:,:,:), intent(out) :: fndsep_i_int
 		integer, intent(in), dimension(:) :: j_i
-		integer :: ss=1, Nsim, si_int,fi_int,m,i,ij,iz
+		integer :: ss=1, si_int,fi_int,m,i,ij,iz
 		real(dp) :: fndgridL, fndgridH,fndwtH,fndwtL,fndgrid_i
 		real(dp) :: sepgridL, sepgridH,sepwtH,sepwtL,sepgrid_i
 		real(dp), dimension(nl,nj,nz) :: fndcumwt,sepcumwt
 
-		Nsim = size(fndsep_i_draw,1)
 		fndwt	 = 1._dp/dble(nl) ! initialize with equal weight
 		sepwt	 = 1._dp/dble(nl) ! initialize with equal weight
 		fndcumwt = 0.
@@ -2509,7 +2513,7 @@ module sim_hists
 		integer, intent(out) :: success
 		real(dp), dimension(:) :: del_i_draw
 		integer, dimension(:) :: del_i_int
-		integer :: ss=1, Nsim, m,i
+		integer :: ss=1, Ndraw, m,i
 		real(dp) :: delgrid_i
 		integer, allocatable :: bdayseed(:)
 
@@ -2518,9 +2522,9 @@ module sim_hists
 		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
 		call random_seed(put = bdayseed(1:ss) )
 		
-		Nsim = size(del_i_draw)
+		Ndraw = size(del_i_draw)
 
-		do i=1,Nsim
+		do i=1,Ndraw
 			call random_number(delgrid_i) ! draw uniform on 0,1
 			del_i_draw(i) = delgrid_i
 		enddo
@@ -2536,11 +2540,10 @@ module sim_hists
 		real(dp), dimension(:), intent(in) :: del_i_draw
 		integer , dimension(:), intent(out) :: del_i_int
 		integer, intent(in), dimension(:) :: j_i
-		integer :: ss=1, Nsim, di_int,m,i,ij,idi
+		integer :: ss=1, di_int,m,i,ij,idi
 		real(dp) :: delgridL, delgridH,delwtH,delwtL,delgrid_i
 
 
-		Nsim = size(del_i_draw)
 		delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
 		if(del_by_occ .eqv. .true.) then ! give weight according to mean delta by occ
 			delgridL = 0. !average of high cells
@@ -2564,7 +2567,7 @@ module sim_hists
 			enddo
 		else
 			delgridL = delgrid(1)
-			delgridH = delgrid(nd)
+			delgridH = delgrid(ndi)
 			do ij=1,nj
 				delwt(:,ij) = 0.
 				if(delgridH - delgridL > 1e-4) then
@@ -2636,7 +2639,7 @@ module sim_hists
 		integer, intent(out),optional :: success
 		real(dp), dimension(:,:) :: al_it
 		integer, dimension(:,:) :: al_it_int
-		integer :: ss=1, Nsim, alfgrid_int, t,m,i,k
+		integer :: ss=1, Ndraw, alfgrid_int, t,m,i,k
 		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i,alf_i
 		real(dp) :: alfgrid_minE,alfgrid_maxE,alfgrid_Uval !min max value while employed and val of unemp
 		integer, allocatable :: bdayseed(:)
@@ -2654,7 +2657,7 @@ module sim_hists
 		call random_seed(put = bdayseed(1:ss) )
 
 		cumpi_al =0.
-		Nsim = size(al_it,1)
+		Ndraw = size(al_it,1)
 
 		do i=1,nal
 			do k=2,nal+1
@@ -2664,7 +2667,7 @@ module sim_hists
 
 		success =0
 		!
-		do i=1,Nsim
+		do i=1,Ndraw
 
 			! draw starting values
 			t =1
@@ -2715,8 +2718,8 @@ module sim_hists
 				al_it_int(i,t) = alfgrid_int					
 			enddo
 		enddo
-		if(success > 0.2*Nsim*Tsim)  success = success
-		if(success <= 0.2*Nsim*Tsim) success = 0
+		if(success > 0.2*Ndraw*Tsim)  success = success
+		if(success <= 0.2*Ndraw*Tsim) success = 0
 		!call mat2csv(cumpi_al,"cumpi_al.csv")
 		deallocate(cumpi_al)
 		deallocate(bdayseed)
@@ -3203,6 +3206,7 @@ module sim_hists
 		
 		! write to hst, get from shk
 		real(dp), pointer    :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
+		real(dp), pointer	 :: di_prob_it(:,:)
 		integer, pointer     :: born_it(:,:) ! born status, drawn randomly		
 		real(dp), pointer	 ::	del_i_draw(:)
 		integer, pointer     :: del_i_int(:)  ! integer valued shocks
@@ -3314,6 +3318,7 @@ module sim_hists
 		status_it   => hst%status_hist
 		work_dif_it => hst%work_dif_hist
 		app_dif_it  => hst%app_dif_hist
+		di_prob_it 	=> hst%di_prob_hist
 		d_it        => hst%d_hist
 		z_jt_macroint  => hst%z_jt_macroint
 		z_jt_panel  => hst%z_jt_panel
@@ -3397,6 +3402,10 @@ module sim_hists
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,iter_draws
 			if(verbose >3) print *, "iter: ", iter
+			di_prob_it = 0.
+			app_dif_it = 0.
+			work_dif_it = 0.
+			
 			!set prob alpha=1 for each z state.  Only works now for z_contin == .false.
 			if(iter>1)then 
 				PrAl1= 0._dp
@@ -3810,6 +3819,11 @@ module sim_hists
 								endif
 								
 								app_dif_it(i,it) = app_dif_hr
+								if( (age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))) then
+									di_prob_it(i,it) = xifun(d_hr,wage_hr,age_hr,hlthprob)
+								elseif( age_hr ==1)  then
+									di_prob_it(i,it) = xifun(d_hr,wage_hr,age_hr,hlthprob)*eligY
+								endif
 								if( app_dif_hr < 0 ) app_it(i,it) = 0
 								if(app_dif_hr >= 0) then
 									! choose to apply
@@ -3872,6 +3886,7 @@ module sim_hists
 							! just to fill in values
 							app_dif_it(i,it) = 0.
 							work_dif_it(i,it) = 0.
+							if(status_hr==4) di_prob_it(i,it) = 1.
 							if( invol_un == 1) then
 								ali_hr = 1
 								al_hr = alfgrid(ali_hr)
@@ -4167,6 +4182,7 @@ module sim_hists
 					call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%wage_hist,"wage_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%app_dif_hist,"app_dif_it_hist"//trim(caselabel)//".csv")
+					call mat2csv (hst%di_prob_hist,"di_prob_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
 					call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
@@ -5158,10 +5174,15 @@ module find_params
 		napp_t = 0.
 		moments_sim%init_di = 0._dp
 		moments_sim%init_hlth_acc = 0._dp
-		do it=1,(5*itlen)
+		do it=itlen,(5*itlen)
 			do i=1,Nsim
 				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
 					if(hst%status_hist(i,it) == 4) moments_sim%init_di= moments_sim%init_di+1.
+				!	smoothing number of DI applications:
+					if(hst%status_hist(i,it) == 3) then
+						if(hst%app_dif_hist(i,it)>(-100.) .and. hst%app_dif_hist(i,it)<100.) &
+							moments_sim%init_di= moments_sim%init_di+dexp(smthELPM*hst%app_dif_hist(i,it))/(1.+dexp(smthELPM*hst%app_dif_hist(i,it)))*hst%di_prob_hist(i,it)
+					endif
 					ninsur_app = 1. + ninsur_app
 					if( hst%hlth_voc_hist(i,it) >0) then
 						napp_t = napp_t+1.
