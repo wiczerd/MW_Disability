@@ -2886,7 +2886,7 @@ module sim_hists
 		
 		do i =1,Nsim
 			do m = 1,Nm
-				call rand_num_closed(rand_born)
+				call random_number(rand_born)
 				age_draw(i,m) = rand_born
 			enddo! m=1,50.... if never gets born
 		enddo! i=1,Nsim
@@ -2901,11 +2901,13 @@ module sim_hists
 		
 		integer,intent(out) :: age_it(:,:),born_it(:,:)
 		real(dp), intent(in) :: age_draw(:,:)
-		integer	:: it,itp,i,m,m1,m2,m3,Nm,bn_i
+		integer	:: it,itp,i,m,m1,m2,m3,Nm,bn_i, age_ct, notdrawn
 		real(dp), dimension(TT) :: cumpi_t0
 		real(dp), dimension(TT-1) :: prob_age_nTT
 		real(dp) :: rand_age,rand_born
 		real(dp), dimension(Tsim) :: hazborn_hr_t,prborn_hr_t,cumprnborn_t
+		
+		notdrawn=0
 		
 		!set up cumulative probabilities for t0 and conditional draws
 		!not begining with anyone from TT
@@ -2914,6 +2916,12 @@ module sim_hists
 			!also include TT
 			!prob_age_nTT = prob_age
 			prborn_hr_t  = prborn_t
+			hazborn_hr_t = hazborn_t
+			cumprnborn_t(1) = prborn_t(1)
+			do it=2,Tsim
+				cumprnborn_t(it) = prborn_hr_t(it) + cumprnborn_t(it-1)
+			enddo
+			cumprnborn_t = cumprnborn_t/cumprnborn_t(Tsim)
 		else !solve for a flat age profile
 			prob_age_nTT(1) = youngD/(youngD+oldD*dble(oldN)) 
 			forall(it=2:TT-1) prob_age_nTT(it) = oldD/(youngD+oldD*dble(oldN))
@@ -2943,12 +2951,17 @@ module sim_hists
 				m1 = mod(m+Nm/4,Nm)+1
 				m2 = mod(m+Nm/2,Nm)+1
 				m3 = mod(m+(3*Nm)/4,Nm)+1
-				if(rand_born < prborn_hr_t(1)) then 
+				if(rand_born < hazborn_hr_t(1)) then 
 					born_it(i,it) = 0 ! no one is "born" in the first period
 					bn_i = 1
 					!draw an age
 					rand_age = age_draw(i,m1 )
 					age_it(i,it) = finder(cumpi_t0,rand_age)
+					if(age_it(i,it)==1) then
+						age_ct = age_draw(m2,1)*youngD*tlen
+					else
+						age_ct = age_draw(m2,1)*oldD*tlen
+					endif
 				else 
 					age_it(i,it) = 0
 					born_it(i,it) = 0
@@ -2956,7 +2969,7 @@ module sim_hists
 				do it=2,Tsim
 					if(age_it(i,it-1)<TT) then
 						rand_born = age_draw(i,m2 )
-						if((rand_born < prborn_hr_t(it)) .and.( bn_i == 0) ) then
+						if((rand_born < hazborn_hr_t(it)) .and.( bn_i == 0) ) then
 							age_it(i,it) =1
 							born_it(i,it) = 1
 							bn_i = 1
@@ -2983,17 +2996,26 @@ module sim_hists
 				endif
 				!ensure everyone gets born sometime:
 				if(bn_i .ne. 1 .and. m==(Nm-2)) then
-					it =  max(min( nint((1.-age_draw(i,1))*Tsim),Tsim),1)
-					age_it(i,it) =1
-					born_it(i,it) = 1
-					bn_i = 1	
+					do it=1,Tsim
+						if( age_draw(m1,1)*4*(1.d0-age_draw(m2,1)) < cumprnborn_t(it)) exit !creating a new random number (via chaotic cycle), drawing born date
+					enddo
+					if(it>1) then
+						age_it(i,it) =1
+						born_it(i,it) = 1
+					else
+						rand_age = age_draw(i,m1 )
+						age_it(i,it) = finder(cumpi_t0,rand_age)
+						born_it(i,it) = 0
+					endif
+					bn_i = 1
+					notdrawn=notdrawn+1	
 				endif
 				
 			enddo! m=1,50.... if never gets born
 
 		enddo! i=1,Nsim
-
-		
+	
+		print *, 'not drawn :', notdrawn
 	
 	end subroutine set_age
 
@@ -3604,7 +3626,7 @@ module sim_hists
 					endif 
 					
 					if(dieyoung .eqv. .true.)then
-						if(status_it_innov(i,it)>(1.-PrDeath(d_hr,age_hr))) &
+						if(status_it_innov(i,it)>(1.-PrDeath(d_hr,age_hr))) & !this is using the top of status: if it's very high, then dead
 							dead = .true.
 					endif
 					
@@ -3619,7 +3641,7 @@ module sim_hists
 							status_it(i,it) = -1
 							dead = .true.
 							cycle
-!~ 							exit
+						!	exit
 					endif
 
 					!figure out where to evaluate z
@@ -5684,31 +5706,31 @@ program V0main
 	
 	
 !	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
-	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
-	lb = (/0.01_dp, 0.0_dp/)
-	lb_1 = (/.01/)
-	call nlo_set_lower_bounds(ires,calopt,lb_1)
-	ub = (/ 7._dp, 0.5_dp /)
-	ub_1 = (/5./)
-	call nlo_set_upper_bounds(ires,calopt,ub_1)
-	call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
-	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
-	call nlo_set_maxeval(ires,calopt,500_dp)
+!~ 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
+!~ 	lb = (/0.01_dp, 0.0_dp/)
+!~ 	lb_1 = (/.01/)
+!~ 	call nlo_set_lower_bounds(ires,calopt,lb_1)
+!~ 	ub = (/ 7._dp, 0.5_dp /)
+!~ 	ub_1 = (/5./)
+!~ 	call nlo_set_upper_bounds(ires,calopt,ub_1)
+!~ 	call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
+!~ 	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
+!~ 	call nlo_set_maxeval(ires,calopt,500_dp)
 	
-	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+!~ 	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 	
-	parvec(1) = nu
-	parvec(2) = xizcoef
-	parvec_1(1) = nu
+!~ 	parvec(1) = nu
+!~ 	parvec(2) = xizcoef
+!~ 	parvec_1(1) = nu
 
-	open(unit=fcallog, file=callog)
-	write(fcallog,*) " "
-	close(unit=fcallog)
-  	call nlo_optimize(ires, calopt, parvec_1, erval)
-	nu = parvec_1(1) ! new optimum
-	xizcoef = parvec(2)
+!~ 	open(unit=fcallog, file=callog)
+!~ 	write(fcallog,*) " "
+!~ 	close(unit=fcallog)
+!~   	call nlo_optimize(ires, calopt, parvec_1, erval)
+!~ 	nu = parvec_1(1) ! new optimum
+!~ 	xizcoef = parvec(2)
 
-  	call cal_dist(parvec_1,ervec_1,shk)
+!~   	call cal_dist(parvec_1,ervec_1,shk)
 
 
 !~ !****************************************************************************

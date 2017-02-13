@@ -53,7 +53,7 @@ integer, parameter ::	nal = 4,  &!5		!Number of individual alpha types
 			nz  = 2,  &		        !Number of aggregate shock states
 			nj  = 16, &!16			!Number of occupations
 			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 160000, &!10000*nj !how many agents to draw
+			Nsim = 16000, &!10000*nj !how many agents to draw
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
@@ -220,7 +220,7 @@ subroutine setparams()
 		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: pop_size(Tsim),cumprnborn_t(Tsim), age_occ_read(6,18), age_read(35,TT), maxADL_read(16),avgADL, &
+	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(35,TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(16), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2),&
 		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(35)
 		
@@ -495,42 +495,36 @@ subroutine setparams()
 	prL = 0.d+0
 	do i =1,maxiter	
 		!prob of getting born
-		prborn_t(1) = 0.5d+0*(prH + prL)
-		bN(1) = prborn_t(1)*dble(Nsim)
+		hazborn_t(1) = 0.5d+0*(prH + prL)
+		bN(1) = hazborn_t(1)*dble(Nsim)
 		Ny = bN(1)*prob_age(1,1)
 		Nm = bN(1)*(1.-prob_age(1,1))
-		totborn = prborn_t(1)*dble(Nsim)
+		totborn = hazborn_t(1)*dble(Nsim)
 		do t=2,Tsim
 			pNy = Ny*ptau(1)*(1.d+0-dy)
 			pNm	= Nm*(1.d+0-dm) + Ny*(1.d+0-ptau(1))*(1.d+0-dy)
 		
 			bN(t) = (prob_age(1,t)*(pNy+pNm)-pNy)/(1.-prob_age(1,t))
-			prborn_t(t) = bN(t)/(Nsim - totborn) !prborn*(remaining unborn) = bN
+			hazborn_t(t) = bN(t)/(Nsim - totborn) !hazborn*(remaining unborn) = bN
 			Nm = pNm
 			Ny = pNm + bN(t)
 
 			totborn = bN(t) + totborn
 		enddo
-		junk = prborn_t(1)
-		prborn_t(1) =  (dble(Nsim) - (totborn - prborn_t(1)*Nsim ))/dble(Nsim) ! need to have some positive mass alive when the survey starts
+		junk = hazborn_t(1)
+		hazborn_t(1) =  (dble(Nsim) - (totborn - hazborn_t(1)*Nsim ))/dble(Nsim) ! need to have some positive mass alive when the survey starts
 		
-		if(prborn_t(1)<0) prborn_t(1) = 0.d+0
-		if(dabs(junk - prborn_t(1))<1e-4) then 
+		if(hazborn_t(1)<0) hazborn_t(1) = 0.d+0
+		if(dabs(junk - hazborn_t(1))<1e-4) then 
 			exit !iterate on the numberr alive in period 1
 		elseif( totborn > dble(Nsim) ) then
 			prH = junk
 		else! totborn<Nsim 
 			prL = junk
 		endif
-		
+		prborn_t = bN/sum(bN)
+			
 	enddo
-	cumprnborn_t(1) = 1. - prborn_t(1)
-	hazborn_t(1) = prborn_t(1)
-	do t=2,Tsim
-		hazborn_t(t) = prborn_t(t)/cumprnborn_t(t-1)
-		cumprnborn_t(t) = (1.-prborn_t(t))*cumprnborn_t(t-1)
-	enddo
-!~  	hazborn_t = prborn_t
 
 
 
