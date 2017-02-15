@@ -590,7 +590,7 @@ module helper_funs
 		type(shocks_struct) :: shk
 
 		allocate(shk%age_hist(Nsim,Tsim), stat=shk%alloced)
-		allocate(shk%age_draw(Nsim,100), stat=shk%alloced)
+		allocate(shk%age_draw(Nsim,Tsim+3), stat=shk%alloced)
 		allocate(shk%al_hist(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%al_int_hist(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%born_hist(Nsim,Tsim), stat=shk%alloced)
@@ -2901,13 +2901,12 @@ module sim_hists
 		
 		integer,intent(out) :: age_it(:,:),born_it(:,:)
 		real(dp), intent(in) :: age_draw(:,:)
-		integer	:: it,itp,i,m,m1,m2,m3,Nm,bn_i, age_ct, notdrawn
+		integer	:: it,itp,i,m,m1,m2,m3,Nm,bn_i, age_ct, age_jump
 		real(dp), dimension(TT) :: cumpi_t0
 		real(dp), dimension(TT-1) :: prob_age_nTT
 		real(dp) :: rand_age,rand_born
 		real(dp), dimension(Tsim) :: hazborn_hr_t,prborn_hr_t,cumprnborn_t
 		
-		notdrawn=0
 		
 		!set up cumulative probabilities for t0 and conditional draws
 		!not begining with anyone from TT
@@ -2936,86 +2935,71 @@ module sim_hists
 		endif
 		
 		cumpi_t0 = 0.
-
+		age_it = 0.
 		do it=1,TT-1
 			cumpi_t0(it+1) = prob_age_nTT(it) + cumpi_t0(it)
 		enddo
-		
+		call vec2csv(cumprnborn_t,"cumprnborn_t.csv")
 		Nm = size(age_draw,2)
 		born_it = 0
 		do i =1,Nsim
-			bn_i = 0 ! initialize, not yet born
-			do m = 1,Nm
-				it = 1
-				rand_born = age_draw(i,m)
-				m1 = mod(m+Nm/4,Nm)+1
-				m2 = mod(m+Nm/2,Nm)+1
-				m3 = mod(m+(3*Nm)/4,Nm)+1
-				if(rand_born < hazborn_hr_t(1)) then 
-					born_it(i,it) = 0 ! no one is "born" in the first period
-					bn_i = 1
-					!draw an age
-					rand_age = age_draw(i,m1 )
-					age_it(i,it) = finder(cumpi_t0,rand_age)
-					if(age_it(i,it)==1) then
-						age_ct = age_draw(m2,1)*youngD*tlen
-					else
-						age_ct = age_draw(m2,1)*oldD*tlen
-					endif
-				else 
-					age_it(i,it) = 0
-					born_it(i,it) = 0
+!~ 		do m =1,maxiter
+			!pick the birthdate
+			!it = finder(cumprnborn_t, dble(i-1)/dble(Nsim-1))
+			it = finder(cumprnborn_t, age_draw(i,1))
+			if(it>1) then
+				age_it(i,it) =1
+				born_it(i,it) = 1
+				age_ct = 0
+				bn_i = 0 ! initialize, not yet born
+			else
+				rand_age = age_draw(i,2 )
+				age_it(i,it) = finder(cumpi_t0,rand_age)
+				born_it(i,it) = 0
+				if(age_it(i,it)==1) then
+					age_ct = nint(age_draw(i,3)*youngD*tlen)
+				else
+					age_ct = nint(age_draw(i,3)*oldD*tlen)
 				endif
-				do it=2,Tsim
-					if(age_it(i,it-1)<TT) then
-						rand_born = age_draw(i,m2 )
-						if((rand_born < hazborn_hr_t(it)) .and.( bn_i == 0) ) then
-							age_it(i,it) =1
-							born_it(i,it) = 1
-							bn_i = 1
-						elseif(bn_i == 1) then
-							born_it(i,it) = 0
-							rand_age = age_draw(i,m3 )
-							if((rand_age < 1- ptau(age_it(i,it-1))) .and. (age_it(i,it-1) < TT) ) then
-								age_it(i,it) = age_it(i,it-1)+1
-							else 
-								age_it(i,it) = age_it(i,it-1)
-							endif
-						else 
-							bn_i = 0
-							born_it(i,it) = 0
-							age_it(i,it) = 0
-						endif
-					else
-						age_it(i,it) = TT
-						born_it(i,it) = 0
-					endif
-				enddo
-				if(bn_i == 1) then !if the born draw never comes, do the whole thing again.
-					exit
-				endif
-				!ensure everyone gets born sometime:
-				if(bn_i .ne. 1 .and. m==(Nm-2)) then
-					do it=1,Tsim
-						if( age_draw(m1,1)*4*(1.d0-age_draw(m2,1)) < cumprnborn_t(it)) exit !creating a new random number (via chaotic cycle), drawing born date
-					enddo
-					if(it>1) then
+				bn_i = 1 ! initialize, born
+			endif
+			!count up periods:
+			do it=2,Tsim
+				if(age_it(i,it-1)<TT) then
+					if(born_it(i,it)== 1 .and. ( bn_i == 0) ) then
 						age_it(i,it) =1
 						born_it(i,it) = 1
-					else
-						rand_age = age_draw(i,m1 )
-						age_it(i,it) = finder(cumpi_t0,rand_age)
+						bn_i = 1
+						age_ct = 0
+					elseif(bn_i == 1) then
 						born_it(i,it) = 0
+						age_ct = age_ct+1
+						!if(age_it(i,it-1)==1) age_jump = nint(youngD)*itlen - 1
+						!if(age_it(i,it-1) >1) age_jump = nint(oldD)*itlen - 1 
+						!if((age_ct >= age_jump ) .and. (age_it(i,it-1) < TT) ) then
+						if((age_draw(i,it+3) <1.- ptau( age_it(i,it-1) ) ) .and. (age_it(i,it-1) < TT) ) then
+							age_it(i,it) = age_it(i,it-1)+1
+							age_ct = 0
+						else 
+							age_it(i,it) = age_it(i,it-1)
+						endif
+					else 
+						bn_i = 0
+						born_it(i,it) = 0
+						age_it(i,it) = 0
 					endif
-					bn_i = 1
-					notdrawn=notdrawn+1	
+				else
+					age_it(i,it) = TT
+					born_it(i,it) = 0
 				endif
-				
-			enddo! m=1,50.... if never gets born
-
+			enddo		
+!~ 		if(sum(age_it(i,:))>0) then
+!~ 			exit
+!~ 		else !re-shuffle birthdates
+		
+!~ 		endif
+		
 		enddo! i=1,Nsim
-	
-		print *, 'not drawn :', notdrawn
 	
 	end subroutine set_age
 

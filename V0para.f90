@@ -515,17 +515,17 @@ subroutine setparams()
 		hazborn_t(1) =  (dble(Nsim) - (totborn - hazborn_t(1)*Nsim ))/dble(Nsim) ! need to have some positive mass alive when the survey starts
 		
 		if(hazborn_t(1)<0) hazborn_t(1) = 0.d+0
-		if(dabs(junk - hazborn_t(1))<1e-4) then 
+		if(dabs(junk - hazborn_t(1))<1e-8) then 
 			exit !iterate on the numberr alive in period 1
 		elseif( totborn > dble(Nsim) ) then
 			prH = junk
 		else! totborn<Nsim 
 			prL = junk
 		endif
-		prborn_t = bN/sum(bN)
-			
-	enddo
 
+		prborn_t(2:Tsim) = bN(2:Tsim)/sum(bN(2:Tsim))
+		prborn_t(1) = hazborn_t(1) 
+	enddo
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
