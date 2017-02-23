@@ -2922,12 +2922,8 @@ module sim_hists
 			enddo
 			cumprnborn_t = cumprnborn_t/cumprnborn_t(Tsim)
 		else !solve for a flat age profile
-			prob_age_nTT(1) = youngD/(youngD+oldD*dble(oldN)) 
-			forall(it=2:TT-1) prob_age_nTT(it) = oldD/(youngD+oldD*dble(oldN))
-			prborn_hr_t(2:Tsim) = 1.-ptau(1)
-			prborn_hr_t(1) = (ptau(1))**(Tsim-1)
-			cumprnborn_t(1) = 1. - prborn_hr_t(1)
-			hazborn_hr_t(1) = prborn_hr_t(1)
+			prborn_hr_t = prborn_constpop
+			hazborn_hr_t = hazborn_constpop
 			do it=2,Tsim
 				hazborn_hr_t(it) = prborn_hr_t(it)/cumprnborn_t(it-1)
 				cumprnborn_t(it) = (1.-prborn_hr_t(it))*cumprnborn_t(it-1)
@@ -2939,7 +2935,7 @@ module sim_hists
 		do it=1,TT-1
 			cumpi_t0(it+1) = prob_age_nTT(it) + cumpi_t0(it)
 		enddo
-		call vec2csv(cumprnborn_t,"cumprnborn_t.csv")
+
 		Nm = size(age_draw,2)
 		born_it = 0
 		do i =1,Nsim
@@ -3488,14 +3484,37 @@ module sim_hists
 				if(age_it(i,it) > 0 ) then !they've been born 
 					
 					if((born_it(i,it) .eq. 1 .and. it> 1) .or. (age_it(i,it)>0 .and. it==1)) then
-					! no one is ``born'' in the first period, but they make a decision as if just born
-						age_hr	= 1
+					! no one is ``born'' in the first period, but look the same
+					! draw state from distribution of age 1 
+					age_hr	= 1
+					if(iter ==1) then
 						d_hr	= 1
 						a_hr 	= minval(agrid)
 						ei_hr	= 1
 						e_hr 	= 0.
 						ai_hr 	= 1
-						if( it>1 .or. iter==1) status_it(i,it) = 1 !start out working
+						
+					else
+						do d_hr=1,nd
+							if(status_it_innov(i,1) < cumPrDage(d_hr+1,age_hr)) &
+								& exit
+						enddo
+						do ii=1,Ncol
+							drawi = drawi_ititer(i,ii)!iter-1
+							drawt = drawt_ititer(i,ii)!iter-1
+							if( d_it(drawi,drawt) .eq. d_hr .and. status_it(drawi,drawt)>0) then 
+								exit
+							elseif(ii==Ncol) then
+								nomatch = nomatch+1
+							endif
+						enddo
+						!d_hr already set: d_hr = d_it(drawi,drawt)
+						a_hr = a_it(drawi,drawt)
+						e_hr = e_it(drawi,drawt)
+						ei_hr = e_it_int(drawi,drawt)
+						ai_hr  = a_it_int(drawi,drawt)
+					endif
+					if( it>1 .or. iter==1) status_it(i,it) = 1 !start out working
 						
 !~						!-------------------------------------------
 !~						! This is not updated to have il index the separation rate

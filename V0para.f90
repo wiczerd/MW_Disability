@@ -72,11 +72,12 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
-logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
+logical           ::  del_by_occ = .false.,& !delta is fully determined by occupation, right now alternative is fully random
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
 					  demog_dat	 = .true.,& !do the demographics follow 
+					  health_dat = .false.,& !does health transition come direct from data or from steady state-solved
 					  NBER_tseq  = .true.	!just feed in NBER recessions?
 
 					  
@@ -113,6 +114,9 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		prob_age(TT-1,Tsim), &!Probability of being in each age group over the whole history
 		prborn_t(Tsim),&	!probability of being born at each point t
 		hazborn_t(Tsim), &	!hazard of being born at each point t
+		prborn_constpop(Tsim),&	!probability of being born at each point t if population structure stays constant
+		hazborn_constpop(Tsim), &	!hazard of being born at each point t if population structure stays constant
+		
 		PrD3age(TT), &		!Fraction of D2 at each age
 		PrDage(nd,TT), &	!Fraction of each D at each age
 		PrDeath(nd,TT),&	!Probability of death during work-life
@@ -222,7 +226,7 @@ subroutine setparams()
 
 	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(35,TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(16), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2),&
-		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(35)
+		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(35)
 		
 	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3 
 	real(8) :: pNy,pNm,Ny,Nm,dy,dm, Nbar,totborn,prH,prL, bN(Tsim)
@@ -298,6 +302,14 @@ subroutine setparams()
 	enddo
 	close(fread)
 
+	!read in health transitions estimated directly from PSID
+	open(unit=fread, file="PrDDp_Age.csv")
+	do j=1,15
+		read(fread, *,iostat=k) PrDDp_Age_read(j,:)
+	enddo	
+	close(fread)
+	
+
 	!read in the disability rates by age
 	open(unit=fread, file="PrD_Age.csv")
 	do j=1,6 
@@ -312,13 +324,13 @@ subroutine setparams()
 	enddo
 	close(fread)
 	
-	!read in the health transition rates by age
+	!read in the health transition rates by age --- computed in matlab to match ss rates
 	open(unit=fread, file="pid_in.csv")
 	do j=1,6
 		read(fread, *,iostat=k) pid_in_read(j,:)
 	enddo
 	close(fread)
-	
+
 	!Read in the disability application rates
 	open(unit= fread, file="Annual_apprt.csv")
 	do t=1,50
@@ -459,12 +471,12 @@ subroutine setparams()
 	enddo
 	! rate exit retirement (only one way to go.... down)
 	ptau(TT) = 1-((Longev-(youngD+oldN*oldD))*tlen)**(-1)
+	
 	! prob of death by health, age
 	do t=1,(TT-1)
 		PrDeath(:,t) = PrDeath_in_read(1+(t-1)*3:3+(t-1)*3)
 	enddo
 	PrDeath(:,TT) = PrDeath(:,TT-1)
-	
 
 	!age structure extrapolate over periods
 	age_read(:,1) = age_read(:,1)-age_read(1,1)
@@ -479,52 +491,93 @@ subroutine setparams()
 	!evolution of age-structure!!!!!!!!!!!!!!!!!!!!!!
 
 	dy = PrDeath(1,1)
-	dm = 0.9d+0*sum(PrDeath(1,2:TT-1))/dble(TT-2) + 0.1d+0*sum(PrDeath(nd,2:TT-1))/dble(TT-2) !die
-	dm = (1.d+0-dm)*((tlen*oldN*oldD)**(-1)) + dm !don't die, but age
-		
-!	junk = 1.-(1.-0.005)**(1./tlen) +  1.-ptau(TT) !1% per year as a starting guess
-!	Nbar = (1.-junk)**(Tsim)*Nsim
-!	prborn_t(1) = (1.-junk)**(Tsim)
-!	Ny = prborn_t(1)*Nsim*prob_age(1,1)
-!	Nm = prborn_t(1)*Nsim*(1.-prob_age(1,1))
-!	brt(1) = 0.
-!	totborn = Nbar
+	dm = 0.9d0*sum(PrDeath(1,2:TT-1))/dble(TT-2) + 0.1d0*sum(PrDeath(nd,2:TT-1))/dble(TT-2) !die
+	dm = (1.d0-dm)*((tlen*oldN*oldD)**(-1)) + dm !don't die, but age
 	
 	!now bisection on Nbar 0
-	prH = 0.2d+0
-	prL = 0.d+0
+	prH = 0.2d0
+	prL = 0.d0
 	do i =1,maxiter	
 		!prob of getting born
-		hazborn_t(1) = 0.5d+0*(prH + prL)
-		bN(1) = hazborn_t(1)*dble(Nsim)
-		Ny = bN(1)*prob_age(1,1)
-		Nm = bN(1)*(1.-prob_age(1,1))
-		totborn = hazborn_t(1)*dble(Nsim)
-		do t=2,Tsim
-			pNy = Ny*ptau(1)*(1.d+0-dy)
-			pNm	= Nm*(1.d+0-dm) + Ny*(1.d+0-ptau(1))*(1.d+0-dy)
-		
-			bN(t) = (prob_age(1,t)*(pNy+pNm)-pNy)/(1.-prob_age(1,t))
-			hazborn_t(t) = bN(t)/(Nsim - totborn) !hazborn*(remaining unborn) = bN
+		t=1
+		hazborn_t(t) = 0.5d0*(prH + prL)
+		bN(t) = hazborn_t(t)*dble(Nsim)
+		Ny = bN(t)*prob_age(1,t)
+		Nm = bN(t)*(1.-prob_age(1,t))
+		totborn = hazborn_t(t)*dble(Nsim)
+		do j=1,(Tsim+999)
+			if(j>1000) then
+				t=t+1
+			endif
+			pNy = Ny*ptau(1)*(1.d0-dy)
+			pNm	= Nm*(1.d0-dm) + Ny*(1.d0-ptau(1))*(1.d0-dy)
+			if(t>1) then
+				bN(t) = (prob_age(1,t)*(pNy+pNm)-pNy)/(1.-prob_age(1,t))
+				hazborn_t(t) = bN(t)/(Nsim - totborn) !hazborn*(remaining unborn) = bN
+				totborn = bN(t) + totborn
+			else
+				bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
+			endif
+			
 			Nm = pNm
 			Ny = pNm + bN(t)
-
-			totborn = bN(t) + totborn
 		enddo
 		junk = hazborn_t(1)
 		hazborn_t(1) =  (dble(Nsim) - (totborn - hazborn_t(1)*Nsim ))/dble(Nsim) ! need to have some positive mass alive when the survey starts
 		
-		if(hazborn_t(1)<0) hazborn_t(1) = 0.d+0
-		if(dabs(junk - hazborn_t(1))<1e-8) then 
+		if(hazborn_t(1)<0) hazborn_t(1) = 0.d0
+		!if(dabs(junk - hazborn_t(1))<1e-8) then 
+		if(dabs(totborn - dble(Nsim))<1e-6) then 
 			exit !iterate on the numberr alive in period 1
 		elseif( totborn > dble(Nsim) ) then
 			prH = junk
 		else! totborn<Nsim 
 			prL = junk
 		endif
-
 		prborn_t(2:Tsim) = bN(2:Tsim)/sum(bN(2:Tsim))
 		prborn_t(1) = hazborn_t(1) 
+	enddo
+!again for the constant population group
+	prH = 0.2d0
+	prL = 0.d0
+	do i =1,maxiter	
+		!prob of getting born
+		t=1
+		hazborn_constpop(t) = 0.5d0*(prH + prL)
+		bN(t) = hazborn_constpop(t)*dble(Nsim)
+		Ny = bN(t)*prob_age(1,t)
+		Nm = bN(t)*(1.-prob_age(1,t))
+		totborn = hazborn_constpop(t)*dble(Nsim)
+		do j=1,(Tsim+999)
+
+			pNy = Ny*ptau(1)*(1.d0-dy)
+			pNm	= Nm*(1.d0-dm) + Ny*(1.d0-ptau(1))*(1.d0-dy)
+			if(j>1000) then
+				t=t+1
+				bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
+				hazborn_constpop(t) = bN(t)/(Nsim - totborn) !hazborn*(remaining unborn) = bN
+				totborn = bN(t) + totborn
+			else
+				bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
+			endif		
+			Nm = pNm
+			Ny = pNm + bN(t)
+			
+		enddo
+		junk = hazborn_constpop(1)
+		
+		hazborn_constpop(1) =  (dble(Nsim) - (totborn - hazborn_constpop(1)*Nsim ))/dble(Nsim) ! need to have some positive mass alive when the survey starts
+		
+		if(hazborn_constpop(1)<0) hazborn_constpop(1) = 0.d0
+		if(dabs(totborn - dble(Nsim))<1e-6) then 
+			exit !iterate on the numberr alive in period 1
+		elseif( totborn > dble(Nsim) ) then
+			prH = junk
+		else! totborn<Nsim 
+			prL = junk
+		endif
+		prborn_constpop(2:Tsim) = bN(2:Tsim)/sum(bN(2:Tsim))
+		prborn_constpop(1) = hazborn_constpop(1) 
 	enddo
 
 
@@ -655,16 +708,23 @@ subroutine setparams()
 	!Disability: pid(id,id';i,t) <---indv. type and age specific
 	
 	!read in transition matrix
-	do t=1,TT-1
-		pid_tmp(1,:,t) = pid_in_read(1:3,t)
-		pid_tmp(2,:,t) = pid_in_read(4:6,t)
-		pid_tmp(3,:,t) = (/0.,0.,1./)
-		!rows add to 1
-		do i=1,3
-			pid_tmp(i,:,t) = pid_tmp(i,:,t)/sum(pid_tmp(i,:,t))
+	if(health_dat .eqv. .true.) then
+		do t=1,TT-1
+			pid_tmp(1,:,t) = PrDDp_Age_read(0+t*3+1,1:3)
+			pid_tmp(2,:,t) = PrDDp_Age_read(1+t*3+1,1:3)
+			pid_tmp(3,:,t) = PrDDp_Age_read(2+t*3+1,1:3)
 		enddo
-	enddo
-	
+	else 
+		do t=1,TT-1
+			pid_tmp(1,:,t) = pid_in_read(1:3,t)
+			pid_tmp(2,:,t) = pid_in_read(4:6,t)
+			pid_tmp(3,:,t) = (/0.,0.,1./)
+			!rows add to 1
+			do i=1,3
+				pid_tmp(i,:,t) = pid_tmp(i,:,t)/sum(pid_tmp(i,:,t))
+			enddo
+		enddo
+	endif
 	
 	!was: PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
 	!then was PrD3age = (/0.0444_dp,0.0756_dp,0.0933_dp,0.1201_dp,0.1617_dp /)
@@ -674,10 +734,28 @@ subroutine setparams()
 	enddo
 
 	pid = 0.
-	! convert to monthly and multiply by delgrid (was a 2-year transition matrix)
+	! multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
 	do j=1,ndi
-		pid(:,:,j,i) = pid_tmp(:,1:3,i)
+		if(health_dat .eqv. .true. ) then
+			!convert to monthly
+			sdec = pid_tmp(:,1:3,i) 
+			lwrk = nd*(nd+6)
+			!want to construct right-side eigen vectors into matrix
+						!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
+			call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
+			!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
+		&	 vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
+			
+			!replace vl = vr^-1
+			call invmat(vr, vl)
+			do t=1,nd
+				vr(:,t) = vr(:,t)*wr(t)**(0.5_dp/tlen)
+			enddo
+			call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
+		else
+			pid(:,:,j,i) = pid_tmp(:,1:3,i)
+		endif
 		! be sure it adds to t (should have been done in sol_pid.m)
 		do t=1,nd
 			summy = sum(pid(t,:,j,i) )
