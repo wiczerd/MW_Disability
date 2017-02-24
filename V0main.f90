@@ -105,9 +105,9 @@ module helper_funs
 		integer, allocatable :: al_int_hist(:,:)
 		integer, allocatable :: age_hist(:,:), born_hist(:,:), del_i_int(:), fndsep_i_int(:,:,:)
 		real(dp), allocatable:: age_draw(:,:)
-		real(dp), allocatable :: al_hist(:,:), del_i_draw(:),fndsep_i_draw(:,:)
+		real(dp), allocatable :: al_hist(:,:), del_i_draw(:),fndsep_i_draw(:,:),fndarrive_draw(:,:)
 		
-		real(dp), allocatable    :: status_it_innov(:,:)
+		real(dp), allocatable    :: status_it_innov(:,:),health_it_innov(:,:)
 		real(dp), allocatable    :: jshock_ij(:,:)
 		integer,  allocatable    :: drawi_ititer(:,:)
 		integer,  allocatable    :: drawt_ititer(:,:)
@@ -598,12 +598,14 @@ module helper_funs
 		allocate(shk%del_i_draw(Nsim), stat=shk%alloced)
 		allocate(shk%fndsep_i_draw(Nsim,2), stat=shk%alloced)
 		allocate(shk%fndsep_i_int(Nsim,2,nz), stat=shk%alloced)
+		allocate(shk%fndarrive_draw(Nsim,Tsim), stat=shk%alloced)
 		!this must be big enough that we are sure it's big enough that can always find a worker
 		allocate(shk%drawi_ititer(Nsim,1000), stat=shk%alloced) 
 		allocate(shk%drawt_ititer(Nsim,1000), stat=shk%alloced)
 		allocate(shk%j_i(Nsim), stat=shk%alloced)
 		allocate(shk%jshock_ij(Nsim,nj), stat=shk%alloced)
 		allocate(shk%status_it_innov(Nsim,Tsim), stat=shk%alloced)
+		allocate(shk%health_it_innov(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%z_jt_innov(Tsim))
 		allocate(shk%z_jt_select(Tsim))
 
@@ -676,10 +678,12 @@ module helper_funs
 		deallocate(shk%j_i , stat=shk%alloced)
 		deallocate(shk%jshock_ij, stat=shk%alloced)
 		deallocate(shk%status_it_innov , stat=shk%alloced)
+		deallocate(shk%health_it_innov , stat=shk%alloced)
 		deallocate(shk%del_i_int, stat=shk%alloced)
 		deallocate(shk%del_i_draw, stat=shk%alloced)
 		deallocate(shk%fndsep_i_int, stat=shk%alloced)
-		deallocate(shk%fndsep_i_draw, stat=shk%alloced)		
+		deallocate(shk%fndsep_i_draw, stat=shk%alloced)
+		deallocate(shk%fndarrive_draw, stat=shk%alloced)
 		deallocate(shk%z_jt_innov)
 		deallocate(shk%z_jt_select)
 		!this must be big enough that we are sure it's big enough that can always find a worker
@@ -2400,16 +2404,16 @@ module sim_hists
 	contains
 
 
-	subroutine draw_fndsepi(fndsep_i_draw, fndsep_i_int, j_i, seed0, success)
+	subroutine draw_fndsepi(fndsep_i_draw, fndsep_i_int, fndarrive_draw, j_i, seed0, success)
 	! draws depreciation rates and indices on the delta grid (i.e at the discrete values)
 		implicit none
 
 		integer, intent(in) :: seed0
 		integer, intent(in), dimension(:) :: j_i
 		integer, intent(out) :: success
-		real(dp), dimension(:,:) :: fndsep_i_draw
+		real(dp), dimension(:,:) :: fndsep_i_draw,fndarrive_draw
 		integer, dimension(:,:,:) :: fndsep_i_int
-		integer :: ss=1, Nsim, m,i
+		integer :: ss=1, Nsim, m,i,it
 		real(dp) :: fndgrid_i
 		integer, allocatable :: bdayseed(:)
 
@@ -2425,6 +2429,10 @@ module sim_hists
 			fndsep_i_draw(i,1) = fndgrid_i
 			call random_number(fndgrid_i) ! draw uniform on 0,1
 			fndsep_i_draw(i,2) = fndgrid_i
+			do it=1,Tsim
+				call random_number(fndgrid_i) ! draw uniform on 0,1
+				fndarrive_draw(i,it) = fndgrid_i
+			enddo
 		enddo
 
 		call set_fndsepi(fndsep_i_int,fndsep_i_draw,j_i)
@@ -2605,13 +2613,13 @@ module sim_hists
 	
 	end subroutine set_deli
 	
-	subroutine draw_status_innov(status_it_innov, seed0, success)
+	subroutine draw_status_innov(status_it_innov, health_it_innov, seed0, success)
 	! draws innovations to d, will be used if working and relevant
 		implicit none
 
 		integer, intent(in) :: seed0
 		integer, intent(out) :: success
-		real(dp), dimension(:,:) :: status_it_innov
+		real(dp), dimension(:,:) :: status_it_innov, health_it_innov
 		integer :: ss=1, m,i,it
 		real(dp) :: s_innov
 		integer, allocatable :: bdayseed(:)
@@ -2625,6 +2633,8 @@ module sim_hists
 			do it=1,Tsim
 				call rand_num_closed(s_innov)
 				status_it_innov(i,it) = s_innov
+				call random_number(s_innov)
+				health_it_innov(i,it) = s_innov
 			enddo
 		enddo
 		success = 0
@@ -3069,13 +3079,13 @@ module sim_hists
 		seed0 = seed0 + 1
 		call draw_deli(shk%del_i_draw, shk%del_i_int, shk%j_i, seed1, status)
 		seed1 = seed1 + 1
-		call draw_fndsepi(shk%fndsep_i_draw, shk%fndsep_i_int, shk%j_i, seed0, status)
+		call draw_fndsepi(shk%fndsep_i_draw, shk%fndsep_i_int, shk%fndarrive_draw, shk%j_i, seed0, status)
 		seed0 = seed0 + 1
 		call draw_zjt(shk%z_jt_select,shk%z_jt_innov, seed1, status)
 		seed1 = seed1 + 1
 		call draw_draw(shk%drawi_ititer, shk%drawt_ititer, shk%age_hist, seed0, status)
 		seed0 = seed0 + 1
-		call draw_status_innov(shk%status_it_innov, seed1, status)
+		call draw_status_innov(shk%status_it_innov, shk%health_it_innov,seed1, status)
 		seed1 = seed1 + 1
 		
 		shk%drawn = 1
@@ -3224,7 +3234,7 @@ module sim_hists
 		real(dp), pointer    :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
 		real(dp), pointer    :: a_it(:,:) 	! assets
 		real(dp), pointer    ::	al_it(:,:)	! individual shocks
-		real(dp), pointer    :: status_it_innov(:,:)
+		real(dp), pointer    :: status_it_innov(:,:),health_it_innov(:,:),fndarrive_draw(:,:)
 		real(dp), pointer    :: jshock_ij(:,:)
 		integer,  pointer    :: drawi_ititer(:,:)
 		integer,  pointer    :: drawt_ititer(:,:)
@@ -3312,6 +3322,8 @@ module sim_hists
 		age_it 	    => shk%age_hist
 		born_it	    => shk%born_hist
 		status_it_innov => shk%status_it_innov
+		health_it_innov => shk%health_it_innov
+		fndarrive_draw  => shk%fndarrive_draw
 		jshock_ij  	 	=> shk%jshock_ij  
 		drawi_ititer    => shk%drawi_ititer
 		drawt_ititer    => shk%drawt_ititer
@@ -3629,7 +3641,7 @@ module sim_hists
 					endif 
 					
 					if(dieyoung .eqv. .true.)then
-						if(status_it_innov(i,it)>(1.-PrDeath(d_hr,age_hr))) & !this is using the top of status: if it's very high, then dead
+						if(status_it_innov(i,Tsim-it+1)< PrDeath(d_hr,age_hr)) & !this is using the back end of status: if it's very high, then dead
 							dead = .true.
 					endif
 					
@@ -3797,14 +3809,14 @@ module sim_hists
 										ali_hr	= al_it_int(i,it)
 										al_hr = al_it(i,it)
 									endif
-								elseif( (invol_un == 1)  .and. (status_it_innov(i,min(it+1,Tsim)) > fndi)) then
+								elseif( (invol_un == 1)  .and. (fndarrive_draw(i,it) > fndi)) then
 								!voluntary or involuntary?
 									ali_hr = 1
 									al_hr = alfgrid(ali_hr)
 									iiwt = 1.
 									iiH = 2
 									status_it(i,it) = 2
-								elseif((invol_un == 1) .and. (status_it_innov(i,min(it+1,Tsim)) <= fndi)) then
+								elseif((invol_un == 1) .and. (fndarrive_draw(i,Tsim-it+1) <= fndi)) then
 									invol_un = 0
 									ali_hr	= al_it_int(i,it)
 									al_hr = al_it(i,it)
@@ -3855,7 +3867,7 @@ module sim_hists
 									app_it(i,it) = 1
 									! eligible to apply?
 									if((age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))&
-										& .or. ((age_hr ==1) .and. (status_it_innov(i,min(it+1,Tsim))<eligY) )) then !status_it_innov(i,it+1) is an independent draw
+										& .or. ((age_hr ==1) .and. (status_it_innov(i,Tsim-it+1)<eligY) )) then !status_it_innov(i,it+1) is an independent draw
 										!applying, do you get it?
 										if(status_it_innov(i,it) < xifun(d_hr,wage_hr,age_hr,hlthprob)) then 
 											status_tmrw = 4
@@ -4050,7 +4062,7 @@ module sim_hists
 						!push forward d 
 						if(status_hr .eq. 1 .and. d_hr<nd ) then !if working and not already in worst state
 							do ii=1,nd
-								if(status_it_innov(i,it) < cumpid(d_hr,ii+1,del_hr,age_hr) ) then
+								if(health_it_innov(i,it) < cumpid(d_hr,ii+1,del_hr,age_hr) ) then
 									d_it(i,it+1) = ii
 									exit
 								endif
@@ -5448,6 +5460,11 @@ program V0main
 		call getarg(1, arg_in)
 		print *, "initial nu=", arg_in
 		read( arg_in, * ) nu
+		if(narg_in > 1) then
+			call getarg(2, arg_in)
+			print *, "initial xiz=", arg_in
+			read( arg_in, * ) xizcoef
+		endif
 	endif
 
 
@@ -5857,9 +5874,5 @@ program V0main
 !'---`----'----'
 
 End PROGRAM
-
-
-
-
 
 

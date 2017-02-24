@@ -144,7 +144,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 5., &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 1., &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income risk
 		alfrho = 0.988, &	!Peristence of Alpha_i type
