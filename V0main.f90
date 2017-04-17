@@ -18,7 +18,7 @@ module helper_funs
 	!Public Policy Functions
 	!	1)UI(e)		Unemployment Insurance
 	!	2)SSDI(e,a)	DI (can be asset tested)
-	!	3)SSI(e)	Social Sec. Retirement
+	!	3)SSret(e)	Social Sec. Retirement
 	! 	4)xifun(d,z,t)	Acceptance probability
 	!Utility Functions
 	!	5)u(c,d,w)	w=1 if working; 2 if not
@@ -85,6 +85,7 @@ module helper_funs
 		real(dp), allocatable :: work_dif_hist(:,:), app_dif_hist(:,:) !choose work or not, apply or not -- latent value
 		real(dp), allocatable :: di_prob_hist(:,:) !choose apply or not * prob of getting it-- latent value
 		integer, allocatable :: hlth_voc_hist(:,:)
+		real(dp), allocatable :: hlthprob_hist(:,:)
 		real(dp), allocatable :: wage_hist(:,:) !realized wages
 		integer, allocatable :: z_jt_macroint(:) !endogenous realization of shocks given a sequence
 		real(dp), allocatable :: z_jt_panel(:,:)
@@ -165,21 +166,21 @@ module helper_funs
 	!------------------------------------------------------------------------
 	!3) Social Sec. Retirement	
 	!--------------------
-	function SSI(ein)
+	function SSret(ein)
 	!--------------------
 	 
 		real(dp), intent(in)	:: ein
-		real(dp)			:: SSI
+		real(dp)			:: SSret
 		
 		!Follows Pistafferi & Low '15
 		IF (ein<DItest1*wmean) then
-			SSI = 0.9*ein
+			SSret = 0.9*ein
 		ELSEIF (ein<DItest2*wmean) then
-			SSI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)
+			SSret = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)
 		ELSEIF (ein<DItest3*wmean) then
-			SSI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(ein-DItest2*wmean)
+			SSret = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(ein-DItest2*wmean)
 		ELSE
-			SSI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(DItest3*wmean-DItest2*wmean)
+			SSret = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(DItest3*wmean-DItest2*wmean)
 		END IF
 
 	end function
@@ -538,6 +539,7 @@ module helper_funs
 		allocate(hst%app_dif_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%di_prob_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%hlth_voc_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%hlthprob_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%status_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%d_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%a_hist(Nsim,Tsim), stat=hst%alloced)
@@ -623,6 +625,7 @@ module helper_funs
 		deallocate(hst%app_dif_hist , stat=hst%alloced)
 		deallocate(hst%di_prob_hist , stat=hst%alloced)
 		deallocate(hst%hlth_voc_hist, stat=hst%alloced)
+		deallocate(hst%hlthprob_hist, stat=hst%alloced)
 		deallocate(hst%status_hist , stat=hst%alloced)
 		deallocate(hst%d_hist , stat=hst%alloced)
 		deallocate(hst%a_hist , stat=hst%alloced)
@@ -883,7 +886,7 @@ module model_data
 
 		real(dp) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
 				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1), &
-				& status_Nt(5,Tsim),DIatriskpop,napp_t,ninsur_app
+				& status_Nt(5,Tsim),DIatriskpop,napp_t,ninsur_app, dicont_hr=0.
 
 
 		if(hst%alloced /= 0) then
@@ -1031,19 +1034,31 @@ module model_data
 		ninsur_app = 0.
 		moments_sim%init_di = 0._dp
 		moments_sim%init_hlth_acc = 0._dp
-		do it=1,(5*itlen)
-			do i=1,Nsim
+		do i=1,Nsim
+			dicont_hr = 0.
+			do it=1,(5*itlen)
 				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
-					if(hst%status_hist(i,it) == 4) moments_sim%init_di= moments_sim%init_di+1.
+					! latent value of an application
 					if(hst%status_hist(i,it) == 3) then
-						if(hst%app_dif_hist(i,it)>(-100.) .and. hst%app_dif_hist(i,it)<100.) &
-							moments_sim%init_di= moments_sim%init_di+ hst%di_prob_hist(i,it)*dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
+						if(hst%app_dif_hist(i,it)>(-100.) .and. hst%app_dif_hist(i,it)<100.) then
+							dicont_hr = dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
+						!	moments_sim%init_di= moments_sim%init_di+ hst%di_prob_hist(i,it)*dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
+						endif
 					endif
 					ninsur_app = 1. + ninsur_app
 					if( hst%hlth_voc_hist(i,it) >0) then
 						napp_t = napp_t+1.
-						if(hst%hlth_voc_hist(i,it)==1)  moments_sim%init_hlth_acc = moments_sim%init_hlth_acc+ 1. 
+						if(hst%hlthprob_hist(i,it)>0)  moments_sim%init_hlth_acc = moments_sim%init_hlth_acc+ (hst%hlthprob_hist(i,it)/(hst%di_prob_hist(i,it)))**smthELPM
 					endif
+
+					if(hst%status_hist(i,it) == 4 ) then 
+						if(it==1 .or. dicont_hr==0.) then
+							moments_sim%init_di= moments_sim%init_di+1._dp
+						else 
+							moments_sim%init_di= moments_sim%init_di+dicont_hr
+						endif
+					endif
+
 				endif
 			enddo
 		enddo
@@ -1109,7 +1124,7 @@ module sol_val
 		apol = iaa0
 		do iaa=iaa0,iaaA
 			Vevals = Vevals +1
-			chere = SSI(egrid(ie))+ R*agrid(ia) - agrid(iaa)
+			chere = SSret(egrid(ie))+ R*agrid(ia) - agrid(iaa)
 			if( chere .gt. 0.) then !ensure positive consumption
 				Vc1 = beta*ptau(TT)*VR0(id,ie,iaa)
 				Vtest2 = util(chere ,id,iw) + Vc1
@@ -1551,7 +1566,7 @@ module sol_val
 		do id=1,nd
 		do ie=1,ne
 		do ia=1,na
-			VR0(id,ie,ia) = util(SSI(egrid(ie))+R*agrid(ia),id,iw)* (1._dp/(1._dp-beta*ptau(TT)))
+			VR0(id,ie,ia) = util(SSret(egrid(ie))+R*agrid(ia),id,iw)* (1._dp/(1._dp-beta*ptau(TT)))
 		enddo
 		enddo
 		enddo
@@ -2605,6 +2620,7 @@ module sim_hists
 		do i=1,Nsim
 			delgrid_i = del_i_draw(i)
 			di_int = finder(delcumwt(:,j_i(i)),delgrid_i)
+			di_int = max(1, min(di_int,ndi))
 			del_i_int(i) = di_int			
 		enddo
 	
@@ -2691,6 +2707,7 @@ module sim_hists
 			alf_i = max(alf_i,alfgrid_minE)
 			alf_i = min(alf_i,alfgrid_maxE)
 			alfgrid_int = finder(alfgrid,alf_i)
+			alfgrid_int = max(2, min(alfgrid_int,nal) )
 			! round up or down:
 			
 			if(al_contin .eqv. .true.) then
@@ -3419,7 +3436,8 @@ module sim_hists
 			di_prob_it = 0.
 			app_dif_it = 0.
 			work_dif_it = 0.
-			
+			hst%hlthprob_hist = 0.
+			hst%hlth_voc_hist= 0 
 			!set prob alpha=1 for each z state.  Only works now for z_contin == .false.
 			if(iter>1)then 
 				PrAl1= 0._dp
@@ -3477,7 +3495,8 @@ module sim_hists
 
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,tri_hr,apc_hr,ep_hr, &
-			!$OMP& iiH, iiwt, ziwt,ziH,triwt,triH,il,fnd_hr, sep_hr, il_hr,j_val,j_val_ij,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr,hlthprob,ii,sepi,fndi,invol_un,dead,status_tmrw) 
+			!$OMP& iiH, iiwt, ziwt,ziH,triwt,triH,il,fnd_hr, sep_hr, il_hr,j_val,j_val_ij,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr, &
+			!$OMP& hlthprob,ii,sepi,fndi,invol_un,dead,status_tmrw) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3527,89 +3546,6 @@ module sim_hists
 						ai_hr  = a_it_int(drawi,drawt)
 					endif
 					if( it>1 .or. iter==1) status_it(i,it) = 1 !start out working
-						
-!~						!-------------------------------------------
-!~						! This is not updated to have il index the separation rate
-!~ 						if(j_rand .eqv. .false. ) then !choose occupation
-!~ 							j_val  = -1.e6_dp
-!~ 							j_hr = 1 !initial value
-!~ 							if(it< (struc_brk*itlen)) iiH = 1
-!~ 							if(it>=(struc_brk*itlen)) iiH = 2
-!~ 							al_hr	= al_it(i,it)
-!~ 							ali_hr	= al_it_int(i,it)					
-!~ 							do ij = 1,nj
-!~ 								j_val_ij = 0.
-!~ 								if(zj_contin .eqv. .true.)then
-!~ 									z_hr	= z_jt_panel(it,ij)
-!~ 									do zi_hr = nz,1,-1
-!~ 										if(zgrid(zi_hr,ij)<z_hr) exit
-!~ 									enddo
-!~ 									ziH  = min(zi_hr+1,nz)
-!~ 									ziwt = (zgrid(ziH,ij)- z_hr)/( zgrid(ziH,ij) -   zgrid(zi_hr,ij) )
-!~ 									if(zi_hr == ziH) ziwt = 1.
-!~ 								else
-!~ 									zi_hr = z_jt_macroint(it)
-!~ 								endif
-
-!~ 								if(it==1 ) then
-!~ 									pialf_conddist = ergpialf
-!~ 								else
-!~ 									pialf_conddist = pialf(ali_hr,:)
-!~ 								endif
-!~ 								if(w_strchng .eqv. .true.) then
-!~ 									do tri_hr = ntr,1,-1
-!~ 										if( trgrid(tri_hr)<wage_trend(it,ij) ) &
-!~ 											exit
-!~ 										triH = min(tri_hr+1,ntr)
-!~ 										if(triH>tri_hr) then
-!~ 											triwt = (trgrid(triH)- wage_trend(it,ij))/(trgrid(triH) - trgrid(tri_hr))
-!~ 										else
-!~ 											triwt = 1.
-!~ 										endif
-!~ 									enddo
-!~ 								else
-!~ 									tri_hr = tri0
-!~ 								endif
-								
-!~ 								do idi = 1,ndi !expectations over delta and alpha
-!~ 								do ali_hr = 1,nal
-!~ 									if( zj_contin .eqv. .true. ) then
-!~ 										j_val_ij = ziwt     * V((ij-1)*ntr+tri0,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
-!~ 												& (1.-ziwt) * V((ij-1)*ntr+tri0,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
-!~ 												&	j_val_ij
-!~ 									elseif(w_strchng .eqv. .true.) then
-									
-!~ 										j_val_ij = triwt    * V((ij-1)*ntr+tri_hr,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
-!~ 												& (1.-triwt)* V((ij-1)*ntr+triH  ,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr) + &
-!~ 												&	j_val_ij
-!~ 									else
-!~ 										j_val_ij = V((ij-1)*ntr+tri0,(idi-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr)*delwt(idi,ij)*pialf_conddist(ali_hr)+j_val_ij
-!~ 									endif
-!~ 								enddo
-!~ 								enddo
-!~ 								j_val_ij = (j_val_ij + jshift(ij,it))/(amenityscale*vscale) + jshock_ij(i,ij)
-!~ 								if(j_val< j_val_ij ) then
-!~ 									j_hr = ij
-!~ 									j_val = j_val_ij
-!~ 								endif
-!~ 							enddo !choose j
-!~ 							j_i(i) = j_hr
-!~ 							val_hr_it(i) = j_val
-!~ 							! now draw a del
-							
-!~ 							!put del_i into 0,1
-!~ 							junk = del_i_draw(i) 
-!~ 							do ii=1,ndi
-!~ 								if(junk < delcumwt(ii+1,j_hr)  ) then
-!~ 									del_hr = ii
-!~ 									exit
-!~ 								endif
-!~ 							enddo
-
-!~ 							del_i_int(i) = del_hr
-!~ 						endif !choosing occupation j_i
-						
-
 
 						if(it == 1) then !these were already born
 							age_hr	= age_it(i,it)
@@ -3721,7 +3657,7 @@ module sim_hists
 
 					!figure out where to evaluate alpha
 					if(al_contin .eqv. .true.) then
-						iiH  = min(ali_hr+1,nal)
+						iiH  = max(1, min(ali_hr+1,nal))
 						if(ali_hr>1) then 
 							iiwt = (alfgrid(iiH)- al_hr)/( alfgrid(iiH) -   alfgrid(ali_hr) )
 						else !unemp
@@ -3871,6 +3807,7 @@ module sim_hists
 										!applying, do you get it?
 										if(status_it_innov(i,it) < xifun(d_hr,wage_hr,age_hr,hlthprob)) then 
 											status_tmrw = 4
+											hst%hlthprob_hist(i,it) = hlthprob
 											if( status_it_innov(i,it) <  hlthprob) then
 												hst%hlth_voc_hist(i,it) = 1
 											else
@@ -4224,6 +4161,7 @@ module sim_hists
 					call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
 					call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
 					call mati2csv (hst%hlth_voc_hist,"hlth_voc_hist"//trim(caselabel)//".csv")
+					call mat2csv (hst%hlthprob_hist,"hlthprob_hist"//trim(caselabel)//".csv")
 			endif
 		endif
 		
@@ -4267,366 +4205,6 @@ module find_params
 	
 
 	contains
-
-	function obj_zj(zj_in,vfs,hst,shk,prob_target,ij_obj,it0) result(resid)
-		
-		! for each j in each t, this solves the implied z_j
-		! where z_j scales the rest of the markov chain
-		
-		integer, intent(in) :: ij_obj, it0
-		type(val_struct),  intent(in) :: vfs
-		type(hist_struct), intent(in):: hst
-		type(shocks_struct), intent(in) :: shk
-		real(dp), intent(in) :: prob_target,zj_in
-		real(dp) :: resid
-		real(dp) :: zj_here=1.,nborn=1.,j_val_hi=1.,j_val_lo=1.,j_scale=1.
-		real(dp) :: cumval=1.,j_val=1.,zjwt=1.,prob_here=1.,e_hr=1.
-		integer :: age_hr=1,d_hr=1,ai_hr=1,ali=1,ei_hr=1,i=1,ii=1,idi=1, it=1, ij=1,tri=1
-		integer :: zj_hi=1,zj_lo=1, simT=1
-		real(dp), allocatable :: j_val_ij(:,:),j_val_here(:)
-		real(dp) :: zgrid_min=1., zgrid_max=1.
-
-		allocate(j_val_ij(Nsim,nj))
-		allocate(j_val_here(Nsim))
-
-		j_val_ij = -1.e10_dp
-		j_val_here = -1.e10_dp
-
-		
-		simT = size(shk%born_hist,2)
-		tri = tri0
-		prob_here = 0._dp
-		nborn = 0._dp
-		do it = it0,simT
-			do i = 1,Nsim
-
-				if(shk%born_hist(i,it).eq. 1 ) then !they've been born this period
-					nborn = 1._dp + nborn
-					!set the state
-					!ali_hr 	= shk%al_int_hist(i,it)
-					age_hr 	= 1
-					d_hr 	= 1
-					ai_hr	= 1
-					ei_hr	= 1
-					e_hr 	= 0._dp
-					ai_hr 	= 1
-
-					ij = ij_obj
-					zgrid_min = minval(zgrid(nz/2+1:nz,ij))
-					zgrid_max = maxval(zgrid(nz/2+1:nz,ij))
-					! choose by scaling zgrid using the pre-transition values, 1:nz/2.  The `mod' ensures we're in that range
-					if(zj_contin .eqv. .true.) then
-						zj_here   = hst%z_jt_panel(ij,it) - zshift(ij) + zj_in
-					else
-						zj_here   = zgrid(mod(hst%z_jt_macroint(it)-1,nz/2)+1,ij) + zj_in
-					endif
-					! zj_here	  = max(min(zj_here,zgrid_max),zgrid_min) This would prevent extrapolation
-					zj_lo	  = finder(zgrid(nz/2+1:nz,ij),zj_here) + nz/2
-					zj_lo	  = min(max(zj_lo,nz/2+1) , nz-1)
-					zj_hi	  = min(zj_lo +1,nz)
-					zjwt 	  = (zgrid(zj_hi,ij) - zj_here)/(zgrid(zj_hi,ij) - zgrid(zj_lo,ij))
-					if(zj_hi == zj_lo) zjwt=1.
-					! zjwt 	  = max(min(zjwt,1._dp),0._dp)  This would prevent extrapolation
-					j_val_here(i) = 0._dp
-					
-
-					do idi = 1,ndi ! expectation over delta, alpha
-					do ali = 1,nal
-						j_val_lo  = vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,zj_lo,age_hr)
-						j_val_hi  = vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,zj_hi,age_hr)
-						j_val_here(i) = (zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi)*delwt(idi,ij)*ergpialf(ali) + j_val_here(i)
-					enddo
-					enddo
-
-					do ij = 1,nj
-						if(ij /= ij_obj) then
-							j_val_ij(i,ij) = 0.
-							if(zj_contin .eqv. .true.)then
-								zj_here	= hst%z_jt_panel(it,ij)
-								zj_lo	= finder(zgrid(nz/2+1:nz,ij),zj_here) + nz/2
-								zj_lo	= min(max(zj_lo,nz/2+1) , nz-1)
-								zj_hi   = min(zj_lo+1,nz)
-								zjwt = (zgrid(zj_hi,ij)- zj_here)/( zgrid(zj_hi,ij) -   zgrid(zj_lo,ij) )
-								if(zj_hi == zj_lo) zjwt=1.
-							endif
-							
-							do idi = 1,ndi ! expectation over delta and alpha
-							do ali = 1,nal
-								if(zj_contin .eqv. .true.) then
-									j_val_ij(i,ij) =( zjwt    * vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,zj_lo,age_hr) &
-											&	+	 (1.-zjwt)* vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,zj_hi,age_hr) ) &
-											&	*  delwt(idi,ij)*ergpialf(ali) + j_val_ij(i,ij)
-								else
-									j_val_ij(i,ij) = vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr, &
-												& hst%z_jt_macroint(it),age_hr)*delwt(idi,ij)*ergpialf(ali) + j_val_ij(i,ij)
-								endif
-							enddo
-							enddo
-								
-						else
-								j_val_ij(i,ij) = j_val_here(i)
-						endif
-					enddo
-				endif
-			enddo
-		enddo
-
-		j_scale = 0.		
-		do i = 1,Nsim
-		do ij = 1,nj
-			if(j_val_ij(i,ij) > -1.e9_dp) then !these guys were actually born
-				j_scale = j_val_ij(i,ij) + j_scale
-			endif
-		enddo
-		enddo
-		j_scale = j_scale/nborn/dble(nj)
-
-		prob_here = 0.
-		do i = 1,Nsim
-			if(j_val_here(i) > -1.e9_dp) then !these guys were actually born
-				cumval = 0.
-				do ij=1,nj
-					cumval = dexp((j_val_ij(i,ij)+jshift(ij,2))/(j_scale*amenityscale))+cumval
-				enddo
-				prob_here = dexp((j_val_here(i)+jshift(ij_obj,2))/(j_scale*amenityscale))/cumval + prob_here
-			endif
-		enddo
-		
-		prob_here = prob_here/nborn
-		resid = prob_target - prob_here
-
-
-		deallocate(j_val_ij,j_val_here)
-	end function obj_zj
-
-	function obj_zj_wrap(zj_here, dummy_params) result(resid)
-		real(dp), intent(in) :: zj_here
-		real(dp), intent(in) :: dummy_params(:)
-		real(dp) :: resid
-
-		resid = obj_zj(zj_here,mod_vfs,mod_hst,mod_shk, mod_prob_target,mod_ij_obj,mod_it)
-
-	end function obj_zj_wrap
-
-	subroutine scaleTFPgrid(zgrid_in, zscale_in, zgrid_out,vfs,pfs)
-		real(dp), intent(in)  :: zgrid_in (:,:)
-		real(dp), intent(out) :: zgrid_out(:,:)
-		real(dp), intent(in)  :: zscale_in(:)
-		type(val_struct) :: vfs
-		type(pol_struct) :: pfs
-		
-		integer :: iz,i,ij,tri,idi,ial,id,ie,ia,it
-		real(dp) :: z_min,z_max,zjwt, zj_here
-		real(dp) :: j_val_lo,j_val_hi
-		real(dp) :: p_val_lo,p_val_hi		
-		integer :: zj_lo, zj_hi
-
-		zgrid_out = zgrid_in
-		call mat2csv(zgrid_in,"zgrid_in.csv")
-		! apply shift
-		do ij=1,nj
-			!z_max = maxval(zgrid_in(nz/2+1:nz,ij))
-			!z_min = minval(zgrid_in(nz/2+1:nz,ij))
-			do iz=1,nz
-			
-				if((iz>=nz/2+1) .and. (z_regimes .eqv. .true.)) then !don't shift around the mean
-					zgrid_out(iz,ij) = (zgrid_in(iz,ij) - zshift(ij))/zscale(ij)*zscale_in(ij)+zshift(ij)
-				else
-					zgrid_out(iz,ij) = zgrid_in(iz,ij)/zscale(ij)*zscale_in(ij)
-				endif
-			enddo
-		enddo
-
-		call mat2csv(zgrid_out,"zgrid_out.csv")
-		! interpolate V and pols
-		do tri = 1,ntr
-		do ij=1,nj
-		do idi=1,ndi
-		do ial = 1,nal
-		do id = 1,nd
-		do ie = 1,ne
-		do ia=1,na
-		do it = 1,TT-1
-
-		!interpolate the value function on z grid
-		!and will extrapolate for the top and bottom points (problematic?)
-		do iz=1,nz
-			zj_here   = zgrid_out(iz,ij)
-			if( (iz >= nz/2+1) .and. (z_regimes .eqv. .true.)) then
-				zj_lo	  = finder(zgrid_in(nz/2+1:nz,ij),zj_here) + nz/2
-				zj_lo	  = min( max(zj_lo,nz/2+1), nz-1)
-				zj_hi	  = min(zj_lo +1,nz)
-			else
-				zj_lo	  = finder(zgrid_in(1:nz/2,ij),zj_here) 
-				zj_lo	  = min( max(zj_lo,1), nz/2-1)
-				zj_hi	  = min(zj_lo +1,nz/2)
-			endif
-			zjwt 	  = (zgrid_in(zj_hi,ij) - zj_here)/(zgrid_in(zj_hi,ij) - zgrid_in(zj_lo,ij))
-			if(zj_lo == zj_hi) zjwt = 1.
-			
-			j_val_lo  = vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			j_val_hi  = vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,iz,it) =  &
-				& zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi
-				
-			!now do this for a bunch of policies:
-			p_val_lo = pfs%aW((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%aW((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%aW((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-				
-			p_val_lo = pfs%aU((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%aU((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%aU((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-			
-			p_val_lo = pfs%aN((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%aN((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%aN((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-			
-			! DO not do aD, or aR.  They don't depend on z: aR( d_hr,ei_hr,ai_hr ) and aD( d_hr,ei_hr,ai_hr,age_hr )
-			
-			
-			p_val_lo = pfs%gwork_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%gwork_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%gwork_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-			
-			if(pfs%gwork_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) > 0) then
-				pfs%gwork((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 1
-			else
-				pfs%gwork((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 0
-			endif
-				
-			p_val_lo = pfs%gapp_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%gapp_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%gapp_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-			
-			if(pfs%gapp_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) > 0) then
-				pfs%gapp((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 1
-			else
-				pfs%gapp((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 0
-			endif
-			
-		enddo
-
-		enddo
-		enddo
-		enddo
-		enddo
-		enddo
-		enddo
-		enddo
-		enddo
-	
-	end subroutine scaleTFPgrid
-
-
-	subroutine shiftTFPgrid(zgrid_in, zshift_in, zgrid_out,vfs,pfs)
-		real(dp), intent(in)	:: zgrid_in(:,:)
-		real(dp), intent(out)	:: zgrid_out(:,:)
-		real(dp), intent(in)	:: zshift_in(:)
-		type(val_struct)	:: vfs
-		type(pol_struct)	:: pfs
-
-		integer :: iz,i,ij,tri,idi,ial,id,ie,ia,it
-		real(dp) :: z_min,z_max,zjwt, zj_here
-		real(dp) :: j_val_lo,j_val_hi
-		real(dp) :: p_val_lo,p_val_hi		
-		integer :: zj_lo, zj_hi
-
-		zgrid_out = zgrid_in
-		! apply shift
-		do ij=1,nj
-			z_max = maxval(zgrid_in(nz/2+1:nz,ij))
-			z_min = minval(zgrid_in(nz/2+1:nz,ij))
-			do iz=nz/2+1,nz
-				zgrid_out(iz,ij) = zgrid_in(iz - nz/2,ij) + zshift(ij) !scale off the pre-break value
-				! this will allow extrapolation
-				!zgrid_out(iz,ij) = max(min(zgrid_out(iz,ij),z_max),z_min) ! don't try to extrapolate
-			enddo
-		enddo
-
-		! interpolate V
-		do tri = 1,ntr
-		do ij=1,nj
-		do idi=1,ndi
-		do ial = 1,nal
-		do id = 1,nd
-		do ie = 1,ne
-		do ia=1,na
-		do it = 1,TT-1
-
-		!interpolate the value function on z grid
-		!and will extrapolate for the top and bottom points (problematic?)
-		do iz=nz/2+1,nz
-			zj_here   = zgrid_out(iz,ij)
-			zj_lo	  = finder(zgrid_in(nz/2+1:nz,ij),zj_here) + nz/2
-			zj_lo	  = min( max(zj_lo,nz/2+1), nz-1)
-			zj_hi	  = min(zj_lo +1,nz)
-			zjwt 	  = (zgrid_in(zj_hi,ij) - zj_here)/(zgrid_in(zj_hi,ij) - zgrid_in(zj_lo,ij))
-			! zjwt 	  = max(min(zjwt,1._dp),0.) ! this prevents extrapolation
-			j_val_lo  = vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			j_val_hi  = vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,iz,it) =  &
-				& zjwt*j_val_lo+ (1._dp-zjwt)*j_val_hi
-
-
-			!now do this for a bunch of policies:
-			p_val_lo = pfs%aW((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%aW((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%aW((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-				
-			p_val_lo = pfs%aU((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%aU((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%aU((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-			
-			p_val_lo = pfs%aN((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%aN((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%aN((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-			
-			! DO not do aD, or aR.  They don't depend on z: aR( d_hr,ei_hr,ai_hr ) and aD( d_hr,ei_hr,ai_hr,age_hr )
-			
-			p_val_lo = pfs%gwork_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%gwork_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%gwork_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-			
-			if(pfs%gwork_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) > 0) then
-				pfs%gwork((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 1
-			else
-				pfs%gwork((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 0
-			endif
-				
-			p_val_lo = pfs%gapp_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_lo,it)
-			p_val_hi = pfs%gapp_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it)
-			pfs%gapp_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = &
-				& zjwt*p_val_lo + (1._dp - zjwt)*p_val_hi
-			
-			if(pfs%gapp_dif((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) > 0) then
-				pfs%gapp((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 1
-			else
-				pfs%gapp((ij-1)*ntr+tri,(idi-1)*nal+ial,id,ie,ia,zj_hi,it) = 0
-			endif
-	
-			
-		enddo
-
-		enddo
-		enddo
-		enddo
-		enddo
-		enddo
-		enddo
-		enddo
-		enddo
-		
-	end subroutine shiftTFPgrid
 
 
 	subroutine vscale_set(vfs, hst, shk, vscale_out)
@@ -4782,96 +4360,6 @@ module find_params
 		
 	end subroutine
 
-	subroutine iter_zproc(vfs, pfs, hst,shk)
-		integer :: it=1, ij=1, ziter=1
-		type(val_struct), target :: vfs
-		type(hist_struct), target:: hst
-		type(shocks_struct), target:: shk
-		type(pol_struct), target :: pfs
-
-		real(dp) :: zj_here=1., zshift_mean=1.,zshift_mean1=1.
-		real(dp) :: dummy_params(3)
-		!integer :: del_i_int(:)
-		integer :: flag=1
-		real(dp) :: resid_hi=1., resid_lo=1., z_hi=1.,z_lo=1.,zj_opt=1.,zshift_dist=1., zshift_tol=1.e-4_dp
-		real(dp), allocatable :: zshift1(:),zshift0(:),zgrid1(:,:),zgrid0(:,:)
-		dummy_params = 0.
-
-		allocate(zshift1(nj))
-		allocate(zshift0(nj))
-		allocate(zgrid0(nz,nj))
-		allocate(zgrid1(nz,nj))
-		mod_vfs => vfs
-		mod_pfs => pfs
-		mod_hst => hst
-		mod_shk => shk
-		zshift1 = 0.
-		zshift_mean = 0.
-		zgrid0 = zgrid
-		do ij=1,nj
-			zshift0(ij) = zshift(ij) !begin setting it equal to the global
-			zshift_mean = zshift(ij)/dble(nj) + zshift_mean
-		enddo
-
-		if(print_lev>=2) call mat2csv(zgrid0,"zgrid0.csv")
-		do ziter = 1,maxiter
-			do ij=1,nj
-				mod_ij_obj = ij
-				it = struc_brk*itlen
-				mod_it = it
-				mod_prob_target = occpr_trend(it,ij) ! I don't like using globals here
-
-				! bounds on the area in which actually solved the problem
-				z_hi = zgrid(nz,ij) - zgrid(nz/2+1,ij)
-				z_lo = zgrid(nz/2+1,ij) - zgrid(nz,ij)
-					
-				! this adjusts it to be the bottom point for all grid points
-				resid_lo = obj_zj_wrap(z_lo,dummy_params)
-				! be at the top point for all grid points
-				resid_hi = obj_zj_wrap(z_hi,dummy_params)
-
-				if(resid_hi*resid_lo < 0.) then
-					zj_opt = zbrent(obj_zj_wrap,z_lo,z_hi,&
-						& dummy_params ,zshift_tol/100.,flag)
-				elseif( dabs(resid_hi)<dabs(resid_lo) ) then
-					zj_opt = z_hi
-				else
-					zj_opt = z_lo
-				endif
-				zshift1(ij) = zj_opt
-			enddo
-			zshift_mean1 = 0.
-			do ij=1,nj
-				zshift_mean1 = zshift1(ij)/dble(nj) + zshift_mean1
-			enddo
-			zshift_dist =0.
-			do ij=1,nj
-				zshift1(ij) = zshift1(ij) -zshift_mean1 + zshift_mean !re-set the mean of zshift1
-				zshift_dist = (zshift1(ij)-zshift(ij))**2 + zshift_dist
-			enddo
-			zshift_mean1 = 0.
-			do ij=1,nj
-				zshift(ij) = upd_zscl*zshift1(ij) + (1._dp-upd_zscl)*zshift(ij)
-				zshift_mean1 = zshift(ij)/dble(nj) + zshift_mean1 !should not be changing
-			enddo
-			do ij=1,nj
-				zshift(ij) = zshift(ij) -zshift_mean1 + zshift_mean ! hold the mean fixed: prevent drifting (necessary?)
-			enddo
-
-			! this will reassign the grid using zshift
-			call shiftTFPgrid(zgrid0,zshift,zgrid1, vfs,pfs)
-			if(print_lev>=2) call mat2csv(zgrid1,"zgrid1.csv")
-			zgrid = zgrid1
-
-			if (zshift_dist .lt. zshift_tol) then
-				exit
-			endif
-		enddo
-
-		if(print_lev>=1) call mat2csv(zgrid1,"zgrid1.csv")
-
-		deallocate(zshift0,zshift1,zgrid0,zgrid1)
-	end subroutine iter_zproc
 	
 	subroutine bis_calnu(nu0,nu1,ditarget,vfs, pfs, hst, moments_sim,shk)
 
@@ -4975,7 +4463,7 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		
-		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter)
+		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter),dist_urt(maxiter),dist_udur(maxiter)
 		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
 		integer  :: i,ii,ij,it, iter,iout,plO,vO
 		real(dp) :: urt,udur,Efrt,Esrt
@@ -4999,7 +4487,7 @@ module find_params
 		fndrt_mul0 = 1. 
 		seprt0_mul = 1.
 		
-		do iter = 1,(maxiter/10)
+		do iter = 1,(maxiter)
 			dist_wgtrend = 0.
 			dist_wgtrend_iter(iter) = 0.
 			
@@ -5008,8 +4496,8 @@ module find_params
 			call comp_ustats(hst,shk,urt,udur,Efrt,Esrt)
 			if(verbose>2) print*,  'urt , udur', urt,udur
 			if(verbose>2) print*,  'Efrt, Esrt', Efrt,Esrt
-			
-			
+			dist_urt(iter) = (urt - avg_unrt)/avg_unrt
+			dist_udur(iter)= (udur - avg_undur)/avg_undur
 			do ij=1,nj
 				jwages = 0.
 				do it=1,Tsim
@@ -5051,7 +4539,7 @@ module find_params
 			enddo !ij 
 			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
 			if(iter>100) avg_convergence = dabs( sum(dist_wgtrend_iter(iter-100:iter))/100. - dist_wgtrend_iter(iter)) !in case not making progress
-			if((dist_wgtrend_iter(iter)<simtol*100 .and. iter>miniter) .or. avg_convergence<1e-4) then !cannot get too close because also relies on sim converging
+			if((dist_wgtrend_iter(iter)<simtol .and. iter>miniter) .or. avg_convergence<simtol) then !cannot get too close because also relies on sim converging
 				exit
 			endif
 			if(print_lev .ge. 4) then
@@ -5068,7 +4556,7 @@ module find_params
 			fndrt_mul1 = upd_wgtrnd*fndrt_mul1 + (1.-upd_wgtrnd)*fndrt_mul0
 			!fndrt_mul1 = fndrt_mul0 !HOLD FOR NOW... see if otherstuff works
 				
-			seprt1_mul = (Efrt*avg_unrt*fndrt_mul1/fndrt_mul0)/(Esrt/seprt0_mul*(1.-avg_unrt))
+			seprt1_mul = (Efrt*fndrt_mul1/fndrt_mul0*avg_unrt)/(Esrt/seprt0_mul*(1.-avg_unrt))
 			seprt1_mul = upd_wgtrnd*seprt1_mul + (1.-upd_wgtrnd)*seprt0_mul
 			
 			
@@ -5094,6 +4582,9 @@ module find_params
 		if(print_lev .ge. 2) then 
 			call mat2csv(wage_trend,"wage_trend_jt.csv")
 			call vec2csv(dist_wgtrend_iter(1:(iter-1)), "dist_wgtrend_iter.csv")
+			call vec2csv(dist_urt(1:(iter-1)), "dist_urt.csv")
+			call vec2csv(dist_udur(1:(iter-1)), "dist_udur.csv")
+			
 			if(verbose .ge. 2) print *, "iterated ", (iter-1)
 		endif
 		
@@ -5174,7 +4665,7 @@ module find_params
 		endif
 		
 		!I only want to iterate on the wage trend if I have a good set of parameters
-	!	call iter_wgtrend(vfs, pfs, hst,shk)
+		call iter_wgtrend(vfs, pfs, hst,shk)
 		if(precal_bisnu .eqv. .true.) then
 			nu0 = nu
 			call bis_calnu(nu0,nu1, dirt_target ,vfs, pfs, hst, moments_sim ,shk)
@@ -5305,87 +4796,6 @@ module find_params
 	end subroutine cal_dist_nloptwrap
 
 
-	subroutine zjload_dist(paramvec, errvec,vfs_pfs_shk)
-		! the inputs are the values of parameters we're moving in paramvec
-		! the outputs are deviations from targets
-		! 1/ persistence of occupation productivity shock
-		! 2/ standard deviation of occupation productivity shock
-		! 3/ dispersion of gumbel shock - amenityscale
-		
-		real(dp), intent(in) :: paramvec(:)
-		real(dp), intent(out) :: errvec(:)
-		
-		type(val_pol_shocks_struct) :: vfs_pfs_shk
-
-		type(hist_struct):: hst
-		type(moments_struct):: moments_sim
-		real(dp) :: zscale_here(nj)
-		real(dp) :: zgrid_in(nz,nj), zgrid_here(nz,nj)
-		integer :: ij=1,t0tT(2),it
-
-
-		zgrid_in = zgrid
-		!paramvec is a vector off occupation loadings on zj
-		do ij = 1,nj
-			zscale_here(ij) = paramvec(ij)
-		
-		enddo
-		
-		call scaleTFPgrid(zgrid_in, zscale_here, zgrid_here,vfs_pfs_shk%vfs_ptr,vfs_pfs_shk%pfs_ptr)
-		
-		call alloc_hist(hst)
-		
-		if(verbose >2) print *, "Simulating the model"	
-		call sim(vfs_pfs_shk%vfs_ptr, vfs_pfs_shk%pfs_ptr, hst,vfs_pfs_shk%shk_ptr)
-		if(verbose >2) print *, "Computing moments"
-		call moments_compute(hst,moments_sim,vfs_pfs_shk%shk_ptr)
-		
-		errvec = 0
-		!do ij = 1,nj
-		!	errvec(ij) =  moments_sim%ts_emp_coefs(ij+1) - occZload(ij)
-		!enddo
-
-		call dealloc_hist(hst)
-
-	end subroutine zjload_dist
-
-	subroutine zjload_dist_nloptwrap(fval, nparam, paramvec, gradvec, need_grad, vfs_pfs_shk)
-
-		real(8) :: fval, paramvec(:),gradvec(:)
-		integer :: nparam,need_grad
-		type(val_pol_shocks_struct) :: vfs_pfs_shk
-		real(8) :: errvec(nparam),paramwt(nparam),paramvecH(nparam),errvecH(nparam),paramvecL(nparam),errvecL(nparam),gradstep(nparam)
-		integer :: i
-		
-
-		call zjload_dist(paramvec, errvec,vfs_pfs_shk)
-
-		paramwt = 1./dble(nparam)		! equal weight
-		fval = 0.
-		do i = 1,nparam
-			fval = errvec(i)**2*paramwt(i) + fval
-		enddo
-		if( need_grad .ne. 0) then
-
-			do i=1,nparam
-				gradstep (i) = min( dabs( paramvec(i)*(5.e-5_dp) ) ,5.e-5_dp)
-				paramvecH(i) = paramvec(i) + gradstep(i)
-			enddo
-			call zjload_dist(paramvecH, errvecH,vfs_pfs_shk)
-			do i=1,nparam
-				paramvecL(i) = paramvec(i) - gradstep(i)
-			enddo
-			call zjload_dist(paramvecL, errvecL,vfs_pfs_shk)
-			do i=1,nparam
-				gradvec(i) = (errvecH(i) - errvecL(i))/(2._dp * gradstep(i))
-			enddo
-		endif
-		
-
-	end subroutine zjload_dist_nloptwrap
-
-
-
 !	subroutine  dfovec(Nin,Nout,paramvec,errvec)
 !		integer :: Nin, Nout
 !		real(dp) :: paramvec(:), errvec(:)
@@ -5412,7 +4822,7 @@ program V0main
 	use sol_val
 	use sim_hists
 	use model_data
-	use find_params !, only: cal_dist,iter_wgtrend,iter_zproc,jshift_sol,obj_zj,obj_zj_wrap,scaleTFPgrid,shiftTFPgrid,vscale_set,zjload_dist,zjload_dist_nloptwrap
+	use find_params !, only: cal_dist,iter_wgtrend,iter_zproc,jshift_sol,vscale_set
 
 	implicit none
 
@@ -5654,7 +5064,7 @@ program V0main
 		endif
 		
 		if(verbose>2) print *, "iterating to find wage trend"
-!~ 		call iter_wgtrend(vfs, pfs, hst,shk)
+		call iter_wgtrend(vfs, pfs, hst,shk)
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -5725,32 +5135,32 @@ program V0main
 	
 	
 	
-!	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
-!~ 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
-!~ 	lb = (/0.01_dp, 0.0_dp/)
-!~ 	lb_1 = (/.01/)
-!~ 	call nlo_set_lower_bounds(ires,calopt,lb_1)
-!~ 	ub = (/ 7._dp, 0.5_dp /)
-!~ 	ub_1 = (/5./)
-!~ 	call nlo_set_upper_bounds(ires,calopt,ub_1)
-!~ 	call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
-!~ 	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
-!~ 	call nlo_set_maxeval(ires,calopt,500_dp)
+	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
+! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
+ 	lb = (/0.01_dp, 0.0_dp/)
+! 	lb_1 = (/.01/)
+ 	call nlo_set_lower_bounds(ires,calopt,lb)
+ 	ub = (/ 2._dp, 0.5_dp /)
+! 	ub_1 = (/5./)
+	call nlo_set_upper_bounds(ires,calopt,ub)
+	call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
+	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
+	call nlo_set_maxeval(ires,calopt,500_dp)
 	
-!~ 	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 	
-!~ 	parvec(1) = nu
-!~ 	parvec(2) = xizcoef
-!~ 	parvec_1(1) = nu
+	parvec(1) = nu
+	parvec(2) = xizcoef
+!~ 	!parvec_1(1) = nu
 
-!~ 	open(unit=fcallog, file=callog)
-!~ 	write(fcallog,*) " "
-!~ 	close(unit=fcallog)
-!~   	call nlo_optimize(ires, calopt, parvec_1, erval)
-!~ 	nu = parvec_1(1) ! new optimum
-!~ 	xizcoef = parvec(2)
+	open(unit=fcallog, file=callog)
+	write(fcallog,*) " "
+	close(unit=fcallog)
+  	call nlo_optimize(ires, calopt, parvec, erval)
+	nu = parvec(1) ! new optimum
+	xizcoef = parvec(2)
 
-!~   	call cal_dist(parvec_1,ervec_1,shk)
+  	call cal_dist(parvec_1,ervec_1,shk)
 
 
 !~ !****************************************************************************
