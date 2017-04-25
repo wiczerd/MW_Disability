@@ -21,6 +21,9 @@ integer           :: fcallog = 7
 
 integer, parameter:: dp=kind(0.d0) ! double precision
 
+
+logical :: dbg_skip = .false. !skip stuff for a minimal debug
+
 !**Environmental Parameters**********************************************************************!
 real(8), parameter ::	youngD = 20., &	!Length of initial young period
 		oldD = 5., &		!Length of each old period
@@ -53,7 +56,7 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			nz  = 2,  &		        !Number of aggregate shock states
 			nj  = 16, &!16			!Number of occupations
 			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 16000, &!10000*nj !how many agents to draw
+			Nsim = 16000,&!10000*nj !how many agents to draw
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
@@ -379,12 +382,14 @@ subroutine setparams()
 	!this comes from the SIPP, code in CVW: DTall[ lfstat_wave==1 & seam==T, mean(wavewage,na.rm = T)] - DTall[ lfstat_wave==1 & seam==T & shift(EU_wave,type="lag")==T, mean(wavewage,na.rm = T)]
 	sd_uloss   = (0.5888828)**0.5
 	
-	pialf(1,2) = alnorm( ((alfgrid(3)+alfgrid(2))/2.-mean_uloss) /sd_uloss,.false.)
-	do i= 3,(nal-1)
-		pialf(1,i) = ( &
-				&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.- mean_uloss ) /sd_uloss,.false.)- &
-				&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.- mean_uloss ) /sd_uloss,.false.) )
-	enddo
+	pialf(1,2) = alnorm( ((alfgrid(1)+alfgrid(2))/2.-mean_uloss) /sd_uloss,.false.)
+	if( nal > 3) then
+		do i= 3,(nal-1)
+			pialf(1,i) = ( &
+					&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.- mean_uloss ) /sd_uloss,.false.)- &
+					&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.- mean_uloss ) /sd_uloss,.false.) )
+		enddo
+	endif
 	pialf(1,nal) = 1.-sum(pialf(1,2:(nal-1) ))
 	pialf(2:nal,1) = 0. !exogenous separation is not built into alpha transitions
 
@@ -477,6 +482,13 @@ subroutine setparams()
 		PrDeath(:,t) = PrDeath_in_read(1+(t-1)*3:3+(t-1)*3)
 	enddo
 	PrDeath(:,TT) = PrDeath(:,TT-1)
+	
+	!Health structure by age
+	do t=1,TT
+		PrDage(:,t) = PrD_Age_read(t,1:nd)/sum(PrD_Age_read(t,1:nd))
+		PrD3age(t) = PrDage(nd,t)
+	enddo
+
 
 	!age structure extrapolate over periods
 	age_read(:,1) = age_read(:,1)-age_read(1,1)
@@ -491,8 +503,13 @@ subroutine setparams()
 	!evolution of age-structure!!!!!!!!!!!!!!!!!!!!!!
 
 	dy = PrDeath(1,1)
-	dm = 0.9d0*sum(PrDeath(1,2:TT-1))/dble(TT-2) + 0.1d0*sum(PrDeath(nd,2:TT-1))/dble(TT-2) !die
-	dm = (1.d0-dm)*((tlen*oldN*oldD)**(-1)) + dm !don't die, but age
+	if(dieyoung .eqv. .true.) then
+		dm = sum(PrDage(2:TT-1,1)*PrDeath(1,2:TT-1))/dble(TT-2) +sum(PrDage(2:TT-1,2)*PrDeath(2,2:TT-1))/dble(TT-2) + sum(PrDage(2:TT-1,nd)*PrDeath(nd,2:TT-1))/dble(TT-2) !die
+	else 
+		dm = 0.d0
+	endif
+	dm = dm + ((tlen*oldN*oldD)**(-1))*(1.d0-dm)  ! This was .0038
+	!dm = 0.009
 	
 	!now bisection on Nbar 0
 	prH = 0.2d0
@@ -725,13 +742,6 @@ subroutine setparams()
 			enddo
 		enddo
 	endif
-	
-	!was: PrD3age = (/0.1,0.17,0.21,0.27,0.34 /)
-	!then was PrD3age = (/0.0444_dp,0.0756_dp,0.0933_dp,0.1201_dp,0.1617_dp /)
-	do t=1,TT
-		PrDage(:,t) = PrD_Age_read(t,1:nd)/sum(PrD_Age_read(t,1:nd))
-		PrD3age(t) = PrDage(nd,t)
-	enddo
 
 	pid = 0.
 	! multiply by delgrid (was a 2-year transition matrix)

@@ -902,21 +902,21 @@ module model_data
 		tot3al	= 0
 		tot3age	= 0
 		totage_st=0
-		
-		dD_age 		= 0.
-		dD_t 		= 0.
-		a_age 		= 0.
-		a_t 		= 0.
-		alD		= 0.
-		alD_age		= 0.
-		appdif_age 	= 0.
-		workdif_age 	= 0.
-		alworkdif	= 0.
-		alappdif	= 0.
-		status_Nt 	= 0.
-		moments_sim%hlth_acc_rt = 0.
-		moments_sim%avg_hlth_acc = 0. 
 		tot_applied = 0
+				
+		dD_age 		= 0._dp
+		dD_t 		= 0._dp
+		a_age 		= 0._dp
+		a_t 		= 0._dp
+		alD		= 0._dp
+		alD_age		= 0._dp
+		appdif_age 	= 0._dp
+		workdif_age 	= 0._dp
+		alworkdif	= 0._dp
+		alappdif	= 0._dp
+		status_Nt 	= 0._dp
+		moments_sim%hlth_acc_rt = 0._dp
+		moments_sim%avg_hlth_acc = 0._dp
 		
 		do si = 1,Nsim
 			do st = 1,Tsim
@@ -987,14 +987,18 @@ module model_data
 		enddo ! si=1,Nsim
 
 		!overall disability rate (the money stat)
-		DIatriskpop =0.
-		moments_sim%avg_di = 0.
+		DIatriskpop =0._dp
+		moments_sim%avg_di = 0._dp
 		do st=1,Tsim
 			DIatriskpop = sum(status_Nt(1:3,st)) + DIatriskpop
 			moments_sim%avg_di = status_Nt(4,st) + moments_sim%avg_di
 		enddo
 		moments_sim%avg_di = moments_sim%avg_di/DIatriskpop
-		moments_sim%avg_hlth_acc = moments_sim%avg_hlth_acc/dble(sum(tot_applied))
+		if(sum(tot_applied) >0) then
+			moments_sim%avg_hlth_acc = moments_sim%avg_hlth_acc/dble(sum(tot_applied))
+		else 
+			moments_sim%avg_hlth_acc = 0._dp
+		endif
 		!just for convenience
 		forall(it=1:TT) totage(it) = sum(totage_st(it,:))
 		
@@ -1003,7 +1007,7 @@ module model_data
 			if( tot3age(it) > 0) then
 				appdif_age(it) = appdif_age(it)/dble(tot3age(it))
 			else
-				appdif_age(it) = 0.
+				appdif_age(it) = 0._dp
 			endif
 		enddo
 		forall(it=1:TT-1) workdif_age(it) = workdif_age(it)/dble(totage(it)-totD(it))
@@ -1011,31 +1015,45 @@ module model_data
 			if(tot3al(ial) >0 ) then
 				alappdif(ial) = alappdif(ial)/dble(tot3al(ial))
 			else
-				alappdif(ial) =0.
+				alappdif(ial) =0._dp
 			endif
 		enddo
-		forall(ial=1:nal) alworkdif(ial) = alworkdif(ial)/dble(total(ial))
-		!disability distribution by shock and shock,age
-		forall(ial=1:nal) alworkdif(ial) = alworkdif(ial)/dble(total(ial))
-		forall(ial=1:nal) alD(ial) = dble(alD(ial))/dble(total(ial) + alD(ial))
-		forall(it=1:TT-1,ial=1:nal) alD_age(ial,it) = alD_age(ial,it)/dble(total(ial))/dble(totage(it))
-		! status distribution by age
-		forall(it=1:TT-1) moments_sim%di_rate(it) = dble(totD(it))/dble(totage(it))
-		forall(it=1:TT-1) moments_sim%work_rate(it) = dble(totW(it))/dble(totage(it))
+		do ial=1,nal
+			if(total(ial)>0) then
+				alworkdif(ial) = alworkdif(ial)/dble(total(ial))
+				!disability distribution by shock and shock,age
+				alworkdif(ial) = alworkdif(ial)/dble(total(ial))
+				alD(ial) = dble(alD(ial))/dble(total(ial) + alD(ial))
+				do it=1,TT-1
+					if(totage(it)>0) alD_age(ial,it) = alD_age(ial,it)/dble(total(ial))/dble(totage(it))
+				enddo
+			endif
+		enddo
 		! asset distribution by age, time and disability status
-		forall(it=1:TT ) a_age(it) = a_age(it)/dble(totage(it))
-		forall(st=1:Tsim) a_t(st) = a_t(st)/dble(sum(totage_st(:,st)))
-
-		forall(st=1:Tsim) status_Nt(:,st)= status_Nt(:,st)/sum(status_Nt(:,st))
+		do it=1,TT
+			if( it<TT .and. totage(it)>0) then
+				moments_sim%di_rate(it) = dble(totD(it))/dble(totage(it))
+				moments_sim%work_rate(it) = dble(totW(it))/dble(totage(it))
+			endif
+			if(totage(it)>0) a_age(it) = a_age(it)/dble(totage(it))
+		enddo
 		
-		forall(it=1:TT-1 ) moments_sim%hlth_acc_rt(it) = moments_sim%hlth_acc_rt(it)/dble(tot_applied(it))
+		! status distribution by age
+		do st=1,Tsim
+				if( sum(status_Nt(:,st))>0._dp ) status_Nt(:,st)= status_Nt(:,st)/sum(status_Nt(:,st))
+				if( sum(totage_st(:,st)) >0 ) a_t(st) = a_t(st)/dble(sum(totage_st(:,st)))
+		enddo
+		
+		do it=1,TT-1
+			if(tot_applied(it)>0) moments_sim%hlth_acc_rt(it) = moments_sim%hlth_acc_rt(it)/dble(tot_applied(it))
+		enddo
 
-		napp_t = 0.
-		ninsur_app = 0.
+		napp_t = 0._dp
+		ninsur_app = 0._dp
 		moments_sim%init_di = 0._dp
 		moments_sim%init_hlth_acc = 0._dp
 		do i=1,Nsim
-			dicont_hr = 0.
+			dicont_hr = 0._dp
 			do it=1,(5*itlen)
 				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
 					! latent value of an application
@@ -1045,14 +1063,14 @@ module model_data
 						!	moments_sim%init_di= moments_sim%init_di+ hst%di_prob_hist(i,it)*dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
 						endif
 					endif
-					ninsur_app = 1. + ninsur_app
+					ninsur_app = 1._dp + ninsur_app
 					if( hst%hlth_voc_hist(i,it) >0) then
 						napp_t = napp_t+1.
 						if(hst%hlthprob_hist(i,it)>0)  moments_sim%init_hlth_acc = moments_sim%init_hlth_acc+ (hst%hlthprob_hist(i,it)/(hst%di_prob_hist(i,it)))**smthELPM
 					endif
 
 					if(hst%status_hist(i,it) == 4 ) then 
-						if(it==1 .or. dicont_hr==0.) then
+						if(it==1 .or. dicont_hr==0._dp) then
 							moments_sim%init_di= moments_sim%init_di+1._dp
 						else 
 							moments_sim%init_di= moments_sim%init_di+dicont_hr
@@ -1062,8 +1080,12 @@ module model_data
 				endif
 			enddo
 		enddo
-		moments_sim%init_di= moments_sim%init_di/ninsur_app
-		if(napp_t > 0.) then
+		if(ninsur_app>0._dp) then
+			moments_sim%init_di= moments_sim%init_di/ninsur_app
+		else
+			moments_sim%init_di= 0._dp
+		endif
+		if(napp_t > 0._dp) then
 			moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/napp_t
 		else
 			moments_sim%init_hlth_acc= 1._dp
@@ -4136,8 +4158,13 @@ module sim_hists
 					
 				enddo
 				do ij =1,nj
-					occgrow_jt(ij,it) = occgrow_hr(ij)/occsize_hr(ij)
-					occshrink_jt(ij,it) = occshrink_hr(ij)/occsize_hr(ij)
+					if( occsize_hr(ij) > 0._dp ) then
+						occgrow_jt(ij,it) = occgrow_hr(ij)/occsize_hr(ij)
+						occshrink_jt(ij,it) = occshrink_hr(ij)/occsize_hr(ij)
+					else
+						occgrow_jt(ij,it) = 0._dp
+						occshrink_jt(ij,it) = 0._dp
+					endif
 				enddo
 				occsize_jt(:,it) = occsize_hr/Nworkt
 			enddo
@@ -5062,9 +5089,11 @@ program V0main
 			endif	
 			if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 		endif
-		
-		if(verbose>2) print *, "iterating to find wage trend"
-		call iter_wgtrend(vfs, pfs, hst,shk)
+
+		if(dbg_skip .eqv. .false.) then
+			if(verbose>2) print *, "iterating to find wage trend"
+			call iter_wgtrend(vfs, pfs, hst,shk)
+		endif
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -5100,13 +5129,15 @@ program V0main
 
 		Vtol = 1e-6
 
-		parvec(1) = nu
-		parvec(2) = xizcoef
-		parvec_1(1) = nu
-		err0 = 0.
-		call cal_dist(parvec_1,ervec_1,shk)
-		
-		print *, ervec_1
+		if(dbg_skip .eqv. .false.) then
+			parvec(1) = nu
+			parvec(2) = xizcoef
+			parvec_1(1) = nu
+			err0 = 0.
+			call cal_dist(parvec_1,ervec_1,shk)
+			
+			print *, ervec_1
+		endif
 		
 		if(verbose > 2) then
 			call CPU_TIME(t2)
@@ -5114,6 +5145,7 @@ program V0main
 			print *, "System Time", dble(c2-c1)/dble(cr)
 			print *, "   CPU Time", (t2-t1)
 		endif
+		
 	
 	endif !sol_once
 	
@@ -5134,34 +5166,34 @@ program V0main
 !~ 	enddo
 	
 	
-	
-	call nlo_create(calopt,NLOPT_LN_SBPLX,2)
-! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
- 	lb = (/0.01_dp, 0.0_dp/)
-! 	lb_1 = (/.01/)
- 	call nlo_set_lower_bounds(ires,calopt,lb)
- 	ub = (/ 2._dp, 0.5_dp /)
-! 	ub_1 = (/5./)
-	call nlo_set_upper_bounds(ires,calopt,ub)
-	call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
-	call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
-	call nlo_set_maxeval(ires,calopt,500_dp)
-	
-	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
-	
-	parvec(1) = nu
-	parvec(2) = xizcoef
-!~ 	!parvec_1(1) = nu
+	if( dbg_skip .eqv. .false.) then
+		call nlo_create(calopt,NLOPT_LN_SBPLX,2)
+	! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
+		lb = (/0.01_dp, 0.0_dp/)
+	! 	lb_1 = (/.01/)
+		call nlo_set_lower_bounds(ires,calopt,lb)
+		ub = (/ 2._dp, 0.5_dp /)
+	! 	ub_1 = (/5./)
+		call nlo_set_upper_bounds(ires,calopt,ub)
+		call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
+		call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
+		call nlo_set_maxeval(ires,calopt,500_dp)
+		
+		call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+		
+		parvec(1) = nu
+		parvec(2) = xizcoef
+	!~ 	!parvec_1(1) = nu
 
-	open(unit=fcallog, file=callog)
-	write(fcallog,*) " "
-	close(unit=fcallog)
-  	call nlo_optimize(ires, calopt, parvec, erval)
-	nu = parvec(1) ! new optimum
-	xizcoef = parvec(2)
+		open(unit=fcallog, file=callog)
+		write(fcallog,*) " "
+		close(unit=fcallog)
+		call nlo_optimize(ires, calopt, parvec, erval)
+		nu = parvec(1) ! new optimum
+		xizcoef = parvec(2)
 
-  	call cal_dist(parvec_1,ervec_1,shk)
-
+		call cal_dist(parvec_1,ervec_1,shk)
+	endif
 
 !~ !****************************************************************************
 !~ !   Now run some experiments:
