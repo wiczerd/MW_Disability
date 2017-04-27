@@ -504,7 +504,7 @@ subroutine setparams()
 
 	dy = PrDeath(1,1)
 	if(dieyoung .eqv. .true.) then
-		dm = sum(PrDage(2:TT-1,1)*PrDeath(1,2:TT-1))/dble(TT-2) +sum(PrDage(2:TT-1,2)*PrDeath(2,2:TT-1))/dble(TT-2) + sum(PrDage(2:TT-1,nd)*PrDeath(nd,2:TT-1))/dble(TT-2) !die
+		dm = sum(PrDage(1,2:TT-1)*PrDeath(1,2:TT-1))/dble(TT-2) +sum(PrDage(2,2:TT-1)*PrDeath(2,2:TT-1))/dble(TT-2) + sum(PrDage(nd,2:TT-1)*PrDeath(nd,2:TT-1))/dble(TT-2) !die
 	else 
 		dm = 0.d0
 	endif

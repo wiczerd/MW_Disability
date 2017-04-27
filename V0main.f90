@@ -187,30 +187,33 @@ module helper_funs
 	!------------------------------------------------------------------------
 	! 4) Acceptance probability
 	!--------------------
-	function xifun(idin,win,itin,hlthprob)
+	function xifun(idin,trin,itin,hlthprob)
 
-		real(dp), intent(in):: win
+		real(dp), intent(in):: trin
 		integer, intent(in):: idin,itin
 		real(dp), optional :: hlthprob
-		real(dp) :: xifunH,xifunV,xifun
+		real(dp) :: xifunH,xifunV,xifun, hlthfrac
 		
 		!stage 1-3
 		xifunH = xi_d(idin)
+		!adjsut for time aggregation in first stage?
 	!	xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
-		if(present(hlthprob) .eqv. .true.) &
-			hlthprob = xifunH
 		
 		!vocational stages 4-5
 		if(itin>=(TT-2)) then
-			xifunV =  (maxwin-win)/(1._dp+(maxwin-win))*xizcoef*(1.+xiagecoef)
+			xifunV =  (maxval(trgrid)-trin)/(1._dp+(maxval(trgrid)-trin))*xizcoef*(1.+xiagecoef)
 		else
-			xifunV =  (maxwin-win)/(1._dp+(maxwin-win))*xizcoef
+			xifunV =  (maxval(trgrid)-trin)/(1._dp+(maxval(trgrid)-trin))*xizcoef
 		endif
-		!adjust for time aggregation
+		!adjust for time aggregation in second stage?
 	!	xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 		
 		xifun = xifunV*(1.-xifunH) + xifunH
 	
+		hlthfrac = xifunH/xifun
+		
+		
+		!adjust for time aggregation all at once
 		xifun = 1._dp - max(0._dp,1._dp-xifun)**(1._dp/proc_time1)
 		
 		xifun = min(xifun,1._dp)
@@ -218,6 +221,8 @@ module helper_funs
 		if((itin .eq. 1) .and. (ineligNoNu .eqv. .false.)) then
 			xifun = xifun*eligY
 		endif
+		if(present(hlthprob) .eqv. .true.) &
+			hlthprob = hlthfrac*xifun
 		
 	end function
 
@@ -1315,7 +1320,7 @@ module sol_val
 	
 		!**********Value if apply for DI 
 
-		xihr = xifun(id,wagehere,it)
+		xihr = xifun(id,trgrid(itr),it)
 		nuhr = nu
 		if(it== TT-1) nuhr = nu*(ptau(it)) !only pay nu for non-retired state
 		minvalVD = minval(VD0)
@@ -3815,9 +3820,9 @@ module sim_hists
 								
 								app_dif_it(i,it) = app_dif_hr
 								if( (age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))) then
-									di_prob_it(i,it) = xifun(d_hr,wage_hr,age_hr,hlthprob)
+									di_prob_it(i,it) = xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)
 								elseif( age_hr ==1)  then
-									di_prob_it(i,it) = xifun(d_hr,wage_hr,age_hr,hlthprob)*eligY
+									di_prob_it(i,it) = xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)*eligY
 								endif
 								if( app_dif_hr < 0 ) app_it(i,it) = 0
 								if(app_dif_hr >= 0) then
@@ -3827,7 +3832,7 @@ module sim_hists
 									if((age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))&
 										& .or. ((age_hr ==1) .and. (status_it_innov(i,Tsim-it+1)<eligY) )) then !status_it_innov(i,it+1) is an independent draw
 										!applying, do you get it?
-										if(status_it_innov(i,it) < xifun(d_hr,wage_hr,age_hr,hlthprob)) then 
+										if(status_it_innov(i,it) < xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)) then 
 											status_tmrw = 4
 											hst%hlthprob_hist(i,it) = hlthprob
 											if( status_it_innov(i,it) <  hlthprob) then
@@ -4983,20 +4988,20 @@ program V0main
 		open(2, file="xi_hlth.csv")
 		do it=1,TT-1
 			do id=1,(nd-1)
-				write(1, "(G20.12)", advance='no') xifun(id,minwin*1.1_dp,it,junk)
+				write(1, "(G20.12)", advance='no') xifun(id,minval(trgrid),it,junk)
 				write(2, "(G20.12)", advance='no') junk
 			enddo
 			id = nd
-			write(1,*) xifun(id,minwin*1.1_dp,it,junk)
+			write(1,*) xifun(id,minval(trgrid),it,junk)
 			write(2,*) junk
 		enddo
 		do it=1,TT-1
 			do id=1,(nd-1)
-				write(1, "(G20.12)", advance='no') xifun(id,maxwin*0.9_dp,it,junk)
+				write(1, "(G20.12)", advance='no') xifun(id,maxval(trgrid),it,junk)
 				write(2, "(G20.12)", advance='no') junk
 			enddo
 			id = nd
-			write(1,*) xifun(id,maxwin*0.9_dp,it,junk)
+			write(1,*) xifun(id,maxval(trgrid),it,junk)
 			write(2,*) junk
 		enddo		
 		close(1)
@@ -5183,7 +5188,7 @@ program V0main
 		
 		parvec(1) = nu
 		parvec(2) = xizcoef
-	!~ 	!parvec_1(1) = nu
+!~ 		!parvec_1(1) = nu
 
 		open(unit=fcallog, file=callog)
 		write(fcallog,*) " "
