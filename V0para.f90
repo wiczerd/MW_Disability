@@ -55,6 +55,8 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			na  = 50, &!50	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			nj  = 16, &!16			!Number of occupations
+			Nskill = 3,&			!number of skills that define occupations. First is always physical 
+			NpolyT = 2,&			!polynomial order or time trend for occupation
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000,&!10000*nj !how many agents to draw
 			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
@@ -136,6 +138,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 !		targets for occupations
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
+		occ_onet(nj,Nskill),&!physical and 3 KSA
+		occwg_coefs(Nskill+1,NpolyT+1),& !coefficients for wage regression. also includes 0-order and time-only
 		occwg_trend(Tsim,nj),& !trend in occupation wage
 		occwg_lev(nj),&		!level of occupation wage
 !
@@ -228,8 +232,9 @@ subroutine setparams()
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
 	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(35,TT), maxADL_read(16),avgADL, &
-		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), wage_lev_read(16), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2),&
-		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(35)
+		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
+		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(35), &
+		& wage_coef_read(17)
 		
 	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3 
 	real(8) :: pNy,pNm,Ny,Nm,dy,dm, Nbar,totborn,prH,prL, bN(Tsim)
@@ -286,11 +291,14 @@ subroutine setparams()
 		read(fread,*) wage_trend_read(t,:)
 	enddo
 	close(fread)
-	open(unit= fread, file = "wageLev.csv")
-	do j=1,nj
-		read(fread,*) wage_lev_read(j)
+
+
+	open(unit= fread, file = "OLSWageTrend_O2.csv")
+	do j=1,17
+		read(fread,*) wage_coef_read(j)
 	enddo
 	close(fread)
+
 	
 	!Read in the disability means by occuaption
 	open(unit= fread, file="maxADL.csv")
@@ -304,6 +312,12 @@ subroutine setparams()
 		read(fread, *,iostat=k) causal_phys_read(j)
 	enddo
 	close(fread)
+	open(unit= fread, file="ONETpca.csv")
+	do j=1,nj
+		read(fread, *,iostat=k) ONET_read(j,:) !first column is label, then Phys, then non-phys
+	enddo
+	close(fread)
+	
 
 	!read in health transitions estimated directly from PSID
 	open(unit=fread, file="PrDDp_Age.csv")
@@ -398,15 +412,51 @@ subroutine setparams()
 
 	!~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	! Occupation wage component
+!~ 	do i=1,nj
+!~ 		occwg_lev(i) = wage_lev_read(i)
+!~ 		do t=1,Tsim	
+!~ 			occwg_trend(t,i) = wage_trend_read(t,i+1)
+!~ 		enddo
+!~ 	enddo
+
 	do i=1,nj
-		occwg_lev(i) = wage_lev_read(i)
-		do t=1,Tsim	
-			occwg_trend(t,i) = wage_trend_read(t,i+1)
+		do k=2,(Nskill+1)
+			occ_onet(i,k-1) = ONET_read(i,k)
+		enddo
+	enddo
+
+	t=6
+	do j=1,(NpolyT+1)
+		do k=1,(Nskill+1)
+			if(k > 1 .or. j > 1) then
+				occwg_coefs(k,j) = wage_coef_read(t)
+				t = t+1
+			else 
+				occwg_coefs(k,j) = 0._dp
+			endif
+		enddo
+	enddo
+
+	!use the coefficients:
+	do i=1,nj
+		do t=1,Tsim
+			occwg_trend(t,i) = 0._dp
+			do j =1,(NpolyT)
+				occwg_trend(t,i) =     (dble(t)/12.)**(j-1)*occwg_coefs(1,j)                 + occwg_trend(t,i)
+				do k=1,Nskill
+					occwg_trend(t,i) = (dble(t)/12.)**(j-1)*occwg_coefs(k+1,j)*occ_onet(i,k) + occwg_trend(t,i)
+				enddo
+			enddo
 		enddo
 	enddo
 	!initialize the input to the observed
-	wage_lev = 0.!occwg_lev
+	do i=1,nj
+		occwg_lev(i) = occwg_trend(1,i)
+		occwg_trend(:,i) = occwg_trend(:,i) - occwg_lev(i)
+	enddo
+	wage_lev = 0.
 	wage_trend = occwg_trend
+
 
 	!Wage-trend grid-setup
 	trgrid(1) = minval(occwg_trend)*0.9_dp
@@ -422,8 +472,6 @@ subroutine setparams()
 		trgrid(1) = 0.
 		tri0 = 1
 	endif
-
-
 
 	!read these numberrs in already
 	seprisk = 0._dp
@@ -671,8 +719,8 @@ subroutine setparams()
 	!Disability Extent-Specific Things
 	!Wage Penalty 
 	wd(1) = 0		!Healthy, no penalty
-	wd(2) = -0.2973112	!Partially Disabled, small penalty	
-	wd(3) = -0.50111	!Full Disabled, large penalty
+	wd(2) = -0.095	!Partially Disabled, small penalty	
+	wd(3) = -0.246	!Full Disabled, large penalty
 
 	!DI Acceptance probability for each d,t status
 	xiagecoef = voc_age

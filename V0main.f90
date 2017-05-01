@@ -3641,25 +3641,25 @@ module sim_hists
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
 					!in the first period need to establish the right number of exog unemp
-					if((it==1) .and. (iter>1) .and. (status_hr<=3) .and. (age_hr>0)) then
-						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
-									ali_hr = 1
-									al_last_invol = al_hr
-									invol_un = 1
-									iiwt = 1._dp
-									iiH = 2
-									al_hr = alfgrid(ali_hr)
-									if(status_it_innov(i,Tsim-2)<PrAl1St3(zi_hr)) then
-										status_hr=3
-										status_tmrw = 3
-										status_it(i,it) = 3
-									else 
-										status_hr=2
-										status_tmrw = 2
-										status_it(i,it) = 2
-									endif
-						endif
-					endif
+!~ 					if((it==1) .and. (iter>1) .and. (status_hr<=3) .and. (age_hr>0)) then
+!~ 						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
+!~ 									ali_hr = 1
+!~ 									al_last_invol = al_hr
+!~ 									invol_un = 1
+!~ 									iiwt = 1._dp
+!~ 									iiH = 2
+!~ 									al_hr = alfgrid(ali_hr)
+!~ 									if(status_it_innov(i,Tsim-2)<PrAl1St3(zi_hr)) then
+!~ 										status_hr=3
+!~ 										status_tmrw = 3
+!~ 										status_it(i,it) = 3
+!~ 									else 
+!~ 										status_hr=2
+!~ 										status_tmrw = 2
+!~ 										status_it(i,it) = 2
+!~ 									endif
+!~ 						endif
+!~ 					endif
 					
 					if( w_strchng .eqv. .true.) then
 						do tri_hr = ntr,1,-1
@@ -4495,38 +4495,37 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		
-		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter),dist_urt(maxiter),dist_udur(maxiter)
+		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter),dist_urt(maxiter),dist_udur(maxiter), sep_fnd_mul(maxiter,2)
 		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
 		integer  :: i,ii,ij,it, iter,iout,plO,vO
 		real(dp) :: urt,udur,Efrt,Esrt
-		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt0_mul,seprt1_mul
-		real(dp) :: seprt1,seprt0,s0factor,frt0,frt0_mul, avg_convergence
+		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt_mul0,seprt_mul1
+		real(dp) :: avg_convergence, sep_implied
 		integer  :: miniter = 3
 		
 		allocate(jwages(Nsim))
 		allocate(dist_wgtrend_jt(Tsim,nj))
 		allocate(med_wage_jt(Tsim,nj))
-
+		
 		plO = print_lev
 		if(plO<4) print_lev = 1
 		vO = verbose
 		if(vO<4) verbose=0
 		!call mat2csv(wage_trend,"wage_trend_0.csv")
 		avg_convergence = 1.
-		
 
 		!initialize fmul stuff
 		fndrt_mul0 = 1. 
-		seprt0_mul = 1.
+		seprt_mul0 = 1.
 		
-		do iter = 1,(maxiter)
+		do iter = 1,maxiter
 			dist_wgtrend = 0.
 			dist_wgtrend_iter(iter) = 0.
 			
 			call sim(vfs, pfs, hst,shk,.false.)
 			
 			call comp_ustats(hst,shk,urt,udur,Efrt,Esrt)
-			if(verbose>2) print*,  'urt , udur', urt,udur
+			if(verbose>2) print*,  'urt , udur', urt,udur !if(verbose>2) 
 			if(verbose>2) print*,  'Efrt, Esrt', Efrt,Esrt
 			dist_urt(iter) = (urt - avg_unrt)/avg_unrt
 			dist_udur(iter)= (udur - avg_undur)/avg_undur
@@ -4582,26 +4581,34 @@ module find_params
 				
 			endif
 			!take a step in fndrate, seprisk space
-			frt0_mul = udur*Efrt
 			
 			fndrt_mul1 = udur/avg_undur*fndrt_mul0
 			fndrt_mul1 = upd_wgtrnd*fndrt_mul1 + (1.-upd_wgtrnd)*fndrt_mul0
-			!fndrt_mul1 = fndrt_mul0 !HOLD FOR NOW... see if otherstuff works
-				
-			seprt1_mul = (Efrt*fndrt_mul1/fndrt_mul0*avg_unrt)/(Esrt/seprt0_mul*(1.-avg_unrt))
-			seprt1_mul = upd_wgtrnd*seprt1_mul + (1.-upd_wgtrnd)*seprt0_mul
+
+			sep_implied = (Efrt*avg_unrt)/(1.-avg_unrt)
+			seprt_mul1  = sep_implied/Esrt*seprt_mul0
+			seprt_mul1 = (Efrt*avg_unrt)/(Esrt/seprt_mul0*(1.-avg_unrt))
+!~  			seprt_mul1 = upd_wgtrnd*seprt_mul1 + (1.-upd_wgtrnd)*seprt_mul0
+!~ 			if( urt - avg_unrt >0._dp ) then
+!~ 				seprtH = upd_wgtrnd*seprt_mul1 + (1._dp - upd_wgtrnd)*seprtH
+!~ 			else
+!~ 				seprtL = upd_wgtrnd*seprt_mul1 + (1._dp - upd_wgtrnd)*seprtL
+!~ 			endif
+!~ 			seprt_mul1 = 0.5_dp*(seprtH + seprtL)
+			seprt_mul1 = seprt_mul0 - 0.01_dp*(urt - avg_unrt)/avg_unrt
 			
-			
-			!seprisk = seprisk/seprt0_mul*seprt1_mul
+			!seprisk = seprisk/seprt_mul0*seprt_mul1
 			!fndrate = fndrate/fndrt_mul0*fndrt_mul1
-			sepgrid = sepgrid/seprt0_mul*seprt1_mul
+			sepgrid = sepgrid/seprt_mul0*seprt_mul1
 			fndgrid = fndgrid/fndrt_mul0*fndrt_mul1
 			
 			
-			seprt0_mul = seprt1_mul
+			seprt_mul0 = seprt_mul1
 			fndrt_mul0 = fndrt_mul1
+			sep_fnd_mul(iter,:) = (/ seprt_mul1, fndrt_mul1/)
+			
 			if(verbose .ge. 3) &
-				print*, "iter ", iter, "dist ", dist_wgtrend, "seprt1", seprt1_mul
+				print*, "iter ", iter, "dist ", dist_wgtrend, "seprt1", seprt_mul1
 			if(vO .ge. 2 .and. mod(iter,100)==0) then
 				print*, "iter ", iter, "dist ", dist_wgtrend
 			endif
@@ -4616,7 +4623,7 @@ module find_params
 			call vec2csv(dist_wgtrend_iter(1:(iter-1)), "dist_wgtrend_iter.csv")
 			call vec2csv(dist_urt(1:(iter-1)), "dist_urt.csv")
 			call vec2csv(dist_udur(1:(iter-1)), "dist_udur.csv")
-			
+			call mat2csv(sep_fnd_mul(1:(iter-1),:), "sep_fnd_mul.csv")
 			if(verbose .ge. 2) print *, "iterated ", (iter-1)
 		endif
 		
@@ -4952,6 +4959,7 @@ program V0main
 		call mat2csv(prob_age, "prob_age.csv")
 		call mat2csv(occpr_trend,"occpr_trend.csv")
 		call mat2csv(wage_trend,"occwg_trend.csv")
+		call mat2csv(occwg_coefs,"occwg_coefs.csv")
 
 
 		!output the possible wage-levels and set maxwin and minwin
