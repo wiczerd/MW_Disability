@@ -29,12 +29,9 @@ real(8), parameter ::	youngD = 20., &	!Length of initial young period
 		oldD = 5., &		!Length of each old period
 		tlen =12., &		!Number of periods per year (monthly)	
 		Longev = 82.- 25.,&	!Median longevity	
-		ageW = 0.0373076, &	!Coefficient on Age in Mincer,
-		ageW2 = -.0007414,&	!Coefficient on Age^2 in Mincer
-		ageD = 0.1, &		!Coefficient on Age over 45 in Disability hazard (exponential)
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.407,&	!Fraction young who are eligable
-		R =1.,&!dexp(.02/tlen),&	!People can save at 3% (not quite the rate they'd like)
+		R =1.,&!dexp(.02/tlen),&	!People can save in the backyard
 		avg_unrt = 0.055,&	!average rate of unemployment over the period.
 		avg_undur = 3.,&	! average months of unemployment
 		upd_zscl = 0.1,&		! rate at which to update zshift
@@ -46,20 +43,20 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types 
-			ntr = 5, &!5	        !Number of occupation trend points
+integer, parameter ::	nal = 3,  &!5		!Number of individual alpha types 
+			ntr = 4, &!5	        !Number of occupation trend points
 			ndi = 2,  &		    	!Number of individual disability risk types
 			nl	= 2,  &				!Number of finding/separation rates
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 50, &!50	        !Points on assets grid
+			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			na  = 25, &!50	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			nj  = 16, &!16			!Number of occupations
 			Nskill = 3,&			!number of skills that define occupations. First is always physical 
 			NpolyT = 2,&			!polynomial order or time trend for occupation
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000,&!10000*nj !how many agents to draw
-			Tsim = itlen*(2010-1980), &	!how many periods to solve for simulation
+			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10
@@ -72,8 +69,10 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  z_regimes	 = .false.,&!different z regimes?
 					  ineligNoNu = .false.,&!do young ineligable also pay the nu cost when they are ineligable?
 					  dieyoung   = .true.,&	!do the young die (rate associated with health state)
+					  wglev_0	 = .false.,& !should the initial wage level be 0 for all occupations
 					  pid_ss	 = .true.,&	!do health transition rates preserve steady state
 					  precal_bisnu=.false. 	!before doing the full calibration of 
+					  
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
@@ -153,7 +152,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
 		nu = 1., &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
-!	Idiosyncratic income risk
+!	Idiosyncratic income process
 		alfrho = 0.988, &	!Peristence of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
 		alfsig = 0.015**0.5,&	!Unconditional StdDev of Alpha_i type (Normal)
@@ -162,6 +161,10 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
 		xsep = 0.015, &		!Separation probability into unemployment
+		
+		ageW = 0.0373076, &	!Coefficient on Age in Mincer,
+		ageW2 = -.0007414,&	!Coefficient on Age^2 in Mincer
+		
 !	Agregate income risk
 		zrho	= 0.95,	&	!Persistence of the AR process
 		zmu		= 0.,	&	!Drift of the AR process, should always be 0
@@ -192,7 +195,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		
 ! some handy programming terms
 integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
-			Tblock_sim = struc_brk,&		!The actual time before structural change (years)
+			Tblock_sim = struc_brk,&		!The actual time before structural change (years). For z_regime
 			ialUn	= 1 ,&		! the index of alpha that signifies an exogenously displaced worker
 			ialL	= 2 ,&
 			tri0	= ntr/2	! the index of the trgrid that is 0
@@ -441,10 +444,10 @@ subroutine setparams()
 	do i=1,nj
 		do t=1,Tsim
 			occwg_trend(t,i) = 0._dp
-			do j =1,(NpolyT)
-				occwg_trend(t,i) =     (dble(t)/12.)**(j-1)*occwg_coefs(1,j)                 + occwg_trend(t,i)
+			do j =1,(NpolyT+1)
+				occwg_trend(t,i) =     (dble(t)/tlen)**(j-1)*occwg_coefs(1,j)                 + occwg_trend(t,i)
 				do k=1,Nskill
-					occwg_trend(t,i) = (dble(t)/12.)**(j-1)*occwg_coefs(k+1,j)*occ_onet(i,k) + occwg_trend(t,i)
+					occwg_trend(t,i) = (dble(t)/tlen)**(j-1)*occwg_coefs(k+1,j)*occ_onet(i,k) + occwg_trend(t,i)
 				enddo
 			enddo
 		enddo
@@ -454,7 +457,11 @@ subroutine setparams()
 		occwg_lev(i) = occwg_trend(1,i)
 		occwg_trend(:,i) = occwg_trend(:,i) - occwg_lev(i)
 	enddo
-	wage_lev = 0.
+	if(wglev_0 .eqv. .true.) then
+		wage_lev = 0._dp
+	else
+		wage_lev = occwg_lev
+	endif
 	wage_trend = occwg_trend
 
 

@@ -2490,7 +2490,7 @@ module sim_hists
 		integer :: ss=1, si_int,fi_int,m,i,ij,iz
 		real(dp) :: fndgridL, fndgridH,fndwtH,fndwtL,fndgrid_i
 		real(dp) :: sepgridL, sepgridH,sepwtH,sepwtL,sepgrid_i
-		real(dp), dimension(nl,nj,nz) :: fndcumwt,sepcumwt
+		real(dp), dimension(nl+1,nj,nz) :: fndcumwt,sepcumwt
 
 		fndwt	 = 1._dp/dble(nl) ! initialize with equal weight
 		sepwt	 = 1._dp/dble(nl) ! initialize with equal weight
@@ -3640,26 +3640,30 @@ module sim_hists
 					!set the idiosyncratic income state
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!RETURN TO THIS PART!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 					!in the first period need to establish the right number of exog unemp
-!~ 					if((it==1) .and. (iter>1) .and. (status_hr<=3) .and. (age_hr>0)) then
-!~ 						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
-!~ 									ali_hr = 1
-!~ 									al_last_invol = al_hr
-!~ 									invol_un = 1
-!~ 									iiwt = 1._dp
-!~ 									iiH = 2
-!~ 									al_hr = alfgrid(ali_hr)
-!~ 									if(status_it_innov(i,Tsim-2)<PrAl1St3(zi_hr)) then
-!~ 										status_hr=3
-!~ 										status_tmrw = 3
-!~ 										status_it(i,it) = 3
-!~ 									else 
-!~ 										status_hr=2
-!~ 										status_tmrw = 2
-!~ 										status_it(i,it) = 2
-!~ 									endif
-!~ 						endif
-!~ 					endif
+					if((it==1) .and. (iter>1) .and. (status_hr<=3) .and. (age_hr>0)) then
+						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
+									ali_hr = 1
+									al_last_invol = al_hr
+									invol_un = 1
+									iiwt = 1._dp
+									iiH = 2
+									al_hr = alfgrid(ali_hr)
+									if(status_it_innov(i,Tsim-2)<PrAl1St3(zi_hr)) then
+										status_hr=3
+										status_tmrw = 3
+										status_it(i,it) = 3
+									else 
+										status_hr=2
+										status_tmrw = 2
+										status_it(i,it) = 2
+									endif
+						endif
+					endif
 					
 					if( w_strchng .eqv. .true.) then
 						do tri_hr = ntr,1,-1
@@ -4497,15 +4501,30 @@ module find_params
 		
 		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter),dist_urt(maxiter),dist_udur(maxiter), sep_fnd_mul(maxiter,2)
 		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
-		integer  :: i,ii,ij,it, iter,iout,plO,vO
+		real(dp) :: wage_trend_hr
+		integer  :: i,ii,ij,it, iter,iout,plO,vO, ik, ip,ri
 		real(dp) :: urt,udur,Efrt,Esrt
 		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt_mul0,seprt_mul1
 		real(dp) :: avg_convergence, sep_implied
-		integer  :: miniter = 3
+		integer  :: miniter = 3, status, Ncoef
+		
+		!for running/matching the wage regression:
+		real(dp), allocatable :: XX(:,:), yy(:), coef_est(:), wage_coef(:),cov_coef(:,:), XX_ii(:,:), yy_ii(:)
+		real(dp):: hatsig2
+		
+		
+		Ncoef = (Nskill+1)*(NpolyT+1)+2 !NpolyT*Nskill + Nskill + NpolyT + 2 + const
+		
+		allocate(XX(Tsim*Nsim,Ncoef))
+		allocate(yy(Tsim*Nsim))
+		allocate(coef_est(Ncoef))
+		allocate(wage_coef(Ncoef))
+		allocate(cov_coef(Ncoef,Ncoef))
 		
 		allocate(jwages(Nsim))
 		allocate(dist_wgtrend_jt(Tsim,nj))
 		allocate(med_wage_jt(Tsim,nj))
+		
 		
 		plO = print_lev
 		if(plO<4) print_lev = 1
@@ -4513,6 +4532,15 @@ module find_params
 		if(vO<4) verbose=0
 		!call mat2csv(wage_trend,"wage_trend_0.csv")
 		avg_convergence = 1.
+
+		!iniitialize wage_coef
+		ri=1
+		do ip=1,(NpolyT+1)
+			do ik=1,(Nskill+1)
+				wage_coef(ri) = occwg_coefs(ik,ip)
+				ri = ri+1
+			enddo !ik, skill
+		enddo !ip, poly degree		
 
 		!initialize fmul stuff
 		fndrt_mul0 = 1. 
@@ -4529,72 +4557,139 @@ module find_params
 			if(verbose>2) print*,  'Efrt, Esrt', Efrt,Esrt
 			dist_urt(iter) = (urt - avg_unrt)/avg_unrt
 			dist_udur(iter)= (udur - avg_undur)/avg_undur
-			do ij=1,nj
-				jwages = 0.
+			
+			ii = 0
+			do i=1,Nsim
 				do it=1,Tsim
-					ii = 0
-					do i=1,Nsim
-						if( (shk%j_i(i) == ij) .and. (shk%age_hist(i,it) > 0) .and. (hst%status_hist(i,it)==1)) then
-							ii = 1+ii
-							jwages(ii) = log(hst%wage_hist(i,it))
+					if(  (shk%age_hist(i,it) > 0) .and. (hst%status_hist(i,it)==1)) then
+						ii = 1+ii
+						ij = shk%j_i(i) !this guy's occupation
+						yy(ii) = log(hst%wage_hist(i,it))
+						ri=1
+						do ip=1,(NpolyT+1)
+							do ik=1,(Nskill+1)
+								if(ik == 1 .and. ip == 1) then
+									XX(ii,ri) = 1._dp
+								elseif( ik==1 .and. ip>1) then
+									XX(ii,ri) = (it/tlen)**(ip-1)
+								else
+									XX(ii,ri) = occ_onet(ij,ik-1)*(it/tlen)**(ip-1)
+								endif
+								ri = ri+1
+							enddo !ik, skill
+						enddo !ip, poly degree
+						XX(ii,ri) = agegrid( shk%age_hist(i,it) )
+						ri=ri+1
+						XX(ii,ri) = agegrid( shk%age_hist(i,it) ) ** 2
+						
+					endif ! participating
+				enddo !it
+			enddo ! i
+			
+			allocate(XX_ii(ii,ri))
+			allocate(yy_ii(ii))
+			do i=1,ii
+				XX_ii(i,:) = XX(i,:)
+				yy_ii(i) = yy(i)
+			enddo
+			
+			call OLS(XX_ii,yy_ii,coef_est,cov_coef, hatsig2, status)
+			
+			if( print_lev .ge. 3) then 
+				call mat2csv(XX_ii, "XX_ii.csv")
+				call vec2csv(yy_ii, "yy_ii.csv") 
+				call vec2csv(coef_est, "coef_est.csv")
+			endif
+			
+			deallocate(XX_ii,yy_ii)
+			
+			!compute distance in coefficient space
+			dist_wgtrend = 0.
+			ri=1
+			do ip=1,(NpolyT+1)
+				do ik=1,(Nskill+1)
+					if(ik > 1 .or. ip > 1) then
+						if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
+							!distance
+							dist_wgtrend = dabs((coef_est(ri) - occwg_coefs(ik,ip))/occwg_coefs(ik,ip)) + dist_wgtrend
+							!update
+							wage_coef(ri) = -upd_wgtrnd*(coef_est(ri) - occwg_coefs(ik,ip)) + wage_coef(ri)
+						endif
+					endif
+					ri = ri+1
+				enddo !ik, skill
+			enddo !ip, poly degree
+			if(wglev_0 .eqv. .true.) then
+				dist_wgtrend = dist_wgtrend/(ri-1) !average across coefficients
+			else 
+				dist_wgtrend = dist_wgtrend/(ri-1-Nskill) !average across coefficients
+			endif
+			dist_wgtrend_iter(iter) = dist_wgtrend
+			
+			
+			do ij=1,nj
+				do it=1,Tsim
+					wage_trend_hr = 0._dp
+					do ip =1,(NpolyT+1)
+						if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
+							if(ip .gt. 1) &
+							&	wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
+							do ik=2,(Nskill+1)
+								wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
+							enddo
 						endif
 					enddo
-					call quicksort(jwages(1:ii),1,ii)
-					if( mod(ii,2)==0) then
-						med_wage_jt(it,ij) = jwages(ii/2)
-					else
-						med_wage_jt(it,ij) = 0.5*(jwages(ii/2)+jwages(ii/2+1))
-					endif
-				enddo
-				!compute distance
-				do it=Tsim,1,-1
-					! relative to the first period
-					med_wage_jt(it,ij) = med_wage_jt(it,ij) - med_wage_jt(1,ij) 
-					dist_wgtrend_jt(it,ij) = med_wage_jt(it,ij) - occwg_trend(it,ij)
-					!update the global variable : wage_trend
-					wage_trend(it,ij) = -upd_wgtrnd*(dist_wgtrend_jt(it,ij)) + wage_trend(it,ij) 
 					
-					if(wage_trend(it,ij) <= minval(trgrid)) then
-						wage_trend(it,ij) = minval(trgrid)
-						cycle
-					endif
-					if(wage_trend(it,ij) >= maxval(trgrid)) then
-						wage_trend(it,ij) = maxval(trgrid)
-						cycle
-					endif
-					if(dabs(dist_wgtrend_jt(it,ij)) > dist_wgtrend ) then
-						dist_wgtrend = dabs(dist_wgtrend_jt(it,ij))
-					endif
-					dist_wgtrend_iter(iter) = dabs(dist_wgtrend_jt(it,ij)) + dist_wgtrend_iter(iter)
+					wage_trend(it,ij) = wage_trend_hr !upd_wgtrnd*wage_trend_hr + (1._dp - upd_wgtrnd)*wage_trend(it,ij)					
 				enddo
-			enddo !ij 
-			dist_wgtrend_iter(iter) = dist_wgtrend_iter(iter)/dble(Tsim*nj)
+			enddo
+			do i=1,nj
+				if( wglev_0 .eqv. .false.) wage_lev(i) = wage_trend(1,i)
+				wage_trend(:,i) = wage_trend(:,i) - wage_trend(1,i)
+			enddo
+
+			do ij=1,nj
+			do it=1,Tsim
+
+				if(wage_trend(it,ij) <= minval(trgrid)) then
+					wage_trend(it,ij) = minval(trgrid)
+				endif
+				if(wage_trend(it,ij) >= maxval(trgrid)) then
+					wage_trend(it,ij) = maxval(trgrid)
+				endif
+
+			enddo
+			enddo
+				
+				
+
 			if(iter>100) avg_convergence = dabs( sum(dist_wgtrend_iter(iter-100:iter))/100. - dist_wgtrend_iter(iter)) !in case not making progress
 			if((dist_wgtrend_iter(iter)<simtol .and. iter>miniter) .or. avg_convergence<simtol) then !cannot get too close because also relies on sim converging
 				exit
 			endif
-			if(print_lev .ge. 4) then
-				if(iter==1) iout=0
-				call mat2csv( dist_wgtrend_jt, "dist_wgtrend_jt.csv",iout)
-				call mat2csv(med_wage_jt,"med_wage_jt.csv",iout)
-				iout=1
+
+!~ 			if(print_lev .ge. 4) then
+!~ 				if(iter==1) iout=0
+!~ 				call mat2csv( dist_wgtrend_jt, "dist_wgtrend_jt.csv",iout)
+!~ 				call mat2csv(med_wage_jt,"med_wage_jt.csv",iout)
+!~ 				iout=1
 				
-			endif
+!~ 			endif
 			!take a step in fndrate, seprisk space
 			
 			fndrt_mul1 = udur/avg_undur*fndrt_mul0
 			fndrt_mul1 = upd_wgtrnd*fndrt_mul1 + (1.-upd_wgtrnd)*fndrt_mul0
 
 			sep_implied = (Efrt*avg_unrt)/(1.-avg_unrt)
-			seprt_mul1  = sep_implied/Esrt*seprt_mul0
-			seprt_mul1 = (Efrt*avg_unrt)/(Esrt/seprt_mul0*(1.-avg_unrt))
-!~  			seprt_mul1 = upd_wgtrnd*seprt_mul1 + (1.-upd_wgtrnd)*seprt_mul0
+!!!			separation rate search: this used bisection, but that makes other variables jump around
 !~ 			if( urt - avg_unrt >0._dp ) then
 !~ 				seprtH = upd_wgtrnd*seprt_mul1 + (1._dp - upd_wgtrnd)*seprtH
 !~ 			else
 !~ 				seprtL = upd_wgtrnd*seprt_mul1 + (1._dp - upd_wgtrnd)*seprtL
 !~ 			endif
 !~ 			seprt_mul1 = 0.5_dp*(seprtH + seprtL)
+
+!!! 		separation rate search: gradient search. Step size is arbitrary.
 			seprt_mul1 = seprt_mul0 - 0.01_dp*(urt - avg_unrt)/avg_unrt
 			
 			!seprisk = seprisk/seprt_mul0*seprt_mul1
@@ -4620,6 +4715,7 @@ module find_params
 		!call vec2csv(dist_wgtrend_iter,"dist_wgtrend_iter.csv")
 		if(print_lev .ge. 2) then 
 			call mat2csv(wage_trend,"wage_trend_jt.csv")
+			call vec2csv(wage_lev,"wage_lev_j.csv")
 			call vec2csv(dist_wgtrend_iter(1:(iter-1)), "dist_wgtrend_iter.csv")
 			call vec2csv(dist_urt(1:(iter-1)), "dist_urt.csv")
 			call vec2csv(dist_udur(1:(iter-1)), "dist_udur.csv")
@@ -4629,6 +4725,9 @@ module find_params
 		
 		
 		deallocate(jwages,med_wage_jt,dist_wgtrend_jt)
+		
+		deallocate(XX,yy,coef_est,cov_coef)
+		
 		!compute median wage trends in each occupation using hst%wage_hist
 	
 	end subroutine iter_wgtrend
@@ -4958,7 +5057,8 @@ program V0main
 		call vec2csv(occdel, "occdel.csv")
 		call mat2csv(prob_age, "prob_age.csv")
 		call mat2csv(occpr_trend,"occpr_trend.csv")
-		call mat2csv(wage_trend,"occwg_trend.csv")
+		call mat2csv(occwg_trend,"occwg_trend.csv")
+		call vec2csv(occwg_lev,"occwg_lev.csv")
 		call mat2csv(occwg_coefs,"occwg_coefs.csv")
 
 
@@ -5179,34 +5279,34 @@ program V0main
 !~ 	enddo
 	
 	
-	if( dbg_skip .eqv. .false.) then
-		call nlo_create(calopt,NLOPT_LN_SBPLX,2)
-	! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
-		lb = (/0.01_dp, 0.0_dp/)
-	! 	lb_1 = (/.01/)
-		call nlo_set_lower_bounds(ires,calopt,lb)
-		ub = (/ 2._dp, 0.5_dp /)
-	! 	ub_1 = (/5./)
-		call nlo_set_upper_bounds(ires,calopt,ub)
-		call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
-		call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
-		call nlo_set_maxeval(ires,calopt,500_dp)
+!~ 	if( dbg_skip .eqv. .false.) then
+!~ 		call nlo_create(calopt,NLOPT_LN_SBPLX,2)
+!~ 	! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
+!~ 		lb = (/0.01_dp, 0.0_dp/)
+!~ 	! 	lb_1 = (/.01/)
+!~ 		call nlo_set_lower_bounds(ires,calopt,lb)
+!~ 		ub = (/ 2._dp, 0.5_dp /)
+!~ 	! 	ub_1 = (/5./)
+!~ 		call nlo_set_upper_bounds(ires,calopt,ub)
+!~ 		call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
+!~ 		call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
+!~ 		call nlo_set_maxeval(ires,calopt,500_dp)
 		
-		call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+!~ 		call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 		
-		parvec(1) = nu
-		parvec(2) = xizcoef
-!~ 		!parvec_1(1) = nu
+!~ 		parvec(1) = nu
+!~ 		parvec(2) = xizcoef
+		!parvec_1(1) = nu
 
-		open(unit=fcallog, file=callog)
-		write(fcallog,*) " "
-		close(unit=fcallog)
-		call nlo_optimize(ires, calopt, parvec, erval)
-		nu = parvec(1) ! new optimum
-		xizcoef = parvec(2)
+!~ 		open(unit=fcallog, file=callog)
+!~ 		write(fcallog,*) " "
+!~ 		close(unit=fcallog)
+!~ 		call nlo_optimize(ires, calopt, parvec, erval)
+!~ 		nu = parvec(1) ! new optimum
+!~ 		xizcoef = parvec(2)
 
-		call cal_dist(parvec_1,ervec_1,shk)
-	endif
+!~ 		call cal_dist(parvec_1,ervec_1,shk)
+!~ 	endif
 
 !~ !****************************************************************************
 !~ !   Now run some experiments:
