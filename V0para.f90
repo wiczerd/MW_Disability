@@ -70,18 +70,16 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  ineligNoNu = .false.,&!do young ineligable also pay the nu cost when they are ineligable?
 					  dieyoung   = .true.,&	!do the young die (rate associated with health state)
 					  wglev_0	 = .false.,& !should the initial wage level be 0 for all occupations
-					  pid_ss	 = .true.,&	!do health transition rates preserve steady state
 					  precal_bisnu=.false. 	!before doing the full calibration of 
 					  
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
-logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
+logical           ::  del_by_occ = .false.,& !delta is fully determined by occupation, right now alternative is fully random
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
 					  demog_dat	 = .true.,& !do the demographics follow 
-					  health_dat = .false.,& !does health transition come direct from data or from steady state-solved
 					  NBER_tseq  = .true.	!just feed in NBER recessions?
 
 					  
@@ -237,7 +235,9 @@ subroutine setparams()
 	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(35,TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
 		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(35), &
-		& wage_coef_read(17)
+		& wage_coef_read(17),pid1(nd,nd)
+		
+	real(8) :: Hdist_read(5,nd+1),Hmat_read(7,9)
 		
 	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3 
 	real(8) :: pNy,pNm,Ny,Nm,dy,dm, Nbar,totborn,prH,prL, bN(Tsim)
@@ -321,7 +321,34 @@ subroutine setparams()
 	enddo
 	close(fread)
 	
+	open(unit= fread, file="Hdist.csv")
+	do j=1,size(Hdist_read,1)
+		read(fread, *,iostat=k) Hdist_read(j,:) !first column is label, then Phys, then non-phys
+	enddo
+	close(fread)
+	!Hdist rows:
+	!state label
+	!age<45
+	!age>45 & age<56
+	!age>55 & age<61
+	!age>60 & age<66
+	
+	
+	open(unit= fread, file="HmatIn.csv")
+	do j=1,size(Hmat_read,1)
+		read(fread, *,iostat=k) Hmat_read(j,:) !first column is label, then Phys, then non-phys
+	enddo
+	close(fread)
+	!Hmat rows:
+	!state transition label
+	!coef on occ health
+	!age>45 & age<56
+	!age>55 & age<61
+	!age>60 & age<66
+	!age>65
+	!base rate
 
+	!!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!* OLD input files
 	!read in health transitions estimated directly from PSID
 	open(unit=fread, file="PrDDp_Age.csv")
 	do j=1,15
@@ -533,14 +560,24 @@ subroutine setparams()
 	ptau(TT) = 1-((Longev-(youngD+oldN*oldD))*tlen)**(-1)
 	
 	! prob of death by health, age
-	do t=1,(TT-1)
-		PrDeath(:,t) = PrDeath_in_read(1+(t-1)*3:3+(t-1)*3)
+	PrDeath(:,1) = Hmat_read(7,7:9)
+	do t=1,TT
+		k = t+1
+		if( t .eq. 2 ) k = t+2
+		if( t>1) PrDeath(:,t) = PrDeath(:,1) +  Hmat_read(k,7:9)
+		PrDeath(:,t) = 1.d0 - (1.d0 - PrDeath(:,t))**(1.d0/tlen)  !PrDeath_in_read(1+(t-1)*3:3+(t-1)*3)
 	enddo
-	PrDeath(:,TT) = PrDeath(:,TT-1)
+
 	
 	!Health structure by age
 	do t=1,TT
-		PrDage(:,t) = PrD_Age_read(t,1:nd)/sum(PrD_Age_read(t,1:nd))
+		if(t >2) then 
+			k = t
+		else 
+			k =t+1
+		endif
+		if(t==TT) k = t-1
+		PrDage(:,t) = Hdist_read(k,2:1+nd)/sum(Hdist_read(k,2:1+nd))
 		PrD3age(t) = PrDage(nd,t)
 	enddo
 
@@ -687,23 +724,16 @@ subroutine setparams()
 	enddo
 	forall(j=1:nj) occsz0(j) = occsz0(j)/summy
 
-! Disability stuff	
+! Disability grid
 	forall(i=1:nd) dgrid(i) = i
 
+! Disability depreciation by occupation	
 	!occupation-specific factor
-	avgADL = 0.
 	do j=1,nj
-		avgADL = maxADL_read(j)*occsz0(j) + avgADL
-	enddo
-	!make mean 1 for occdel:
-	summy = 1.-(1.-avgADL)**(1./(tlen*youngD+tlen*dble(oldN)*oldD))
-	
-	do j=1,nj
-		occdel(j) =  (1.-(1.- (avgADL+ causal_phys_read(j)) )**(1./(tlen*youngD+tlen*dble(oldN)*oldD))) /summy
+		occdel(j) =  occ_onet(j,1)
 	enddo
 	!will set this in draw_del
 	delwt	 = 1._dp/dble(ndi) ! initialize with equal weight
-		
 
 	!Extra disability risk (uniformly spaced)
 	if( maxval(occdel) > dRiskH ) then
@@ -721,7 +751,7 @@ subroutine setparams()
 	else
 		delgrid(1) = 0.5*(dRiskH + dRiskL)
 	endif
-	if(del_by_occ .eqv. .false.) delgrid = 1.
+	if(del_by_occ .eqv. .false.) delgrid = 0.
 		
 	!Disability Extent-Specific Things
 	!Wage Penalty 
@@ -780,62 +810,64 @@ subroutine setparams()
 	!Disability: pid(id,id';i,t) <---indv. type and age specific
 	
 	!read in transition matrix
-	if(health_dat .eqv. .true.) then
-		do t=1,TT-1
-			pid_tmp(1,:,t) = PrDDp_Age_read(0+t*3+1,1:3)
-			pid_tmp(2,:,t) = PrDDp_Age_read(1+t*3+1,1:3)
-			pid_tmp(3,:,t) = PrDDp_Age_read(2+t*3+1,1:3)
-		enddo
-	else 
-		do t=1,TT-1
-			pid_tmp(1,:,t) = pid_in_read(1:3,t)
-			pid_tmp(2,:,t) = pid_in_read(4:6,t)
-			pid_tmp(3,:,t) = (/0.,0.,1./)
-			!rows add to 1
-			do i=1,3
-				pid_tmp(i,:,t) = pid_tmp(i,:,t)/sum(pid_tmp(i,:,t))
-			enddo
-		enddo
-	endif
-
+	
+	pid_tmp(1,2:3,1) = Hmat_read(7,1:2)
+	pid_tmp(2,1,1)   = Hmat_read(7,3)
+	pid_tmp(2,3,1)   = Hmat_read(7,4)
+	pid_tmp(3,1:2,1) = Hmat_read(7,5:6)
+	
+	do t=2,TT-1
+		k = t
+		if(t .eq. 2) k = t+1 
+		pid_tmp(1,2:3,t) = Hmat_read(k,1:2) + pid_tmp(1,2:3,1)
+		pid_tmp(2,1,t)   = Hmat_read(k,3)   + pid_tmp(2,1,1)
+		pid_tmp(2,3,t)   = Hmat_read(k,4)   + pid_tmp(2,3,1)
+		pid_tmp(3,1:2,t) = Hmat_read(k,5:6) + pid_tmp(3,1:2,1)
+	enddo
+	
+	do t=1,TT-1
+		pid_tmp(1,1,t) = 1.d0 - sum(pid_tmp(1,2:3,t))
+		pid_tmp(2,2,t) = 1.d0 - pid_tmp(2,1,t) - pid_tmp(2,3,t)
+		pid_tmp(3,3,t) = 1.d0 - sum(pid_tmp(3,1:2,t))
+	enddo
+	
 	pid = 0.
 	! multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
 	do j=1,ndi
-		if(health_dat .eqv. .true. ) then
-			!convert to monthly
-			sdec = pid_tmp(:,1:3,i) 
-			lwrk = nd*(nd+6)
-			!want to construct right-side eigen vectors into matrix
-						!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
-			call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
-			!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
-		&	 vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
-			
-			!replace vl = vr^-1
-			call invmat(vr, vl)
-			do t=1,nd
-				vr(:,t) = vr(:,t)*wr(t)**(0.5_dp/tlen)
-			enddo
-			call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
-		else
-			pid(:,:,j,i) = pid_tmp(:,1:3,i)
-		endif
-		! be sure it adds to t (should have been done in sol_pid.m)
+	
+		pid1(1,2) = pid_tmp(1,2,i) + delgrid(j)*Hmat_read(2,1)
+		pid1(1,3) = pid_tmp(1,3,i) + delgrid(j)*Hmat_read(2,2)
+		pid1(1,1) = 1._dp-pid1(1,2)-pid1(1,3)
+		
+		pid1(2,1) = pid_tmp(2,1,i) + delgrid(j)*Hmat_read(2,3)
+		pid1(2,3) = pid_tmp(2,3,i) + delgrid(j)*Hmat_read(2,4)
+		pid1(2,2) = 1._dp-pid1(2,1)-pid1(2,3)
+		
+		pid1(3,1) = pid_tmp(3,1,i) + delgrid(j)*Hmat_read(2,5)
+		pid1(3,2) = pid_tmp(3,2,i) + delgrid(j)*Hmat_read(2,6)
+		pid1(3,3) = 1._dp-pid1(3,1)-pid1(3,2)
+		
+	!convert to monthly------------
+		sdec = pid1
+		lwrk = nd*(nd+6)
+		!want to construct right-side eigen vectors into matrix
+					!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
+		call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
+		!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
+	&	 vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
+		
+		!replace vl = vr^-1
+		call invmat(vr, vl)
+		do t=1,nd
+			vr(:,t) = vr(:,t)*wr(t)**(1._dp/tlen)
+		enddo
+		call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
+		
 		do t=1,nd
 			summy = sum(pid(t,:,j,i) )
 			pid(t,:,j,i) = pid(t,:,j,i)/summy
-		enddo
-		
-		pid(1,2,j,i) = pid(1,2,j,i)*delgrid(j)
-		pid(1,3,j,i) = pid(1,3,j,i)*delgrid(j)
-		pid(1,1,j,i) = 1._dp-pid(1,2,j,i)-pid(1,3,j,i)
-		
-		pid(2,3,j,i) = pid(2,3,j,i)*delgrid(j)
-		!pid(2,2,j,i) = 1._dp-pid(2,1,j,i)-pid(2,3,j,i)
-		junk = (1._dp-pid(2,3,j,i))/(pid(2,1,j,i)+pid(2,2,j,i) )
-		pid(2,1,j,i) = junk*pid(2,1,j,i) 
-		pid(2,2,j,i) = junk*pid(2,2,j,i)
+		enddo		
 		
 	enddo
 	enddo

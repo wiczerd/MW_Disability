@@ -4028,7 +4028,7 @@ module sim_hists
 						endif
 
 						!push forward d 
-						if(status_hr .eq. 1 .and. d_hr<nd ) then !if working and not already in worst state
+						if(age .lt. 6) then !if not retired 
 							do ii=1,nd
 								if(health_it_innov(i,it) < cumpid(d_hr,ii+1,del_hr,age_hr) ) then
 									d_it(i,it+1) = ii
@@ -4397,61 +4397,6 @@ module find_params
 	end subroutine
 
 	
-	subroutine bis_calnu(nu0,nu1,ditarget,vfs, pfs, hst, moments_sim,shk)
-
-		type(shocks_struct) :: shk
-		type(pol_struct) :: pfs
-		type(hist_struct):: hst
-		type(val_struct) :: vfs
-		type(moments_struct) :: moments_sim
-		real(dp), intent(in) :: nu0
-		real(dp), intent(in) :: ditarget
-		real(dp), intent(out) :: nu1
-		real(dp) :: nuH, nuL,nui
-		integer nu_iter,verbose_old,print_lev_old
-		
-		nuH = 6._dp
-		nuL = 0.1_dp
-		print_lev_old = print_lev
-		print_lev = 0
-		verbose_old = verbose
-		verbose = 1
-		
-		
-		!subtract nu0 from app decision
-		pfs%gapp_dif = pfs%gapp_dif +nu0
-		
-		do nu_iter = 1,1000
-			nui = 0.5*(nuH+nuL)
-			if(verbose >=1) print*, "nu is ", nui
-			!add nui to application decision (note, this is a vector opperation, but nui is a scalar)
-			pfs%gapp_dif = pfs%gapp_dif -nui
-		
-			
-			call sim(vfs, pfs, hst,shk)
-			
-			call moments_compute(hst,moments_sim,shk)
-			if(verbose >=1) print *, "Init DI rate" , moments_sim%init_di
-			if( dabs(moments_sim%init_di - ditarget)/ditarget < Vtol*10._dp .or. (nuH-nuL)/nu0 <Vtol) then
-				nu1 = nui
-				exit
-			elseif(moments_sim%init_di > ditarget) then
-				nuL = nui
-			else !moments_sim%avg_di < ditarget
-				nuH = nui
-			endif
-			!put it back for the next iteration
-			pfs%gapp_dif = pfs%gapp_dif + nui
-		enddo
-		
-		if( dabs( moments_sim%init_di - ditarget)/ditarget> Vtol*100._dp .and. verbose >1) &
-			& print *, (moments_sim%init_di - ditarget)/ditarget
-
-		verbose = verbose_old
-		print_lev = print_lev_old
-
-	end subroutine bis_calnu
-
 	subroutine comp_ustats(hst,shk,urt,udur,Efrt,Esrt)
 		
 		type(shocks_struct) :: shk
@@ -4755,14 +4700,10 @@ module find_params
 
 		!zrho = paramvec(1)
 		!zsig = paramvec(2)
-		if( precal_bisnu .eqv. .false. ) then
-			nu   = paramvec(1)
-			if( size(paramvec)>1 ) &
-			&	xizcoef = paramvec(2)
-		else 
-			xizcoef = paramvec(1)
-		endif
-		
+		nu   = paramvec(1)
+		if( size(paramvec)>1 ) &
+		&	xizcoef = paramvec(2)
+	
 		call alloc_econ(vfs,pfs,hst)
 
 		if(verbose >2) print *, "In the calibration"	
@@ -4804,12 +4745,7 @@ module find_params
 		
 		!I only want to iterate on the wage trend if I have a good set of parameters
 		call iter_wgtrend(vfs, pfs, hst,shk)
-		if(precal_bisnu .eqv. .true.) then
-			nu0 = nu
-			call bis_calnu(nu0,nu1, dirt_target ,vfs, pfs, hst, moments_sim ,shk)
-			nu = nu1
-		endif
-	
+		
 		
 		if(verbose >2) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
@@ -4970,7 +4906,7 @@ program V0main
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: id=1, it=1, ij=1, itr=1, ial=1, iz=1, i=1,narg_in=1, wo=1, idi, status=1,t0tT(2)
+		integer  :: id=1, it=1, ij=1, itr=1, ial=1, iz=1, i=1,j=1,narg_in=1, wo=1, idi, status=1,t0tT(2)
 		character(len=32) :: arg_in
 	!************************************************************************************************!
 	! Other
@@ -4993,7 +4929,7 @@ program V0main
 		logical :: sol_once = .true.
 	! NLopt stuff
 		integer(8) :: calopt=0,ires=0
-		real(dp) :: lb(2),ub(2),parvec(2), erval,lb_1(1),ub_1(1),parvec_1(1),ervec_1(1)
+		real(dp) :: lb(2),ub(2),parvec(2), ervec(2), erval,lb_1(1),ub_1(1),parvec_1(1),ervec_1(1)
 !		external :: cal_dist_nloptwrap
 
 		
@@ -5261,31 +5197,35 @@ program V0main
 		
 	
 	endif !sol_once
+
+	lb = (/0.01_dp, 0.0_dp/)
+	ub = (/ 2._dp, 0.5_dp /)
 	
 	!set up the grid over which to check derivatives 
-!~ 	open(unit=fcallog, file=callog)
-!~ 	write(fcallog,*) nu, err0
-!~ 	close(unit=fcallog)
-!~ 	do i=1,10
-!~ 		precal_bisnu = .false.
-!~ 		verbose=1
-!~ 		print_lev =1
-!~ 		open(unit=fcallog, file = callog ,ACCESS='APPEND', POSITION='APPEND')
-!~ 		parvec_1 = 0.0_dp + dble(i)/5._dp
-!~ 		call cal_dist(parvec_1,ervec_1,shk)
-!~ 		write(fcallog,*) nu, ervec_1(1)
-!~ 		print *, nu, ervec_1(1)
-!~ 		close(unit=fcallog)
-!~ 	enddo
+	open(unit=fcallog, file="cal_square.csv")
+	write(fcallog,*) nu, xizcoef, ervec
+	close(unit=fcallog)
+	do i=1,10
+	do j=1,10
+		verbose=1
+		print_lev =1
+		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
+		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
+		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
+		
+		call cal_dist(parvec,ervec,shk)
+		write(fcallog,*) nu, xizcoef, ervec(1), ervec(2)
+		print *, nu, xizcoef, ervec(1), ervec(2)
+		close(unit=fcallog)
+	enddo
+	enddo
 	
 	
 !~ 	if( dbg_skip .eqv. .false.) then
 !~ 		call nlo_create(calopt,NLOPT_LN_SBPLX,2)
 !~ 	! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
-!~ 		lb = (/0.01_dp, 0.0_dp/)
 !~ 	! 	lb_1 = (/.01/)
 !~ 		call nlo_set_lower_bounds(ires,calopt,lb)
-!~ 		ub = (/ 2._dp, 0.5_dp /)
 !~ 	! 	ub_1 = (/5./)
 !~ 		call nlo_set_upper_bounds(ires,calopt,ub)
 !~ 		call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
