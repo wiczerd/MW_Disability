@@ -43,13 +43,13 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 3,  &!5		!Number of individual alpha types 
+integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types 
 			ntr = 4, &!5	        !Number of occupation trend points
 			ndi = 2,  &		    	!Number of individual disability risk types
 			nl	= 2,  &				!Number of finding/separation rates
 			nd  = 3,  &		        !Number of disability extents
 			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 25, &!50	        !Points on assets grid
+			na  = 30, &!50	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			nj  = 16, &!16			!Number of occupations
 			Nskill = 3,&			!number of skills that define occupations. First is always physical 
@@ -57,6 +57,7 @@ integer, parameter ::	nal = 3,  &!5		!Number of individual alpha types
 			maxiter = 2000, &		!Tolerance parameter	
 			Nsim = 16000,&!10000*nj !how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
+			init_yrs = 2,&			!how many years for calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10
@@ -69,9 +70,7 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  z_regimes	 = .false.,&!different z regimes?
 					  ineligNoNu = .false.,&!do young ineligable also pay the nu cost when they are ineligable?
 					  dieyoung   = .true.,&	!do the young die (rate associated with health state)
-					  wglev_0	 = .false.,& !should the initial wage level be 0 for all occupations
-					  precal_bisnu=.false. 	!before doing the full calibration of 
-					  
+					  wglev_0	 = .false.  !should the initial wage level be 0 for all occupations
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
@@ -594,11 +593,15 @@ subroutine setparams()
 	pop_size(1) = sum(prob_age(:,1))
 	!evolution of age-structure!!!!!!!!!!!!!!!!!!!!!!
 
-	dy = PrDeath(1,1)
+	dy = PrDeath(1,1)*PrDage(1,1)+PrDeath(2,1)*PrDage(2,1)+PrDeath(3,1)*PrDage(3,1)
 	if(dieyoung .eqv. .true.) then
-		dm = sum(PrDage(1,2:TT-1)*PrDeath(1,2:TT-1))/dble(TT-2) +sum(PrDage(2,2:TT-1)*PrDeath(2,2:TT-1))/dble(TT-2) + sum(PrDage(nd,2:TT-1)*PrDeath(nd,2:TT-1))/dble(TT-2) !die
+		t=2
+		dm = PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t)
+		do t=3,TT-1
+			dm =  (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t)) *(1._dp-dm) +dm !die
+		enddo
 	else 
-		dm = 0.d0
+		dm = 0.
 	endif
 	dm = dm + ((tlen*oldN*oldD)**(-1))*(1.d0-dm)  ! This was .0038
 	!dm = 0.009
