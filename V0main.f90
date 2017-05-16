@@ -1212,7 +1212,7 @@ module sol_val
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),V0(:,:,:,:,:,:,:),VU0(:,:,:,:,:,:,:)
 		real(dp) :: Vc1,chere,Vtest1,Vtest2
-		integer :: iw, iaa,ialal,izz
+		integer :: iw, iaa,ialal,izz,idd
 
 		iw = 1 ! don't work
 		Vtest1 = -1e6 ! just a very bad number, does not really matter
@@ -1266,7 +1266,7 @@ module sol_val
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:),wagehere
 		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, VNhr, VDhr, maxVNV0, minvalVD,minvalVN, xihr,nuhr
-		integer :: iw, iaa,ialal,izz,aapp,aNapp, ialalhr
+		integer :: iw, iaa,ialal,izz,aapp,aNapp, ialalhr,idd
 
 		iw = 1 ! not working
 		!*******************************************
@@ -2882,21 +2882,18 @@ module sim_hists
 
 		NBER_start_stop = 0
 		!compute NBER dates in case of NBER_tseq == 1 
-		! 1980 + 0/4 -> 1980 + 2/4
-		! 1981 + 2/4 -> 1982 + 3/4
+		!NO LONGER: 1980 + 0/4 -> 1980 + 2/4
+		!NO LONGER: 1981 + 2/4 -> 1982 + 3/4
+		
 		! 1990 + 2/4 -> 1991 + 0/4
 		! 2001 + 2/4 -> 2001 + 3/4
 		! 2007 + 3/4 -> 2009 + 1/4
-		NBER_start_stop(1,1) =  0*itlen + 0*( itlen/4 ) +1
-		NBER_start_stop(1,2) =  0*itlen + 2*( itlen/4 ) +1 
-		NBER_start_stop(2,1) =  1*itlen + 2*( itlen/4 ) +1
-		NBER_start_stop(2,2) =  2*itlen + 3*( itlen/4 ) +1
-		NBER_start_stop(3,1) = 10*itlen + 2*( itlen/4 ) +1
-		NBER_start_stop(3,2) = 11*itlen + 0*( itlen/4 ) +1
-		NBER_start_stop(4,1) = 21*itlen + 2*( itlen/4 ) +1
-		NBER_start_stop(4,2) = 21*itlen + 3*( itlen/4 ) +1
-		NBER_start_stop(5,1) = 27*itlen + 3*( itlen/4 ) +1
-		NBER_start_stop(5,2) = 29*itlen + 1*( itlen/4 ) +1
+		NBER_start_stop(1,1) =  7*itlen + 2*( itlen/4 ) +1
+		NBER_start_stop(1,2) =  8*itlen + 0*( itlen/4 ) +1
+		NBER_start_stop(2,1) = 18*itlen + 2*( itlen/4 ) +1
+		NBER_start_stop(2,2) = 18*itlen + 3*( itlen/4 ) +1
+		NBER_start_stop(3,1) = 24*itlen + 3*( itlen/4 ) +1
+		NBER_start_stop(3,2) = 26*itlen + 1*( itlen/4 ) +1
 		!start cycles on 1st
 
 		ss = 1

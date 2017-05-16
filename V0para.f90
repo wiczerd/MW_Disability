@@ -79,8 +79,8 @@ logical           ::  del_by_occ = .false.,& !delta is fully determined by occup
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
 					  demog_dat	 = .true.,& !do the demographics follow 
-					  NBER_tseq  = .true.	!just feed in NBER recessions?
-
+					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
+					  RAS_pid    = .true.   !balance the health transition matrix
 					  
 
 
@@ -224,7 +224,7 @@ contains
 subroutine setparams()
 
 	logical, parameter :: lower= .FALSE. 
-	integer:: i, j, k, t,tri
+	integer:: i, j, k, t,tri,iter
 	real(8):: summy, emin, emax, step, &
 		   alfcondsig,alfcondsigt,alfrhot,alfsigt, &
 		  mean_uloss,sd_uloss
@@ -234,7 +234,7 @@ subroutine setparams()
 	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(35,TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
 		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(35), &
-		& wage_coef_read(17),pid1(nd,nd)
+		& wage_coef_read(17),pid1(nd,nd),r1(nd),s1(nd)
 		
 	real(8) :: Hdist_read(5,nd+1),Hmat_read(7,9)
 		
@@ -837,42 +837,78 @@ subroutine setparams()
 	pid = 0.
 	! multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
-	do j=1,ndi
 	
-		pid1(1,2) = pid_tmp(1,2,i) + delgrid(j)*Hmat_read(2,1)
-		pid1(1,3) = pid_tmp(1,3,i) + delgrid(j)*Hmat_read(2,2)
-		pid1(1,1) = 1._dp-pid1(1,2)-pid1(1,3)
+		pid1 = pid_tmp(:,:,i)
+		if(RAS_pid .eqv. .true.) then
+		! implement RAS method to balance matrix and enforce steady-state levels
+		! this means the row marginals, u_i = 1 \forall i and column marginals v_j
 		
-		pid1(2,1) = pid_tmp(2,1,i) + delgrid(j)*Hmat_read(2,3)
-		pid1(2,3) = pid_tmp(2,3,i) + delgrid(j)*Hmat_read(2,4)
-		pid1(2,2) = 1._dp-pid1(2,1)-pid1(2,3)
+			
+			do iter=1,maxiter
+				do t=1,nd
+					r1(t) = 1._dp/sum(pid1(t,:))
+				enddo
+				!sdec = diag(r1)*pid1:
+				do t=1,nd
+				do j=1,nd
+					sdec(t,j) = r1(t)*pid1(t,j)
+				enddo
+				enddo
+				
+				do t=1,nd
+					s1(t) = PrDage(t,i)/sum(PrDage(1:nd,i)*sdec(:,t))
+				enddo
+				!pid1 = sdec*diag(s1);
+				do t=1,nd
+				do j=1,nd
+					pid1(t,j) = s1(j)*sdec(t,j)
+				enddo
+				enddo
+				!will end when r1 and s1 both approach 1
+				if (dabs(sum(r1)/dble(nd)+ sum(s1)/dble(nd) -2._dp) < 1e-6 ) then
+					exit
+				endif
+				
+			enddo
+		endif
+			
+		do j=1,ndi
 		
-		pid1(3,1) = pid_tmp(3,1,i) + delgrid(j)*Hmat_read(2,5)
-		pid1(3,2) = pid_tmp(3,2,i) + delgrid(j)*Hmat_read(2,6)
-		pid1(3,3) = 1._dp-pid1(3,1)-pid1(3,2)
-		
-	!convert to monthly------------
-		sdec = pid1
-		lwrk = nd*(nd+6)
-		!want to construct right-side eigen vectors into matrix
-					!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
-		call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
-		!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
-	&	 vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
-		
-		!replace vl = vr^-1
-		call invmat(vr, vl)
-		do t=1,nd
-			vr(:,t) = vr(:,t)*wr(t)**(1._dp/tlen)
+			pid1(1,2) = pid1(1,2) + delgrid(j)*Hmat_read(2,1)
+			pid1(1,3) = pid1(1,3) + delgrid(j)*Hmat_read(2,2)
+			pid1(1,1) = 1._dp-pid1(1,2)-pid1(1,3)
+			
+			pid1(2,1) = pid1(2,1) + delgrid(j)*Hmat_read(2,3)
+			pid1(2,3) = pid1(2,3) + delgrid(j)*Hmat_read(2,4)
+			pid1(2,2) = 1._dp-pid1(2,1)-pid1(2,3)
+			
+			pid1(3,1) = pid1(3,1) + delgrid(j)*Hmat_read(2,5)
+			pid1(3,2) = pid1(3,2) + delgrid(j)*Hmat_read(2,6)
+			pid1(3,3) = 1._dp-pid1(3,1)-pid1(3,2)
+			
+
+		!convert to monthly------------
+			sdec = pid1
+			lwrk = nd*(nd+6)
+			!want to construct right-side eigen vectors into matrix
+						!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
+			call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
+			!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
+		&	 vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
+			
+			!replace vl = vr^-1
+			call invmat(vr, vl)
+			do t=1,nd
+				vr(:,t) = vr(:,t)*wr(t)**(1._dp/tlen)
+			enddo
+			call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
+			
+			do t=1,nd
+				summy = sum(pid(t,:,j,i) )
+				pid(t,:,j,i) = pid(t,:,j,i)/summy
+			enddo		
+			
 		enddo
-		call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
-		
-		do t=1,nd
-			summy = sum(pid(t,:,j,i) )
-			pid(t,:,j,i) = pid(t,:,j,i)/summy
-		enddo		
-		
-	enddo
 	enddo
 
 end subroutine setparams
