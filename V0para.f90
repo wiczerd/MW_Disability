@@ -231,10 +231,12 @@ subroutine setparams()
 		  
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(35,TT), maxADL_read(16),avgADL, &
+	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(31,TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
-		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(35), &
-		& wage_coef_read(17),pid1(nd,nd),r1(nd),s1(nd)
+		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(31), &
+		& wage_coef_read(17)
+	
+	real(8) :: pid1(nd,nd),r1(nd),s1(nd),PrDage_tp1(nd,TT-1)
 		
 	real(8) :: Hdist_read(5,nd+1),Hmat_read(7,9)
 		
@@ -282,7 +284,7 @@ subroutine setparams()
 	close(fread)
 	!read initial distribution of age 
 	open(unit= fread, file = "PrAge.csv")
-	do i=1,35
+	do i=1,31
 		read(fread,*) age_read(i,:)
 	enddo
 	close(fread)
@@ -579,6 +581,13 @@ subroutine setparams()
 		PrDage(:,t) = Hdist_read(k,2:1+nd)/sum(Hdist_read(k,2:1+nd))
 		PrD3age(t) = PrDage(nd,t)
 	enddo
+	!health structure extrapolate one period ahead - make the transition rate correct
+	do i=1,nd
+		do t=1,TT-2
+			PrDage_tp1(i,t) = (PrDage(i,t+1)-PrDage(i,t))/(agegrid(t+1)-agegrid(t))+PrDage(i,t)
+		enddo
+		PrDage_tp1(i,TT-1) = PrDage(i,TT-1)
+	enddo
 
 
 	!age structure extrapolate over periods
@@ -856,7 +865,7 @@ subroutine setparams()
 				enddo
 				
 				do t=1,nd
-					s1(t) = PrDage(t,i)/sum(PrDage(1:nd,i)*sdec(:,t))
+					s1(t) = PrDage_tp1(t,i)/sum(PrDage(1:nd,i)*sdec(:,t))
 				enddo
 				!pid1 = sdec*diag(s1);
 				do t=1,nd
@@ -865,12 +874,12 @@ subroutine setparams()
 				enddo
 				enddo
 				!will end when r1 and s1 both approach 1
-				if (dabs(sum(r1)/dble(nd)+ sum(s1)/dble(nd) -2._dp) < 1e-6 ) then
+				if (dabs(sum(r1)/dble(nd)+ sum(s1)/dble(nd) -2._dp) < 1e-7 ) then
 					exit
 				endif
 				
 			enddo
-		endif
+		endif !RAS
 			
 		do j=1,ndi
 		
@@ -898,6 +907,7 @@ subroutine setparams()
 			
 			!replace vl = vr^-1
 			call invmat(vr, vl)
+			!vr = vr*wr^(1/t)
 			do t=1,nd
 				vr(:,t) = vr(:,t)*wr(t)**(1._dp/tlen)
 			enddo

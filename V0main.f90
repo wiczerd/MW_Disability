@@ -3542,35 +3542,35 @@ module sim_hists
 					if((born_it(i,it) .eq. 1 .and. it> 1) .or. (age_it(i,it)>0 .and. it==1)) then
 					! no one is ``born'' in the first period, but look the same
 					! draw state from distribution of age 1 
-					age_hr	= 1
-					if(iter ==1) then
-						d_hr	= 1
-						a_hr 	= minval(agrid)
-						ei_hr	= 1
-						e_hr 	= 0.
-						ai_hr 	= 1
-						
-					else
+						age_hr	= 1
 						do d_hr=1,nd
-							if(status_it_innov(i,1) < cumPrDage(d_hr+1,age_hr)) &
+							if(health_it_innov(i,1) < cumPrDage(d_hr+1,age_hr)) &
 								& exit
 						enddo
-						do ii=1,Ncol
-							drawi = drawi_ititer(i,ii)!iter-1
-							drawt = drawt_ititer(i,ii)!iter-1
-							if( d_it(drawi,drawt) .eq. d_hr .and. status_it(drawi,drawt)>0) then 
-								exit
-							elseif(ii==Ncol) then
-								nomatch = nomatch+1
-							endif
-						enddo
-						!d_hr already set: d_hr = d_it(drawi,drawt)
-						a_hr = a_it(drawi,drawt)
-						e_hr = e_it(drawi,drawt)
-						ei_hr = e_it_int(drawi,drawt)
-						ai_hr  = a_it_int(drawi,drawt)
-					endif
-					if( it>1 .or. iter==1) status_it(i,it) = 1 !start out working
+						if(iter ==1) then
+							a_hr 	= minval(agrid)
+							ei_hr	= 1
+							e_hr 	= 0.
+							ai_hr 	= 1
+							
+						else
+
+							do ii=1,Ncol
+								drawi = drawi_ititer(i,ii)!iter-1
+								drawt = drawt_ititer(i,ii)!iter-1
+								if( d_it(drawi,drawt) .eq. d_hr .and. status_it(drawi,drawt)>0) then 
+									exit
+								elseif(ii==Ncol) then
+									nomatch = nomatch+1
+								endif
+							enddo
+							!d_hr already set: d_hr = d_it(drawi,drawt)
+							a_hr = a_it(drawi,drawt)
+							e_hr = e_it(drawi,drawt)
+							ei_hr = e_it_int(drawi,drawt)
+							ai_hr  = a_it_int(drawi,drawt)
+						endif
+						if( it>1 .or. iter==1) status_it(i,it) = 1 !start out working
 
 						if(it == 1) then !these were already born
 							age_hr	= age_it(i,it)
@@ -5200,26 +5200,26 @@ program V0main
 	ub = (/ 2._dp, 0.5_dp /)
 	
 	!set up the grid over which to check derivatives 
-	open(unit=fcallog, file="cal_square.csv")
-	write(fcallog,*) nu, xizcoef, ervec
-	close(unit=fcallog)
-	do i=1,10
-	do j=1,10
-		verbose=1
-		print_lev =1
-		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
-		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
+!~ 	open(unit=fcallog, file="cal_square.csv")
+!~ 	write(fcallog,*) nu, xizcoef, ervec
+!~ 	close(unit=fcallog)
+!~ 	do i=1,10
+!~ 	do j=1,10
+!~ 		verbose=1
+!~ 		print_lev =1
+!~ 		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
+!~ 		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
+!~ 		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
 		
-		call cal_dist(parvec,ervec,shk)
-		write(fcallog, "(G20.12)", advance='no')  nu
-		write(fcallog, "(G20.12)", advance='no')  xizcoef
-		write(fcallog, "(G20.12)", advance='no')  ervec(1)
-		write(fcallog, "(G20.12)", advance='yes') ervec(2)
-		print *, nu, xizcoef, ervec(1), ervec(2)
-		close(unit=fcallog)
-	enddo
-	enddo
+!~ 		call cal_dist(parvec,ervec,shk)
+!~ 		write(fcallog, "(G20.12)", advance='no')  nu
+!~ 		write(fcallog, "(G20.12)", advance='no')  xizcoef
+!~ 		write(fcallog, "(G20.12)", advance='no')  ervec(1)
+!~ 		write(fcallog, "(G20.12)", advance='yes') ervec(2)
+!~ 		print *, nu, xizcoef, ervec(1), ervec(2)
+!~ 		close(unit=fcallog)
+!~ 	enddo
+!~ 	enddo
 	
 	
 !~ 	if( dbg_skip .eqv. .false.) then
