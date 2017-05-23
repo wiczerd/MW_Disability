@@ -201,14 +201,14 @@ module helper_funs
 		
 		!vocational stages 4-5
 		if(itin>=(TT-2)) then
-			xifunV =  (maxval(trgrid)-trin)/(1._dp+(maxval(trgrid)-trin))*xizcoef*(1.+xiagecoef)
+			xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef*(1.+xiagecoef)
 		else
-			xifunV =  (maxval(trgrid)-trin)/(1._dp+(maxval(trgrid)-trin))*xizcoef
+			xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef
 		endif
 		!adjust for time aggregation in second stage?
 	!	xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 		
-		xifun = xifunV*(1.-xifunH) + xifunH
+		xifun = xifunV + xifunH
 	
 		hlthfrac = xifunH/xifun
 		
@@ -900,8 +900,8 @@ module model_data
 							dicont_hr = dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
 						!	moments_sim%init_di= moments_sim%init_di+ hst%di_prob_hist(i,it)*dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
 						endif
-						if(it<Tsim) status_hr = hst%status_hist(i,it+1)
-						if( hst%app_dif_hist(i,it) >=0 .and.  (hst%status_hist(i,it+1) .eq. 3) .and. (status_hr .eq. 4)) then
+						
+						if( hst%app_dif_hist(i,it) >=0 ) then
 							napp_t = napp_t+1._dp
 							if(hst%hlthprob_hist(i,it)>0)  moments_sim%init_hlth_acc = moments_sim%init_hlth_acc+ hst%hlthprob_hist(i,it)/(hst%di_prob_hist(i,it))
 						endif
@@ -2891,13 +2891,27 @@ module sim_hists
 		integer,intent(in) :: age_it(:,:)
 		integer, allocatable :: bdayseed(:)
 		integer,intent(out) :: drawi_ititer(:,:),drawt_ititer(:,:)
-		integer :: i,it,id,m,ss=1,drawt,drawi,ndraw,Ncols, seedi
+		integer :: i,it,id,m,ss=1,drawt,drawi,ndraw,Ncols, seedi,brn_yr(Nsim)
 		real(dp) :: junk
+
+		!only draws from init_yrs
 
 		call random_seed(size = ss)
 		allocate(bdayseed(ss))
 		Ndraw = size(drawi_ititer,1)
 		Ncols = size(drawi_ititer,2)
+		do i =1,Nsim
+			if(age_it(i,1)>0) then
+				brn_yr(i) = 1
+			else 
+				do it=2,Tsim
+					if(age_it(i,it)>0) then
+						brn_yr(i) = it
+						exit
+					endif
+				enddo
+			endif
+		enddo
 		!need to draw these from age-specific distributions for iterations > 1
 		! OMP parallel do firstprivate(id, i, it, junk, seedi, drawi, drawt,ss,bdayseed,m) <- this makes it much slower
 		do id = 1,Ncols
@@ -2907,23 +2921,22 @@ module sim_hists
 			enddo
 			call random_seed(put = bdayseed )		
 			do i=1,Ndraw
-				it=1
-				if(age_it(i,it) > 0 )then
-					ageloop: do 
-						call random_number(junk)
-						drawi = max(1,idnint(junk*Nsim))
-						call random_number(junk)
-						drawt = max(1,idnint(junk*Tsim)) !max(1,idnint(junk*(dble(Tblock_sim)*tlen)-1))
-						if(age_it(drawi,drawt) .eq. age_it(i,it)) then
-							exit ageloop
-						endif
-					end do ageloop
-					drawi_ititer(i,id) = drawi
-					drawt_ititer(i,id) = drawt
-				else
-					drawi_ititer(i,id) = i
-					drawt_ititer(i,id) = it
-				endif
+				it=brn_yr(i)
+				ageloop: do 
+					call random_number(junk)
+					drawi = max(1,idnint(junk*Nsim))
+					call random_number(junk)
+					if( it==1 ) then
+						drawt = max(1,init_yrs*idnint(junk*tlen)) !max(1,idnint(junk*(dble(Tblock_sim)*tlen)-1))
+					else
+						drawt = max(1,idnint(junk*Tsim))
+					endif
+					if(age_it(drawi,drawt) .eq. age_it(i,it)) then
+						exit ageloop
+					endif
+				end do ageloop
+				drawi_ititer(i,id) = drawi
+				drawt_ititer(i,id) = drawt
 			enddo
 		enddo
 		! OMP end parallel do
@@ -3325,37 +3338,48 @@ module sim_hists
 			do i =1,Nsim
 				!for the population that is pre-existing in the first period , it=1 and age>0
 				!need to draw these from age-specific distributions for iterations > 1
-				if((iter>1) .and. (age_it(i,it)  > 0 )) then
+				if(age_it(i,it)>0) then
 					!use status_it_innov(i,Tsim) to identify the d state, along with age of this guy
 					do d_hr=1,nd
 						if(health_it_innov(i,1) < cumPrDage(d_hr+1,age_it(i,it))) &
 							& exit
 					enddo
-					do ii=1,Ncol
-						drawi = drawi_ititer(i,ii)!iter-1
-						drawt = drawt_ititer(i,ii)!iter-1
-						if( d_it(drawi,drawt) .eq. d_hr .and. status_it(drawi,drawt)>0) then 
-							status_it(i,it) = status_it(drawi,drawt)
-							d_it(i,it) = d_it(drawi,drawt)
-							a_it(i,it) = a_it(drawi,drawt)
-							e_it(i,it) = e_it(drawi,drawt)
-							e_it_int(i,it) = e_it_int(drawi,drawt)
-							a_it_int(i,it) = a_it_int(drawi,drawt)
 
-							exit
-						elseif(ii==Ncol) then
-							status_it(i,it) = 1
-							d_it(i,it) = 1
+					if((iter>1) ) then
+						do ii=1,Ncol
+							drawi = drawi_ititer(i,ii)!iter-1
+							drawt = drawt_ititer(i,ii)!iter-1
+							if( d_it(drawi,drawt) .eq. d_hr .and. status_it(drawi,drawt)>0) then 
+								status_it(i,it) = status_it(drawi,drawt)
+								d_it(i,it) = d_it(drawi,drawt)
+								a_it(i,it) = a_it(drawi,drawt)
+								e_it(i,it) = e_it(drawi,drawt)
+								e_it_int(i,it) = e_it_int(drawi,drawt)
+								a_it_int(i,it) = a_it_int(drawi,drawt)
+								exit
+							elseif(ii==Ncol) then
+								nomatch = nomatch+1
+							endif
+						enddo
+					endif
+					if( (iter==1) .or. ii >=Ncol ) then
+
+						status_it(i,it) = 1
+						d_it(i,it) = d_hr
+						if(age_it(i,it)==1) then
+							a_it_int(i,it) = 1
 							a_it(i,it) = minval(agrid)
 							e_it(i,it) = minval(egrid)
 							e_it_int(i,it) = 1
-							a_it_int(i,it) = 1
-
-							nomatch = nomatch+1
+						else
+							a_it_int(i,it) = na/2
+							a_it(i,it) = agrid(na/2)
+							e_it(i,it) = egrid(ne/2)
+							e_it_int(i,it) = ne/2
 						endif
-					enddo
-
+					endif
 				endif
+				
 			enddo !i=1:Nsim
 			
 			if( verbose>0 .and. nomatch>0 ) print *, "did not find match for draw ", nomatch, " times"
@@ -3498,10 +3522,9 @@ module sim_hists
 
 
 					!set the idiosyncratic income state
-					if(invol_un .eq. 0 )then
-						al_hr	= al_it(i,it)
-						ali_hr	= al_it_int(i,it)
-					else 
+					al_hr	= al_it(i,it)
+					ali_hr	= al_it_int(i,it)
+					if(invol_un .eq. 1 )then
 						al_hr	= alfgrid(1)
 						ali_hr	= 1
 					endif
@@ -3511,25 +3534,25 @@ module sim_hists
 !!!!Setting the number of invol unemp in the first period
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 					!in the first period need to establish the right number of exog unemp
-					if((it==1) .and. (iter>1) .and. (status_hr<=3) .and. (age_hr>0)) then
-						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
-									ali_hr = 1
-									al_last_invol = al_hr
-									invol_un = 1
-									iiwt = 1._dp
-									iiH = 2
-									al_hr = alfgrid(ali_hr)
-									if(status_it_innov(i,Tsim-2)<PrAl1St3(zi_hr)) then
-										status_hr=3
-										status_tmrw = 3
-										status_it(i,it) = 3
-									else 
-										status_hr=2
-										status_tmrw = 2
-										status_it(i,it) = 2
-									endif
-						endif
-					endif
+!~ 					if((it==1) .and. (iter>1) .and. (status_hr<=3) .and. (age_hr>0)) then
+!~ 						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
+!~ 							ali_hr = 1
+!~ 							al_last_invol = al_hr
+!~ 							invol_un = 1
+!~ 							iiwt = 1._dp
+!~ 							iiH = 2
+!~ 							al_hr = alfgrid(ali_hr)
+!~ 							if(status_it_innov(i,Tsim-2)<PrAl1St3(zi_hr)) then
+!~ 								status_hr=3
+!~ 								status_tmrw = 3
+!~ 								status_it(i,it) = 3
+!~ 							else 
+!~ 								status_hr=2
+!~ 								status_tmrw = 2
+!~ 								status_it(i,it) = 2
+!~ 							endif
+!~ 						endif
+!~ 					endif
 					
 					if( w_strchng .eqv. .true.) then
 						do tri_hr = ntr,1,-1
@@ -3644,7 +3667,8 @@ module sim_hists
 									iiwt = 1.
 									iiH = 2
 									status_it(i,it) = 2
-								elseif((invol_un == 1) .and. (fndarrive_draw(i,Tsim-it+1) <= fndi)) then
+									status_tmrw =2
+								elseif((invol_un == 1) .and. (fndarrive_draw(i,it) <= fndi)) then
 									invol_un = 0
 									ali_hr	= al_it_int(i,it)
 									al_hr = al_it(i,it)
@@ -3653,18 +3677,38 @@ module sim_hists
 									status_tmrw = 1
 								elseif( work_dif_hr < 0 ) then !voluntary unemployment (implies invol_un ==0)
 									status_it(i,it) = 2
+									status_tmrw = 2
 								else ! invol_un != 1 and work_dif>0
 									status_tmrw = 1
 									status_it(i,it) = 1
 									status_hr = 1
 								endif
 							case(3) ! status_hr eq 3
-								if(invol_un == 1) then
+								!lfstatus updates
+								if( (invol_un == 1)  .and. (fndarrive_draw(i,it) > lrho*fndi)) then
+								!voluntary or involuntary?
 									ali_hr = 1
 									al_hr = alfgrid(ali_hr)
 									iiwt = 1.
 									iiH = 2
+									status_it(i,it) = 3
+									status_tmrw =3
+								elseif((invol_un == 1) .and. (fndarrive_draw(i,it) <= lrho*fndi)) then
+									invol_un = 0
+									ali_hr	= al_it_int(i,it)
+									al_hr = al_it(i,it)
+									! found a job!
+									status_it(i,it)= 3
+									status_tmrw = 1
+								elseif( work_dif_hr < 0 ) then !voluntary unemployment (implies invol_un ==0)
+									status_it(i,it) = 3
+									status_tmrw =3
+								else ! invol_un != 1 and work_dif>0
+									status_tmrw = 1
+									status_it(i,it) = 3
+									status_hr = 3
 								endif
+								
 								!evaluate application choice
 								if((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
 									app_dif_hr = iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
@@ -3721,15 +3765,15 @@ module sim_hists
 									endif
 									
 								! want to search? find a job?
-								elseif(work_dif_hr >0) then
-									if(status_it_innov(i,it) <=lrho*fndi ) then 
-										status_tmrw = 1
-										if(invol_un == 1) invol_un = 0
-									endif
-									if(status_it_innov(i,it) > lrho*fndi ) status_tmrw = status_hr
-								! not apply for DI and not search
-								else
-									status_tmrw = status_hr
+!~ 								elseif(work_dif_hr >0) then
+!~ 									if(status_it_innov(i,it) <=lrho*fndi ) then 
+!~ 										status_tmrw = 1
+!~ 										if(invol_un == 1) invol_un = 0
+!~ 									endif
+!~ 									if(status_it_innov(i,it) > lrho*fndi ) status_tmrw = status_hr
+!~ 								! not apply for DI and not search
+!~ 								else
+!~ 									status_tmrw = status_hr
 								endif
 							end select
 							
@@ -3772,7 +3816,6 @@ module sim_hists
 								ali_hr = 1
 								al_hr = alfgrid(ali_hr)
 							endif
-
 						endif
 						!evaluate the asset policy
 						if(status_hr .eq. 4) then
@@ -5078,27 +5121,27 @@ program V0main
 	lb = (/0.001_dp, 0.0_dp/)
 	ub = (/ 1._dp, 0.5_dp /)
 	
-	!set up the grid over which to check derivatives 
-	open(unit=fcallog, file="cal_square.csv")
-	write(fcallog,*) nu, xizcoef, ervec
-	close(unit=fcallog)
-	do i=1,10
-	do j=1,10
-		verbose=1
-		print_lev =1
-		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
-		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
+!~ 	!set up the grid over which to check derivatives 
+!~ 	open(unit=fcallog, file="cal_square.csv")
+!~ 	write(fcallog,*) nu, xizcoef, ervec
+!~ 	close(unit=fcallog)
+!~ 	do i=1,10
+!~ 	do j=1,10
+!~ 		verbose=1
+!~ 		print_lev =1
+!~ 		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
+!~ 		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
+!~ 		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
 		
-		call cal_dist(parvec,ervec,shk)
-		write(fcallog, "(G20.12)", advance='no')  nu
-		write(fcallog, "(G20.12)", advance='no')  xizcoef
-		write(fcallog, "(G20.12)", advance='no')  ervec(1)
-		write(fcallog, "(G20.12)", advance='yes') ervec(2)
-		print *, nu, xizcoef, ervec(1), ervec(2)
-		close(unit=fcallog)
-	enddo
-	enddo
+!~ 		call cal_dist(parvec,ervec,shk)
+!~ 		write(fcallog, "(G20.12)", advance='no')  nu
+!~ 		write(fcallog, "(G20.12)", advance='no')  xizcoef
+!~ 		write(fcallog, "(G20.12)", advance='no')  ervec(1)
+!~ 		write(fcallog, "(G20.12)", advance='yes') ervec(2)
+!~ 		print *, nu, xizcoef, ervec(1), ervec(2)
+!~ 		close(unit=fcallog)
+!~ 	enddo
+!~ 	enddo
 	
 	
 !~ 	if( dbg_skip .eqv. .false.) then
