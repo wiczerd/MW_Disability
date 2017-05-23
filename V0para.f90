@@ -854,23 +854,23 @@ subroutine setparams()
 		
 			
 			do iter=1,maxiter
-				do t=1,nd
-					r1(t) = 1._dp/sum(pid1(t,:))
+				do k=1,nd
+					r1(k) = 1._dp/sum(pid1(k,:))
 				enddo
 				!sdec = diag(r1)*pid1:
-				do t=1,nd
+				do k=1,nd
 				do j=1,nd
-					sdec(t,j) = r1(t)*pid1(t,j)
+					sdec(k,j) = r1(k)*pid1(k,j)
 				enddo
 				enddo
 				
-				do t=1,nd
-					s1(t) = PrDage_tp1(t,i)/sum(PrDage(1:nd,i)*sdec(:,t))
+				do k=1,nd
+					s1(k) = PrDage_tp1(k,i)/sum(PrDage(1:nd,i)*sdec(:,k))
 				enddo
 				!pid1 = sdec*diag(s1);
-				do t=1,nd
+				do k=1,nd
 				do j=1,nd
-					pid1(t,j) = s1(j)*sdec(t,j)
+					pid1(k,j) = s1(j)*sdec(k,j)
 				enddo
 				enddo
 				!will end when r1 and s1 both approach 1
