@@ -900,21 +900,21 @@ module model_data
 							dicont_hr = dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
 						!	moments_sim%init_di= moments_sim%init_di+ hst%di_prob_hist(i,it)*dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
 						endif
-						if( hst%app_dif_hist(i,it) >=0 ) then
-							napp_t = napp_t+1.
+						if(it<Tsim) status_hr = hst%status_hist(i,it+1)
+						if( hst%app_dif_hist(i,it) >=0 .and.  (hst%status_hist(i,it+1) .eq. 3) .and. (status_hr .eq. 4)) then
+							napp_t = napp_t+1._dp
 							if(hst%hlthprob_hist(i,it)>0)  moments_sim%init_hlth_acc = moments_sim%init_hlth_acc+ hst%hlthprob_hist(i,it)/(hst%di_prob_hist(i,it))
 						endif
 					endif
 					
 					!if get DI then add the latent value when applied
-					if(hst%status_hist(i,it) == 4 ) then 
-						if(it==1 .or. dicont_hr==0._dp) then
+					if(hst%status_hist(i,it) == 4 .or. hst%status_hist(i,it) == 3) then 
+						if(hst%status_hist(i,it) == 4 .and. (it==1 .or. dicont_hr==0._dp)) then
 							moments_sim%init_di= moments_sim%init_di+1._dp
-						else 
+						endif
+						if( it>1 ) then
 							moments_sim%init_di= moments_sim%init_di+dicont_hr
 						endif
-						ninsur_app = dicont_hr + ninsur_app
-					else 
 						ninsur_app = 1._dp + ninsur_app
 					endif
 
@@ -5079,26 +5079,26 @@ program V0main
 	ub = (/ 1._dp, 0.5_dp /)
 	
 	!set up the grid over which to check derivatives 
-!~ 	open(unit=fcallog, file="cal_square.csv")
-!~ 	write(fcallog,*) nu, xizcoef, ervec
-!~ 	close(unit=fcallog)
-!~ 	do i=1,10
-!~ 	do j=1,10
-!~ 		verbose=1
-!~ 		print_lev =1
-!~ 		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-!~ 		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
-!~ 		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
+	open(unit=fcallog, file="cal_square.csv")
+	write(fcallog,*) nu, xizcoef, ervec
+	close(unit=fcallog)
+	do i=1,10
+	do j=1,10
+		verbose=1
+		print_lev =1
+		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
+		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
+		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
 		
-!~ 		call cal_dist(parvec,ervec,shk)
-!~ 		write(fcallog, "(G20.12)", advance='no')  nu
-!~ 		write(fcallog, "(G20.12)", advance='no')  xizcoef
-!~ 		write(fcallog, "(G20.12)", advance='no')  ervec(1)
-!~ 		write(fcallog, "(G20.12)", advance='yes') ervec(2)
-!~ 		print *, nu, xizcoef, ervec(1), ervec(2)
-!~ 		close(unit=fcallog)
-!~ 	enddo
-!~ 	enddo
+		call cal_dist(parvec,ervec,shk)
+		write(fcallog, "(G20.12)", advance='no')  nu
+		write(fcallog, "(G20.12)", advance='no')  xizcoef
+		write(fcallog, "(G20.12)", advance='no')  ervec(1)
+		write(fcallog, "(G20.12)", advance='yes') ervec(2)
+		print *, nu, xizcoef, ervec(1), ervec(2)
+		close(unit=fcallog)
+	enddo
+	enddo
 	
 	
 !~ 	if( dbg_skip .eqv. .false.) then

@@ -578,7 +578,18 @@ subroutine setparams()
 			k =t+1
 		endif
 		if(t==TT) k = t-1
-		PrDage(:,t) = Hdist_read(k,2:1+nd)/sum(Hdist_read(k,2:1+nd))
+		if( t .ne. 2 .and. t .ne. 3 ) then
+			PrDage(:,t) = Hdist_read(k,2:1+nd)
+		elseif(t .eq. 2) then
+			do i=1,nd
+				PrDage(i,t) = (Hdist_read(3,1+i) - Hdist_read(2,1+i))/(.5_dp*(agegrid(3)+agegrid(2)) - agegrid(1))*(agegrid(2)-agegrid(1)) + Hdist_read(2,1+i)
+			enddo
+		elseif(t .eq. 3) then
+			do i=1,nd
+				PrDage(i,t) = (Hdist_read(4,1+i) - Hdist_read(3,1+i))/(agegrid(4) - .5_dp*(agegrid(3)+agegrid(2)) )*(agegrid(3)-agegrid(4)) + Hdist_read(4,1+i)
+			enddo
+		endif
+		PrDage(:,t) = PrDage(:,t)/sum(PrDage(:,t))
 		PrD3age(t) = PrDage(nd,t)
 	enddo
 	!health structure extrapolate one period ahead - make the transition rate correct
