@@ -182,7 +182,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		voc_age	= 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
-		maxwin,minwin,&		!frac limits for earnings for DI probs
+
 		DItest1 = 1.0, &	!Earnings Index threshold 1 (These change based on the average wage)
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3
@@ -437,9 +437,6 @@ subroutine setparams()
 	endif
 	pialf(1,nal) = 1.-sum(pialf(1,2:(nal-1) ))
 	pialf(2:nal,1) = 0. !exogenous separation is not built into alpha transitions
-
-	maxwin = exp(maxval(alfgrid)) !will overwrite in the main code
-	minwin = exp(minval(alfgrid)) !will overwrite in the main code
 
 	!~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	! Occupation wage component
@@ -813,10 +810,10 @@ subroutine setparams()
 
 	!Earnings Grid
 	!Make linear from lowest possible wage (disabled entrant, lowest types)
-	emin = dexp(trgrid(1) +alfgrid(2)+wtau(1)+wd(nd))
+	emin = dexp(alfgrid(2)+minval(wtau)+minval(wd))
 	!... to highest, maximizing over t
 	!wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
-	emax = dexp(trgrid(ntr) +maxval(alfgrid)+maxval(wtau)+wd(1))
+	emax = dexp(maxval(alfgrid)+maxval(wtau)+maxval(wd))
 	step = (emax-emin)/dble(ne-1)
 	do i=1,ne
 		egrid(i) = emin+step*dble(i-1)

@@ -898,6 +898,7 @@ module model_data
 					if(hst%status_hist(i,it) == 3) then
 						if(hst%app_dif_hist(i,it)>(-100.) .and. hst%app_dif_hist(i,it)<100.) then
 							dicont_hr = dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
+							dicont_hr = dicont_hr*2._dp-1._dp  !norm it from (.5,1) to (0,1)
 						!	moments_sim%init_di= moments_sim%init_di+ hst%di_prob_hist(i,it)*dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
 						endif
 						
@@ -908,7 +909,7 @@ module model_data
 					endif
 					
 					!if get DI then add the latent value when applied
-					if(hst%status_hist(i,it) == 4 .or. hst%status_hist(i,it) == 3) then 
+					if(hst%status_hist(i,it) == 4 ) then 
 						if(hst%status_hist(i,it) == 4 .and. (it==1 .or. dicont_hr==0._dp)) then
 							moments_sim%init_di= moments_sim%init_di+1._dp
 						endif
@@ -916,8 +917,11 @@ module model_data
 							moments_sim%init_di= moments_sim%init_di+dicont_hr
 						endif
 						ninsur_app = 1._dp + ninsur_app
+					elseif( hst%status_hist(i,it) == 3 ) then
+						if( it>1 ) then
+							moments_sim%init_di= moments_sim%init_di+dicont_hr*hst%di_prob_hist(i,it)
+						endif
 					endif
-
 				endif
 			enddo
 		enddo
@@ -3103,6 +3107,7 @@ module sim_hists
 		! because the actual alpha is endgoenous to unemployment and trend
 		real(dp), allocatable :: al_it_endog(:,:)
 		integer, allocatable  :: al_int_it_endog(:,:)
+		real(dp), allocatable :: wtr_it(:,:)
 		
 		! write to hst, get from shk
 		real(dp), pointer    :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
@@ -3176,6 +3181,7 @@ module sim_hists
 		allocate(app_it(Nsim,Tsim))
 		allocate(al_int_it_endog(Nsim,Tsim))
 		allocate(al_it_endog(Nsim,Tsim))
+		allocate(wtr_it(Nsim,Tsim))
 !		allocate(hlthvocSSDI(Nsim,Tsim))
 
 
@@ -3565,6 +3571,7 @@ module sim_hists
 								triwt = 1._dp
 							endif
 						enddo
+						wtr_it(i,it) = wage_trend(it,j_hr) 
 					else
 						tri_hr = tri0
 						triwt = 1._dp
@@ -3755,25 +3762,14 @@ module sim_hists
 										status_tmrw = 3
 									endif
 									
-									!record probabilities
-									if( age_hr .eq. 1 .and. ineligNoNu .eqv. .true. ) then
-										di_prob_it(i,it) = xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)*eligY
-										hst%hlthprob_hist(i,it) = hlthprob*eligY
-									else 	
-										di_prob_it(i,it) = xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)
-										hst%hlthprob_hist(i,it) = hlthprob
-									endif
-									
-								! want to search? find a job?
-!~ 								elseif(work_dif_hr >0) then
-!~ 									if(status_it_innov(i,it) <=lrho*fndi ) then 
-!~ 										status_tmrw = 1
-!~ 										if(invol_un == 1) invol_un = 0
-!~ 									endif
-!~ 									if(status_it_innov(i,it) > lrho*fndi ) status_tmrw = status_hr
-!~ 								! not apply for DI and not search
-!~ 								else
-!~ 									status_tmrw = status_hr
+								endif
+								!record probabilities
+								if( age_hr .eq. 1 .and. ineligNoNu .eqv. .true. ) then
+									di_prob_it(i,it) = xifun(d_hr,wage_trend(it,j_hr),age_hr,hlthprob)*eligY
+									hst%hlthprob_hist(i,it) = hlthprob*eligY
+								else 	
+									di_prob_it(i,it) = xifun(d_hr,wage_trend(it,j_hr),age_hr,hlthprob)
+									hst%hlthprob_hist(i,it) = hlthprob
 								endif
 							end select
 							
@@ -3799,9 +3795,9 @@ module sim_hists
 								app_dif_it(i,it) = app_dif_hr
 								!store the disability probability for the first group
 								if( (age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))) then
-									di_prob_it(i,it) = xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)
+									di_prob_it(i,it) = xifun(d_hr,wage_trend(it,j_hr),age_hr,hlthprob)
 								elseif( age_hr ==1)  then
-									di_prob_it(i,it) = xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)*eligY
+									di_prob_it(i,it) = xifun(d_hr,wage_trend(it,j_hr),age_hr,hlthprob)*eligY
 								endif
 								
 							endif
@@ -3928,12 +3924,21 @@ module sim_hists
 							e_it(i,it+1) = ep_hr
 							! assign to grid points by nearest neighbor
 							! ei_hr = finder(egrid,e_it(i,it+1)) <- relatively short, but not thread safe
+			! Random assingment?
+!~ 							ei_hr = ne/2+1
+!~ 							if( mod(i,3)==0 ) then
+!~ 								ei_hr = 1
+!~ 							elseif(mod(i,3)==1) then
+!~ 								ei_hr = ne
+								
+!~ 							endif
+!~ 							e_it_int(i,it+1) = ei_hr
 							do ei_hr = ne,1,-1
-								if( ep_hr > egrid(ei_hr) ) exit
+								if( ep_hr < egrid(ei_hr) ) exit
 							enddo
 							ei_hr = max(ei_hr,1) !just to be sure we take base 1
 							if(ei_hr < ne) then
-								if( (ep_hr - egrid(ei_hr))<  (egrid(ei_hr+1) - ep_hr) ) then
+								if( (ep_hr - egrid(ei_hr)) < (egrid(ei_hr+1) - ep_hr) ) then
 									e_it_int(i,it+1) = ei_hr
 								else
 									e_it_int(i,it+1) = ei_hr + 1
@@ -4115,6 +4120,7 @@ module sim_hists
 					call mat2csv (occgrow_jt,"occgrow_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%wage_hist,"wage_it_hist"//trim(caselabel)//".csv")
+					call mat2csv (wtr_it,"wtr_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%app_dif_hist,"app_dif_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%di_prob_hist,"di_prob_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
@@ -4130,6 +4136,7 @@ module sim_hists
 		deallocate(a_it_int,e_it_int)
 		deallocate(app_it,work_it)
 		deallocate(val_hr_it)
+		deallocate(wtr_it)
 		!deallocate(hlthvocSSDI)
 		!deallocate(status_it_innov)
 		!deallocate(drawi_ititer,drawt_ititer)
@@ -4922,9 +4929,6 @@ program V0main
 		call mat2csv(occwg_coefs,"occwg_coefs.csv")
 
 
-		!output the possible wage-levels and set maxwin and minwin
-		maxwin = exp(maxval(alfgrid))
-		minwin = exp(minval(alfgrid))
 		open(1, file="wage_dist.csv")
 		itr = tri0
 		iz  = 3
@@ -4945,12 +4949,6 @@ program V0main
 			write(1,*) " "! trailing space
 		enddo	
 		close(1)
-		id =3
-		it =1
-		minwin = wage(trgrid(1)+ minval(wage_lev),alfgrid(2),id, minval(zgrid),it) !minwin * exp(minval(wage_lev)) *0.99_dp
-		id =1
-		it = 3
-		maxwin = wage(trgrid(ntr)+ minval(wage_lev),alfgrid(2),id, maxval(zgrid),it) !maxwin * exp(maxval(wage_lev)) *1.01_dp
 		
 		open(1, file="xi.csv")
 		open(2, file="xi_hlth.csv")
