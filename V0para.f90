@@ -910,8 +910,8 @@ subroutine setparams()
 			!want to construct right-side eigen vectors into matrix
 						!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
 			call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
-			!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
 		&	 vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
+			!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
 			
 			!replace vl = vr^-1
 			call invmat(vr, vl)
@@ -954,6 +954,17 @@ subroutine settfp()
 	piblock = 0.
 	ergpi1  = 0.
 	ergpi2  = 0.
+
+	!reset separation/finding probabilities:
+	do i=1,nz
+		do j=1,nl
+		
+			fndgrid(j,i) = (maxval(fndrate(i,:))-minval(fndrate(i,:))) *dble( j-1 )/dble(nl-1) + minval(fndrate(i,:))
+			sepgrid(j,i) = (maxval(seprisk(i,:))-minval(seprisk(i,:))) *dble( j-1 )/dble(nl-1) + minval(seprisk(i,:))
+		
+		enddo
+	enddo
+	
 
 
 	if( nz>2 ) then !just taking nber probabilities then

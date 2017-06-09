@@ -1040,6 +1040,10 @@ module sol_val
 			endif
 		enddo	!iaa
 		Vout = Vtest1
+		if((Vout <-1e5).and. (verbose >0)) then
+			write(*,*) "SSDI here ",SSDI(egrid(ie))
+		endif
+		
 	end subroutine maxVD
 
 	subroutine maxVU(il,itr,idi,ial,id,ie,ia,iz,it, VU0,VN0,V0,iaa0,iaaA,apol,Vout)
@@ -1154,8 +1158,8 @@ module sol_val
 		if((Vnapp <-1e5) .and. (verbose >0)) then
 			write(*,*) "ruh roh!"
 			write(*,*) "Vnapp, aNapp: ", Vnapp, aNapp
-			write(*,*) "VD: ",id,ie,iaa,it
-			write(*,*) "VN: ",il,itr,idi,ial,id,ie,ia,iz,it
+!~ 			write(*,*) "VD: ",id,ie,iaa,it
+!~ 			write(*,*) "VN: ",il,itr,idi,ial,id,ie,ia,iz,it
 		endif
 	
 		!**********Value if apply for DI 
@@ -1215,8 +1219,9 @@ module sol_val
 		if(Vapp <-1e5) then
 			write(*,*) "ruh roh!"
 			write(*,*) "Vapp, aapp: ", Vapp, aapp
-			write(*,*) "VD: ",id,ie,iaa,it
-			write(*,*) "VN: ",il,itr,idi,ialal,id,ie,iaa,izz,it
+!~ 			pause
+!~ 			write(*,*) "VD: ",id,ie,iaa,it
+!~ 			write(*,*) "VN: ",il,itr,idi,ialal,id,ie,iaa,izz,it
 		endif
 
 		!******************************************************
@@ -2064,67 +2069,76 @@ module sol_val
 					!----------------------------------------------------------------
 					!Loop over current state: assets
 					!----------------------------------------------------------------
-					iaN = 0
-					ia = 1
-					iaa0 = 1
-					iaaA = na
-					call maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
-						& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
-					V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-					VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
-					gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
-					gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
-					aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
-					iaN = iaN+1
-					ia_o(iaN) = ia
-					
+					if(ial>1) then
+						iaN = 0
+						ia = 1
+						iaa0 = 1
+						iaaA = na
+						call maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
+							& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
+						V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+						VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
+						gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
+						gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
+						aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+						iaN = iaN+1
+						ia_o(iaN) = ia
+						
 
-					ia = na
-					iaa0 = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,1,iz,it)
-					iaaA = na
-					call maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
-						& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
-					V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-					VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
-					gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
-					gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
-					aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
-					iaN = iaN+1
-					ia_o(iaN) = ia
-					
-					iaa_k = 1
-					aa_l(iaa_k) = 1
-					aa_u(iaa_k) = na
+						ia = na
+						iaa0 = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,1,iz,it)
+						iaaA = na
+						call maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
+							& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
+						V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+						VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
+						gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
+						gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gwdif
+						aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+						iaN = iaN+1
+						ia_o(iaN) = ia
+						
+						iaa_k = 1
+						aa_l(iaa_k) = 1
+						aa_u(iaa_k) = na
 
-					outerVW: do
-						do
-							if(aa_u(iaa_k) == aa_l(iaa_k)+1) exit
-							iaa_k = iaa_k+1
-							aa_l(iaa_k) = aa_l(iaa_k-1)
-							aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
-							!search given ia from iaa0 to iaaA
-							ia = aa_u(iaa_k)
-							iaa0 = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,  aa_l(iaa_k-1)  ,iz,it)
-							iaaA = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,  aa_u(iaa_k-1)  ,iz,it)
-							call maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
-								& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
-							V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
-							VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
-							gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
-							gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)= gwdif
-							aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
-							iaN = iaN+1
-							ia_o(iaN) = ia
+						outerVW: do
+							do
+								if(aa_u(iaa_k) == aa_l(iaa_k)+1) exit
+								iaa_k = iaa_k+1
+								aa_l(iaa_k) = aa_l(iaa_k-1)
+								aa_u(iaa_k) = (aa_l(iaa_k-1)+aa_u(iaa_k-1))/2
+								!search given ia from iaa0 to iaaA
+								ia = aa_u(iaa_k)
+								iaa0 = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,  aa_l(iaa_k-1)  ,iz,it)
+								iaaA = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,  aa_u(iaa_k-1)  ,iz,it)
+								call maxVW(il,itr,idi,ial,id,ie,ia,iz,it, VU, V0,wagehere,iee1,iee2,iee1wt, &
+									& iaa0,iaaA,apol,gw,gwdif,Vtest1 ,VWhere )
+								V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = Vtest1
+								VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VWhere
+								gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = gw
+								gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)= gwdif
+								aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = apol
+								iaN = iaN+1
+								ia_o(iaN) = ia
+							enddo
+							do
+								if(iaa_k==1) exit outerVW
+								if( aa_u(iaa_k)/= aa_u(iaa_k - 1) ) exit
+								iaa_k = iaa_k -1
+							end do
+							aa_l(iaa_k) = aa_u(iaa_k)
+							aa_u(iaa_k) = aa_u(iaa_k-1)
+						end do outerVW
+					else
+						do ia=1,na
+							V	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+							VW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = VU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
+							gwork	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = 0
+							gwork_dif((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = 0.
+							aW	((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it) = aU((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,ia,iz,it)
 						enddo
-						do
-							if(iaa_k==1) exit outerVW
-							if( aa_u(iaa_k)/= aa_u(iaa_k - 1) ) exit
-							iaa_k = iaa_k -1
-						end do
-						aa_l(iaa_k) = aa_u(iaa_k)
-						aa_u(iaa_k) = aa_u(iaa_k-1)
-					end do outerVW
-					
+					endif
 					Vtest1 = sum((V((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it) &
 						& - V0((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,:,iz,it))**2)
 
@@ -2209,7 +2223,7 @@ module sol_val
 
 		enddo	!il
 
-		if(verbose>1 .and. iter_timeout>0) print*, "did not converge ", iter_timeout, " times"
+		if(verbose>0 .and. iter_timeout>0) print*, "did not converge ", iter_timeout, " times"
 		! this plots work-rest and di application on the cross product of alphai and deltai and di
 		if(print_lev >1) then
 			itr = tri0
@@ -3158,7 +3172,7 @@ module sim_hists
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,triwt=1.
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1, ai_hr=1,api_hr=1,ei_hr=1,triH, &
-			& tri=1, tri_hr=1,fnd_hr(nz),sep_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0
+			& tri=1, tri_hr=1,fnd_hr(nz),sep_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0,slice_len=1
 			
 		logical :: w_strchng_old = .false., final_iter = .false.,occaggs_hr =.true.
 		
@@ -3253,7 +3267,7 @@ module sim_hists
 		Ncol = size(drawi_ititer,2)
 		al_int_it_endog  = al_it_int
 		al_it_endog      = al_it
-
+		wtr_it = 0.
 		if(shk%drawn /= 1 )then
 			call draw_shocks(shk)
 		endif		
@@ -3982,7 +3996,6 @@ module sim_hists
 				call mati2csv(status_it,"status_it.csv")
 				call mati2csv(d_it,"d_it.csv")
 			endif
-
 			a_mean = 0.
 			d_mean = 0.
 			s_mean = 0.
@@ -4018,6 +4031,7 @@ module sim_hists
 				if(verbose > 2) print *, "prob al1" ,PrAl1(1), ",", PrAl1(2)
 				exit
 			endif
+			slice_len = iter
 			simiter_dist(iter) = sum((a_mean - a_mean_liter)**2) +sum((s_mean - s_mean_liter)**2)
 			if( (  sum((a_mean - a_mean_liter)**2)<simtol .and. ( sum((s_mean - s_mean_liter)**2)<simtol .or. sum((d_mean - d_mean_liter)**2) <simtol) ).or. &
 			&	(iter .ge. iter_draws-1) ) then
@@ -4054,11 +4068,11 @@ module sim_hists
 			a_var_liter = a_var
 			d_var_liter = d_var
 		enddo! iter
-		
 		if( print_lev>=2) then
-			call vec2csv(simiter_dist(1:iter), "simiter_dist.csv" )
+			slice_len = max(1,slice_len-1)
+			call vec2csv(simiter_dist(1:slice_len), "simiter_dist.csv" )
 		endif
-		
+
 		! calc occupation growth rates
 		if(occaggs_hr) then
 			if(verbose >2) print *, "calculating occupation growth rates"		
@@ -4544,17 +4558,13 @@ module find_params
 				exit
 			endif
 
-!~ 			if(print_lev .ge. 4) then
-!~ 				if(iter==1) iout=0
-!~ 				call mat2csv( dist_wgtrend_jt, "dist_wgtrend_jt.csv",iout)
-!~ 				call mat2csv(med_wage_jt,"med_wage_jt.csv",iout)
-!~ 				iout=1
-				
-!~ 			endif
+
 			!take a step in fndrate, seprisk space
-			
-			fndrt_mul1 = udur/avg_undur*fndrt_mul0
-			fndrt_mul1 = upd_wgtrnd*fndrt_mul1 + (1.-upd_wgtrnd)*fndrt_mul0
+	!		fndrt_mul1 = udur/avg_undur*fndrt_mul0
+	!		if( (fndrt_mul1>1e3) .or.  (fndrt_mul1 <-1e3) .or. isnan(fndrt_mul1)  ) fndrt_mul1 =1. !bring it back to the center
+	!		fndrt_mul1 = upd_wgtrnd*fndrt_mul1 + (1.-upd_wgtrnd)*fndrt_mul0
+			!just set fndrt_mul1 =1
+			fndrt_mul1 =1
 
 			sep_implied = (Efrt*avg_unrt)/(1.-avg_unrt)
 !!!			separation rate search: this used bisection, but that makes other variables jump around
@@ -4567,7 +4577,7 @@ module find_params
 
 !!! 		separation rate search: gradient search. Step size is arbitrary.
 			seprt_mul1 = seprt_mul0 - 0.01_dp*(urt - avg_unrt)/avg_unrt
-			
+			if( (seprt_mul1>1e3) .or.  (seprt_mul1 <-1e3) .or. isnan(seprt_mul1)  ) seprt_mul1 =1. !bring it back to the center
 			!seprisk = seprisk/seprt_mul0*seprt_mul1
 			!fndrate = fndrate/fndrt_mul0*fndrt_mul1
 			sepgrid = sepgrid/seprt_mul0*seprt_mul1
@@ -4637,10 +4647,13 @@ module find_params
 	
 		call alloc_econ(vfs,pfs,hst)
 
+		print *, verbose
+		print *, print_lev
+
 		if(verbose >2) print *, "In the calibration"	
 
 		! set up economy and solve it
-		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
+!~ 		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
 		
 		if(verbose >2) print *, "Solving the model"	
 		call sol(vfs,pfs)
@@ -4837,7 +4850,7 @@ program V0main
 	! Counters and Indicies
 	!************************************************************************************************!
 
-		integer  :: id=1, it=1, ij=1, itr=1, ial=1, iz=1, i=1,j=1,narg_in=1, wo=1, idi, status=1,t0tT(2)
+		integer  :: id=1, it=1, ij=1, itr=1, ial=1, iz=1, i=1,j=1,narg_in=1, wo=1, idi,iter, status=1,t0tT(2)
 		character(len=32) :: arg_in
 	!************************************************************************************************!
 	! Other
@@ -5018,12 +5031,13 @@ program V0main
 	!solve it once
 	!************************************************************************************************!
 	if (sol_once .eqv. .true.) then
+	do iter=1,2
 		call alloc_econ(vfs,pfs,hst)
 		Vtol = 5e-5
-		! set up economy and solve it
-
-		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
 		
+		! set up economy and solve it
+		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
+
 		if(verbose >1) print *, "Solving the model"	
 		call sol(vfs,pfs)
 
@@ -5069,45 +5083,24 @@ program V0main
 		if(verbose >=1) print *, "Computing moments"
 		call moments_compute(hst,moments_sim,shk)
 		if(verbose >0) print *, "DI rate" , moments_sim%avg_di
- 
 !	set mean wage:
 		wmean = 0._dp
 		junk = 0._dp
 		do i=1,Nsim
 			do it=1,Tsim
 				wagehere = hst%wage_hist(i,it)
-				if( wagehere > 0. ) then
+				if( hst%status_hist(i,it)==1) then
 					wmean = wagehere + wmean
 					junk = junk+1.
 				endif
 			enddo
 		enddo
 		wmean = wmean/junk
-		if(verbose >1) print *, "average wage:", wmean
-			totapp_dif_hist = 0._dp
-			ninsur_app = 0._dp
-			do i =1,Nsim
-				do it=1,Tsim
-					if(hst%status_hist(i,it)<=3 .and. mod(it,itlen) .eq. 0) ninsur_app = 1.+ninsur_app ! only count the body once every year, comparable to data
-					if(hst%status_hist(i,it)==3) &
-					&	totapp_dif_hist = exp(10.*hst%app_dif_hist(i,it))/(1. + exp(10.*hst%app_dif_hist(i,it))) + totapp_dif_hist
-				enddo
-			enddo
-			totapp_dif_hist = totapp_dif_hist/ninsur_app
-		if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
+		print *, "average wage:", wmean
+		wmean = 1._dp
+		call dealloc_econ(vfs,pfs,hst)
+	enddo
 
-		Vtol = 1e-6
-
-		if(dbg_skip .eqv. .false.) then
-			parvec(1) = nu
-			parvec(2) = xizcoef
-			parvec_1(1) = nu
-			err0 = 0.
-			call cal_dist(parvec_1,ervec_1,shk)
-			
-			print *, ervec_1
-		endif
-		
 		if(verbose > 2) then
 			call CPU_TIME(t2)
 			call SYSTEM_CLOCK(c2)
@@ -5116,10 +5109,20 @@ program V0main
 		endif
 	endif !sol_once
 
-	lb = (/0.001_dp, 0.0_dp/)
-	ub = (/ 1._dp, 0.5_dp /)
+	if(dbg_skip .eqv. .false.) then
+		parvec(1) = nu
+		parvec(2) = xizcoef
+		err0 = 0.
+		print *, "calibration routine"
+!~ 		call cal_dist(parvec,ervec,shk)
+		
+		print *, ervec
+	endif
 	
-!~ 	!set up the grid over which to check derivatives 
+	lb = (/ 1.0_dp, 0.0_dp/)
+	ub = (/ 2.5_dp, 0.5_dp /)
+	
+	!set up the grid over which to check derivatives 
 !~ 	open(unit=fcallog, file="cal_square.csv")
 !~ 	write(fcallog,*) nu, xizcoef, ervec
 !~ 	close(unit=fcallog)
