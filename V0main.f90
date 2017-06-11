@@ -151,7 +151,7 @@ module helper_funs
 	
 		real(dp), intent(in)	:: ein
 		real(dp) 		:: SSDI
-		!Follows Pistafferi & Low '12
+		!Follows Pistafferi & Low '15
 		IF (ein<DItest1*wmean) then
 			SSDI = 0.9*ein
 		ELSEIF (ein<DItest2*wmean) then
@@ -197,7 +197,7 @@ module helper_funs
 		!stage 1-3
 		xifunH = xi_d(idin)
 		!adjsut for time aggregation in first stage?
-	!	xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
+		xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
 		
 		!vocational stages 4-5
 		if(itin>=(TT-2)) then
@@ -206,7 +206,7 @@ module helper_funs
 			xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef
 		endif
 		!adjust for time aggregation in second stage?
-	!	xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
+		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 		
 		xifun = xifunV + xifunH
 	
@@ -214,7 +214,7 @@ module helper_funs
 		
 		
 		!adjust for time aggregation all at once
-		xifun = 1._dp - max(0._dp,1._dp-xifun)**(1._dp/proc_time1)
+	!	xifun = 1._dp - max(0._dp,1._dp-xifun)**(1._dp/proc_time2)
 		
 		xifun = min(xifun,1._dp)
 
@@ -515,39 +515,6 @@ module helper_funs
 		deallocate(fitted,resids)
 	
 	end subroutine OLS
-
-	function ols_dgels(y, x, n, k) result (beta) 
-		implicit none
-
-		external DGELS
-		integer, intent(in) :: n, k
-		real(dp), allocatable, intent(in) :: y(:), x(:, :)
-		integer :: info, lwork
-		real(dp) :: beta(k)
-		real(dp), allocatable :: work(:)
-		allocate(work(100 * n * k))
-		lwork = 100 * n * k
-
-		call DGELS('No transpose', n, k, 1, x, n, y, n, work, lwork, info)
-		beta = y(1:k)
-		deallocate(work)
-
-	end function ols_dgels
-	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	! Time aggregation solution to pid
-	subroutine cor_time_ag( pid_bian, pid_mo )
-	
-		real(dp), intent(in) , dimension(:,:,:) :: pid_bian
-		real(dp), intent(out), dimension(:,:,:) :: pid_mo
-		
-		integer :: sz,i
-		
-		external dgees 
-		
-		pid_mo = pid_bian
-		
-		
-	end subroutine cor_time_ag
 		
 
 	subroutine alloc_hist(hst)

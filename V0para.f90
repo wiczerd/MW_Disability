@@ -176,7 +176,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
 		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
 !
-		proc_time1 = 14.12,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
+		proc_time1 =   2.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
 		proc_time2 = 14.12,&!The average time to decision	(could be 28.05 for appeal that continues)
 		xizcoef = 0.25, &	!change in acceptance rate with z deterioration
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
