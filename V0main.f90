@@ -157,9 +157,9 @@ module helper_funs
 		ELSEIF (ein<DItest2*wmean) then
 			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)
 		ELSEIF (ein<DItest3*wmean) then
-			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(ein-DItest2*wmean)
+			SSDI = 0.9*DItest1*wmean + 0.32*(DItest2-DItest1)*wmean+0.15*(ein-DItest2*wmean)
 		ELSE
-			SSDI = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(DItest3*wmean-DItest2*wmean)
+			SSDI = 0.9*DItest1*wmean + 0.32*(DItest2-DItest1)*wmean+0.15*(DItest3*wmean-DItest2*wmean)
 		END IF
 
 	end function
@@ -178,9 +178,9 @@ module helper_funs
 		ELSEIF (ein<DItest2*wmean) then
 			SSret = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)
 		ELSEIF (ein<DItest3*wmean) then
-			SSret = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(ein-DItest2*wmean)
+			SSret = 0.9*DItest1*wmean + 0.32*(DItest2-DItest1)*wmean+0.15*(ein-DItest2*wmean)
 		ELSE
-			SSret = 0.9*DItest1*wmean + 0.32*(ein-DItest1*wmean)+0.15*(DItest3*wmean-DItest2*wmean)
+			SSret = 0.9*DItest1*wmean + 0.32*(DItest2-DItest1)*wmean+0.15*(DItest3*wmean-DItest2*wmean)
 		END IF
 
 	end function
@@ -464,9 +464,9 @@ module helper_funs
 		integer, intent(out) :: status
 
 		integer :: nX, nY, nK
-		real(dp), dimension(:,:), allocatable :: XpX,XpX_fac,XpX_inv
+		real(dp), dimension(size(XX, dim = 2),size(XX, dim = 2)) :: XpX,XpX_fac,XpX_inv
 		real(dp), dimension(:), allocatable :: fitted,resids
-		integer :: i
+		integer :: i, regstatus
 		
 		external dgemm,dgemv
 		external dpotrs,dpotrf,dpotri
@@ -475,9 +475,6 @@ module helper_funs
 		nX = size(XX, dim = 1)
 		nY = size(Y)
 		
-		allocate(XpX(nK,nK))
-		allocate(XpX_fac(nK,nK))
-		allocate(XpX_inv(nK,nK))
 		allocate(fitted(nX))
 		allocate(resids(nX))
 		coefs = 0.
@@ -491,19 +488,19 @@ module helper_funs
 			XpX = 0.
 			call dgemm('T', 'N', nK, nK, nX, 1._dp, XX, nX, XX, nX, 0., XpX, nK)
 			XpX_fac = XpX
-			call dpotrf('U',Nk,XpX_fac,Nk,status)
-			if(status .eq. 0) then
+			call dpotrf('U',Nk,XpX_fac,Nk,regstatus)
+			if(regstatus .eq. 0) then
 				! 3/ Multiply LHS of regression and solve it
 				call dgemv('T', nX, nK, 1._dp, XX, nX, Y, 1, 0., coefs, 1)
-				call dpotrs('U',nK,1,XpX_fac,nK,coefs,Nk,status)
+				call dpotrs('U',nK,1,XpX_fac,nK,coefs,Nk,regstatus)
 			else 
 				if(verbose >0 ) print *, "cannot factor XX"
 			endif
 		endif
 		
-		if(status .eq. 0) then 
+		if(regstatus .eq. 0) then 
 			XpX_inv = XpX_fac
-			call dpotri('U',nK,XpX_inv,nK,status)
+			call dpotri('U',nK,XpX_inv,nK,regstatus)
 			fitted = 0.
 			call dgemv('N', nX, nK, 1._dp, XX, nX, coefs, 1, 0., fitted, 1)
 			resids = Y - fitted
@@ -511,13 +508,31 @@ module helper_funs
 			do i=1,nY
 				hatsig2 = (resids(i)**2)/dble(nX-nK) + hatsig2
 			enddo
-			if(status .eq. 0) cov_coef = hatsig2*XpX_inv
+			if(regstatus .eq. 0) cov_coef = hatsig2*XpX_inv
 		endif
+		status = regstatus
 		
-		deallocate(XpX,XpX_fac,XpX_inv,fitted,resids)
+		deallocate(fitted,resids)
 	
 	end subroutine OLS
 
+	function ols_dgels(y, x, n, k) result (beta) 
+		implicit none
+
+		external DGELS
+		integer, intent(in) :: n, k
+		real(dp), allocatable, intent(in) :: y(:), x(:, :)
+		integer :: info, lwork
+		real(dp) :: beta(k)
+		real(dp), allocatable :: work(:)
+		allocate(work(100 * n * k))
+		lwork = 100 * n * k
+
+		call DGELS('No transpose', n, k, 1, x, n, y, n, work, lwork, info)
+		beta = y(1:k)
+		deallocate(work)
+
+	end function ols_dgels
 	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	! Time aggregation solution to pid
 	subroutine cor_time_ag( pid_bian, pid_mo )
@@ -3121,7 +3136,7 @@ module sim_hists
 		! because the actual alpha is endgoenous to unemployment and trend
 		real(dp), allocatable :: al_it_endog(:,:)
 		integer, allocatable  :: al_int_it_endog(:,:)
-		real(dp), allocatable :: wtr_it(:,:)
+		real(dp), allocatable :: wtr_it(:,:),trX_it(:,:)
 		
 		! write to hst, get from shk
 		real(dp), pointer    :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
@@ -3196,6 +3211,7 @@ module sim_hists
 		allocate(al_int_it_endog(Nsim,Tsim))
 		allocate(al_it_endog(Nsim,Tsim))
 		allocate(wtr_it(Nsim,Tsim))
+		allocate(trX_it(Nsim,Tsim))
 !		allocate(hlthvocSSDI(Nsim,Tsim))
 
 
@@ -3268,6 +3284,7 @@ module sim_hists
 		al_int_it_endog  = al_it_int
 		al_it_endog      = al_it
 		wtr_it = 0.
+		trX_it = 0.
 		if(shk%drawn /= 1 )then
 			call draw_shocks(shk)
 		endif		
@@ -3815,7 +3832,6 @@ module sim_hists
 								endif
 								
 							endif
-						
 						elseif(status_hr > 3 ) then !absorbing states of D,R
 							status_tmrw = status_hr
 							! just to fill in values
@@ -3919,6 +3935,19 @@ module sim_hists
 					
 					al_int_it_endog(i,it) = ali_hr
 					al_it_endog(i,it)     = al_hr
+					if(status_hr>1) then
+						select case (status_hr)
+						case(2)
+							trX_it(i,it) = UI(e_hr)
+						case(3)
+							trX_it(i,it) = b
+						case(4)
+							trX_it(i,it) = SSDI(e_hr)
+						case(5)
+							trX_it(i,it) = SSret(e_hr)
+						end select
+					endif
+					
 					!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 					!push forward the state:
 					if(it<Tsim) then
@@ -3938,28 +3967,20 @@ module sim_hists
 							e_it(i,it+1) = ep_hr
 							! assign to grid points by nearest neighbor
 							! ei_hr = finder(egrid,e_it(i,it+1)) <- relatively short, but not thread safe
-			! Random assingment?
-!~ 							ei_hr = ne/2+1
-!~ 							if( mod(i,3)==0 ) then
-!~ 								ei_hr = 1
-!~ 							elseif(mod(i,3)==1) then
-!~ 								ei_hr = ne
-								
-!~ 							endif
-!~ 							e_it_int(i,it+1) = ei_hr
+
 							do ei_hr = ne,1,-1
 								if( ep_hr < egrid(ei_hr) ) exit
 							enddo
 							ei_hr = max(ei_hr,1) !just to be sure we take base 1
-							if(ei_hr < ne) then
-								if( (ep_hr - egrid(ei_hr)) < (egrid(ei_hr+1) - ep_hr) ) then
-									e_it_int(i,it+1) = ei_hr
-								else
-									e_it_int(i,it+1) = ei_hr + 1
-								endif
-							else
-								e_it_int(i,it+1) = ne
-							endif
+!~ 							if(ei_hr < ne) then
+!~ 								if( (ep_hr - egrid(ei_hr)) < (egrid(ei_hr+1) - ep_hr) ) then
+!~ 									e_it_int(i,it+1) = ei_hr
+!~ 								else
+!~ 									e_it_int(i,it+1) = ei_hr + 1
+!~ 								endif
+!~ 							else
+!~ 								e_it_int(i,it+1) = ne
+!~ 							endif
 						else
 							e_it(i,it+1) = e_hr
 							e_it_int(i,it+1) = ei_hr
@@ -4135,6 +4156,7 @@ module sim_hists
 					call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%wage_hist,"wage_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (wtr_it,"wtr_it_hist"//trim(caselabel)//".csv")
+					call mat2csv (trX_it,"transfer_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%app_dif_hist,"app_dif_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%di_prob_hist,"di_prob_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
@@ -4151,6 +4173,7 @@ module sim_hists
 		deallocate(app_it,work_it)
 		deallocate(val_hr_it)
 		deallocate(wtr_it)
+		deallocate(trX_it)
 		!deallocate(hlthvocSSDI)
 		!deallocate(status_it_innov)
 		!deallocate(drawi_ititer,drawt_ititer)
@@ -4342,15 +4365,15 @@ module find_params
 	end subroutine
 
 	
-	subroutine comp_ustats(hst,shk,urt,udur,Efrt,Esrt)
+	subroutine comp_ustats(hst,shk,urt,Efrt,Esrt)
 		
 		type(shocks_struct) :: shk
 		type(hist_struct):: hst
-		real(dp), intent(out) :: urt,udur,Efrt,Esrt
-		real(dp) :: Nunemp,Nlf, Nsep,Nfnd
+		real(dp), intent(out) :: urt,Efrt,Esrt
+		real(dp) :: Nunemp,Nlf, Nsep,Nfnd,ltu
 		integer :: i, j, it,duri
 		
-		udur = 0.
+		ltu  = 0.
 		urt  = 0.
 		Nlf  = 0.
 		Nunemp = 0.
@@ -4359,24 +4382,25 @@ module find_params
 		do i = 1,Nsim
 			duri = 0
 			do it=1,Tsim
-				if(hst%status_hist(i,it)<=2 .and. hst%status_hist(i,it)>0) then
+				if(hst%status_hist(i,it)<=2 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
 					Nlf = Nlf+1.
 					if(hst%status_hist(i,it) == 2) then
 						Nunemp = Nunemp + 1.
 						if(duri == 0 .and. it>1) & !count a new spell
 							& Nsep = Nsep+1.
 						duri = duri+1
-						udur = dble(duri) + udur
+						if(duri < 6) ltu = ltu + 1._dp !counted as the fraction of short-term unemployed
 					else 	
-						if(duri >0) & !just found
-							& Nfnd = Nfnd+1
+						if(duri > 0 ) & !just found (already conditioned on status ==1 or status==2)
+							& Nfnd = Nfnd+1.
 						duri = 0
 					endif
 				endif
+				if(hst%status_hist(i,it)>2) duri = 0
 			enddo
 		enddo
-		urt = Nunemp/Nlf
-		udur = udur/Nunemp
+		urt  = Nunemp/Nlf
+		ltu  = 1. - ltu/Nunemp
 		Esrt = Nsep/(Nlf-Nunemp)
 		Efrt = Nfnd/Nunemp
 	
@@ -4393,7 +4417,7 @@ module find_params
 		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
 		real(dp) :: wage_trend_hr
 		integer  :: i,ii,ij,it, iter,iout,plO,vO, ik, ip,ri
-		real(dp) :: urt,udur,Efrt,Esrt
+		real(dp) :: urt,Efrt,Esrt
 		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt_mul0,seprt_mul1
 		real(dp) :: avg_convergence, sep_implied
 		integer  :: miniter = 3, status, Ncoef
@@ -4442,11 +4466,11 @@ module find_params
 			
 			call sim(vfs, pfs, hst,shk,.false.)
 			
-			call comp_ustats(hst,shk,urt,udur,Efrt,Esrt)
-			if(verbose>2) print*,  'urt , udur', urt,udur !if(verbose>2) 
+			call comp_ustats(hst,shk,urt,Efrt,Esrt)
+			if(verbose>2) print*,  'urt ', urt   !if(verbose>2) 
 			if(verbose>2) print*,  'Efrt, Esrt', Efrt,Esrt
 			dist_urt(iter) = (urt - avg_unrt)/avg_unrt
-			dist_udur(iter)= (udur - avg_undur)/avg_undur
+			dist_udur(iter)= (Efrt - avg_frt)/avg_frt
 			
 			ii = 0
 			do i=1,Nsim
@@ -4485,7 +4509,7 @@ module find_params
 			
 			call OLS(XX_ii,yy_ii,coef_est,cov_coef, hatsig2, status)
 			
-			if( print_lev .ge. 3) then 
+			if( print_lev .ge. 2) then 
 				call mat2csv(XX_ii, "XX_ii.csv")
 				call vec2csv(yy_ii, "yy_ii.csv") 
 				call vec2csv(coef_est, "coef_est.csv")
@@ -4560,26 +4584,21 @@ module find_params
 
 
 			!take a step in fndrate, seprisk space
-	!		fndrt_mul1 = udur/avg_undur*fndrt_mul0
-	!		if( (fndrt_mul1>1e3) .or.  (fndrt_mul1 <-1e3) .or. isnan(fndrt_mul1)  ) fndrt_mul1 =1. !bring it back to the center
-	!		fndrt_mul1 = upd_wgtrnd*fndrt_mul1 + (1.-upd_wgtrnd)*fndrt_mul0
+			fndrt_mul1 = fndrt_mul0 - 0.01_dp*(Efrt-avg_frt)/avg_frt
+			if( (fndrt_mul1>10) .or.  (fndrt_mul1 <0.) .or. isnan(fndrt_mul1)  ) fndrt_mul1 =1. !bring it back to the center
+			fndrt_mul1 = upd_wgtrnd*fndrt_mul1 + (1.-upd_wgtrnd)*fndrt_mul0
 			!just set fndrt_mul1 =1
-			fndrt_mul1 =1
+			!fndrt_mul1 =1
 
 			sep_implied = (Efrt*avg_unrt)/(1.-avg_unrt)
-!!!			separation rate search: this used bisection, but that makes other variables jump around
-!~ 			if( urt - avg_unrt >0._dp ) then
-!~ 				seprtH = upd_wgtrnd*seprt_mul1 + (1._dp - upd_wgtrnd)*seprtH
-!~ 			else
-!~ 				seprtL = upd_wgtrnd*seprt_mul1 + (1._dp - upd_wgtrnd)*seprtL
-!~ 			endif
-!~ 			seprt_mul1 = 0.5_dp*(seprtH + seprtL)
 
-!!! 		separation rate search: gradient search. Step size is arbitrary.
+			!separation rate search: gradient search. Step size is arbitrary.
 			seprt_mul1 = seprt_mul0 - 0.01_dp*(urt - avg_unrt)/avg_unrt
-			if( (seprt_mul1>1e3) .or.  (seprt_mul1 <-1e3) .or. isnan(seprt_mul1)  ) seprt_mul1 =1. !bring it back to the center
+			if( (seprt_mul1>10) .or.  (seprt_mul1 <0.) .or. isnan(seprt_mul1)  ) seprt_mul1 =1. !bring it back to the center
 			!seprisk = seprisk/seprt_mul0*seprt_mul1
 			!fndrate = fndrate/fndrt_mul0*fndrt_mul1
+			
+!!!!!			!don't update'
 			sepgrid = sepgrid/seprt_mul0*seprt_mul1
 			fndgrid = fndgrid/fndrt_mul0*fndrt_mul1
 			
@@ -4653,7 +4672,7 @@ module find_params
 		if(verbose >2) print *, "In the calibration"	
 
 		! set up economy and solve it
-!~ 		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
+		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
 		
 		if(verbose >2) print *, "Solving the model"	
 		call sol(vfs,pfs)
@@ -5031,7 +5050,7 @@ program V0main
 	!solve it once
 	!************************************************************************************************!
 	if (sol_once .eqv. .true.) then
-	do iter=1,2
+
 		call alloc_econ(vfs,pfs,hst)
 		Vtol = 5e-5
 		
@@ -5099,7 +5118,6 @@ program V0main
 		print *, "average wage:", wmean
 		wmean = 1._dp
 		call dealloc_econ(vfs,pfs,hst)
-	enddo
 
 		if(verbose > 2) then
 			call CPU_TIME(t2)
@@ -5109,18 +5127,18 @@ program V0main
 		endif
 	endif !sol_once
 
-	if(dbg_skip .eqv. .false.) then
-		parvec(1) = nu
-		parvec(2) = xizcoef
-		err0 = 0.
-		print *, "calibration routine"
+!~ 	if(dbg_skip .eqv. .false.) then
+!~ 		parvec(1) = nu
+!~ 		parvec(2) = xizcoef
+!~ 		err0 = 0.
+!~ 		print *, "calibration routine"
 !~ 		call cal_dist(parvec,ervec,shk)
 		
-		print *, ervec
-	endif
+!~ 		print *, ervec
+!~ 	endif
 	
-	lb = (/ 1.0_dp, 0.0_dp/)
-	ub = (/ 2.5_dp, 0.5_dp /)
+!~ 	lb = (/ 1.5_dp, 0.0_dp/)
+!~ 	ub = (/ 2.5_dp, 0.25_dp /)
 	
 	!set up the grid over which to check derivatives 
 !~ 	open(unit=fcallog, file="cal_square.csv")

@@ -34,6 +34,7 @@ real(8), parameter ::	youngD = 20., &	!Length of initial young period
 		R =1.,&!dexp(.02/tlen),&	!People can save in the backyard
 		avg_unrt = 0.055,&	!average rate of unemployment over the period.
 		avg_undur = 3.,&	! average months of unemployment
+		avg_frt   = 0.4,&	! average rate of long-term unemployment
 		upd_zscl = 0.1,&		! rate at which to update zshift
 		upd_wgtrnd = 0.05		! rate at which update wage_trend
 
