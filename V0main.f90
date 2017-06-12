@@ -3369,6 +3369,11 @@ module sim_hists
 					if( (iter==1) .or. ii >=Ncol ) then
 
 						status_it(i,it) = 1
+						if(status_it_innov(i,1)>(1.-avg_unrt) .or. al_it(i,it) ==1 ) then
+							status_it(i,it) = 2
+						elseif( status_it_innov(i,1)<  dirt_target ) then
+							status_it(i,it) = 4
+						endif
 						d_it(i,it) = d_hr
 						if(age_it(i,it)==1) then
 							a_it_int(i,it) = 1
@@ -3410,9 +3415,9 @@ module sim_hists
 				if(age_it(i,it) > 0 ) then !they've been born 
 					
 					if((born_it(i,it) .eq. 1 .and. it> 1) ) then
-					! no one is ``born'' in the first period, but look the same
+					! note: no one is ``born'' in the first period
+					
 					! draw state from distribution of age 1 
-						!new borns:
 						age_hr	= 1
 						do d_hr=1,nd
 							if(health_it_innov(i,1) < cumPrDage(d_hr+1,age_hr)) &
@@ -3475,10 +3480,10 @@ module sim_hists
 						e_hr 	= e_it(i,it)
 						ai_hr 	= a_it_int(i,it)
 						status_hr = status_it(i,it)
-						if(iter==1 .and. it==1 .and. age_hr< TT) then
-							status_hr = 1 
-							status_it(i,it) = 1
-						endif
+!~ 						if(iter==1 .and. it==1 .and. age_hr< TT) then
+!~ 							status_hr = 1 
+!~ 							status_it(i,it) = 1
+!~ 						endif
 					endif !if make decisions when first born?
 					
 					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
@@ -3992,7 +3997,7 @@ module sim_hists
 			do age_hr = 1,TT-1
 				junk = 1.
 				do i=1,Nsim
-					do it = 1,Tsim
+					do it = 1,(init_yrs*itlen)
 						if( age_hr .eq. age_it(i,it) ) then
 							a_mean(age_hr) = a_it(i,it)      + a_mean(age_hr)
 							d_mean(age_hr) = d_it(i,it)      + d_mean(age_hr)
@@ -4005,7 +4010,7 @@ module sim_hists
 				d_mean(age_hr) = d_mean(age_hr)/junk
 				s_mean(age_hr) = s_mean(age_hr)/junk
 				do i=1,Nsim
-					do it = 1,Tsim
+					do it = 1,(init_yrs*itlen)
 						if( age_hr .eq. age_it(i,it) .and. a_it(i,it)>0._dp) then
 							a_var(age_hr) = (dlog(a_it(i,it)) - dlog(a_mean(age_hr)))**2 + a_var(age_hr)
 							d_var(age_hr) = (d_it(i,it) - d_mean(age_hr))**2+ d_var(age_hr)
@@ -5083,7 +5088,10 @@ program V0main
 		enddo
 		wmean = wmean/junk
 		print *, "average wage:", wmean
-		wmean = 1._dp
+		do i=1,ne
+			egrid(i) = egrid(i)*wmean
+		enddo
+		
 		call dealloc_econ(vfs,pfs,hst)
 
 		if(verbose > 2) then
@@ -5094,20 +5102,20 @@ program V0main
 		endif
 	endif !sol_once
 
-!~ 	if(dbg_skip .eqv. .false.) then
-!~ 		parvec(1) = nu
-!~ 		parvec(2) = xizcoef
-!~ 		err0 = 0.
-!~ 		print *, "calibration routine"
-!~ 		call cal_dist(parvec,ervec,shk)
+	if(dbg_skip .eqv. .false.) then
+		parvec(1) = nu
+		parvec(2) = xizcoef
+		ervec = 0.
+		print *, "calibration routine"
+		call cal_dist(parvec,ervec,shk)
 		
-!~ 		print *, ervec
-!~ 	endif
+		print *, ervec
+	endif
 	
-!~ 	lb = (/ 1.5_dp, 0.0_dp/)
-!~ 	ub = (/ 2.5_dp, 0.25_dp /)
+	lb = (/ 1.5_dp, 0.0_dp/)
+	ub = (/ 2.5_dp, 0.25_dp /)
 	
-	!set up the grid over which to check derivatives 
+!~ 	!set up the grid over which to check derivatives 
 !~ 	open(unit=fcallog, file="cal_square.csv")
 !~ 	write(fcallog,*) nu, xizcoef, ervec
 !~ 	close(unit=fcallog)
