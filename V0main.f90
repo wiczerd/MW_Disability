@@ -105,7 +105,7 @@ module helper_funs
 		real(dp), allocatable :: z_jt_select(:), z_jt_innov(:)
 		integer, allocatable :: al_int_hist(:,:)
 		integer, allocatable :: age_hist(:,:), born_hist(:,:), del_i_int(:), fndsep_i_int(:,:,:)
-		real(dp), allocatable:: age_draw(:,:)
+		real(dp), allocatable:: age_draw(:,:),dead_draw(:,:)
 		real(dp), allocatable :: al_hist(:,:), del_i_draw(:),fndsep_i_draw(:,:),fndarrive_draw(:,:)
 		
 		real(dp), allocatable    :: status_it_innov(:,:),health_it_innov(:,:)
@@ -580,6 +580,7 @@ module helper_funs
 
 		allocate(shk%age_hist(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%age_draw(Nsim,Tsim+3), stat=shk%alloced)
+		allocate(shk%dead_draw(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%al_hist(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%al_int_hist(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%born_hist(Nsim,Tsim), stat=shk%alloced)
@@ -662,6 +663,7 @@ module helper_funs
 
 		deallocate(shk%age_hist , stat=shk%alloced)
 		deallocate(shk%age_draw , stat=shk%alloced)
+		deallocate(shk%dead_draw , stat=shk%alloced)
 		deallocate(shk%born_hist , stat=shk%alloced)
 		deallocate(shk%al_hist , stat=shk%alloced)
 		deallocate(shk%al_int_hist , stat=shk%alloced)
@@ -2490,13 +2492,13 @@ module sim_hists
 	
 	end subroutine set_deli
 	
-	subroutine draw_status_innov(status_it_innov, health_it_innov, seed0, success)
+	subroutine draw_status_innov(status_it_innov, health_it_innov, dead_draw,seed0, success)
 	! draws innovations to d, will be used if working and relevant
 		implicit none
 
 		integer, intent(in) :: seed0
 		integer, intent(out) :: success
-		real(dp), dimension(:,:) :: status_it_innov, health_it_innov
+		real(dp), dimension(:,:) :: status_it_innov, health_it_innov,dead_draw
 		integer :: ss=1, m,i,it
 		real(dp) :: s_innov
 		integer, allocatable :: bdayseed(:)
@@ -2512,6 +2514,8 @@ module sim_hists
 				status_it_innov(i,it) = s_innov
 				call random_number(s_innov)
 				health_it_innov(i,it) = s_innov
+				call random_number(s_innov)
+				dead_draw(i,it) = s_innov
 			enddo
 		enddo
 		success = 0
@@ -2806,7 +2810,7 @@ module sim_hists
 				cumprnborn_t(it) = prborn_hr_t(it) + cumprnborn_t(it-1)
 			enddo
 			cumprnborn_t = cumprnborn_t/cumprnborn_t(Tsim)
-		else !solve for a flat age profile
+		else !use a flat age profile
 			prborn_hr_t = prborn_constpop
 			hazborn_hr_t = hazborn_constpop
 			do it=2,Tsim
@@ -2824,7 +2828,6 @@ module sim_hists
 		Nm = size(age_draw,2)
 		born_it = 0
 		do i =1,Nsim
-!~ 		do m =1,maxiter
 			!pick the birthdate
 			!it = finder(cumprnborn_t, dble(i-1)/dble(Nsim-1))
 			it = finder(cumprnborn_t, age_draw(i,1))
@@ -2874,11 +2877,6 @@ module sim_hists
 					born_it(i,it) = 0
 				endif
 			enddo		
-!~ 		if(sum(age_it(i,:))>0) then
-!~ 			exit
-!~ 		else !re-shuffle birthdates
-		
-!~ 		endif
 		
 		enddo! i=1,Nsim
 	
@@ -2973,7 +2971,7 @@ module sim_hists
 		seed1 = seed1 + 1
 		call draw_draw(shk%drawi_ititer, shk%drawt_ititer, shk%age_hist, seed0, status)
 		seed0 = seed0 + 1
-		call draw_status_innov(shk%status_it_innov, shk%health_it_innov,seed1, status)
+		call draw_status_innov(shk%status_it_innov, shk%health_it_innov, shk%dead_draw,seed1, status)
 		seed1 = seed1 + 1
 		
 		shk%drawn = 1
@@ -3123,7 +3121,7 @@ module sim_hists
 		real(dp), pointer    :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
 		real(dp), pointer    :: a_it(:,:) 	! assets
 		real(dp), pointer    ::	al_it(:,:)	! individual shocks
-		real(dp), pointer    :: status_it_innov(:,:),health_it_innov(:,:),fndarrive_draw(:,:)
+		real(dp), pointer    :: status_it_innov(:,:),health_it_innov(:,:),fndarrive_draw(:,:),dead_draw(:,:)
 		real(dp), pointer    :: jshock_ij(:,:)
 		integer,  pointer    :: drawi_ititer(:,:)
 		integer,  pointer    :: drawt_ititer(:,:)
@@ -3208,6 +3206,7 @@ module sim_hists
 		del_i_int   => shk%del_i_int
 		fndsep_i_int   => shk%fndsep_i_int
 		del_i_draw  => shk%del_i_draw
+		dead_draw   => shk%dead_draw
 		j_i         => shk%j_i
 		al_it       => shk%al_hist
 		al_it_int	=> shk%al_int_hist
@@ -3369,9 +3368,9 @@ module sim_hists
 					if( (iter==1) .or. ii >=Ncol ) then
 
 						status_it(i,it) = 1
-						if(status_it_innov(i,1)>(1.-avg_unrt) .or. al_it(i,it) ==1 ) then
+						if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_it(i,it) ==1 ) then
 							status_it(i,it) = 2
-						elseif( status_it_innov(i,1)<  dirt_target ) then
+						elseif( status_it_innov(i,it)<  dirt_target ) then
 							status_it(i,it) = 4
 						endif
 						d_it(i,it) = d_hr
@@ -3480,10 +3479,7 @@ module sim_hists
 						e_hr 	= e_it(i,it)
 						ai_hr 	= a_it_int(i,it)
 						status_hr = status_it(i,it)
-!~ 						if(iter==1 .and. it==1 .and. age_hr< TT) then
-!~ 							status_hr = 1 
-!~ 							status_it(i,it) = 1
-!~ 						endif
+
 					endif !if make decisions when first born?
 					
 					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
@@ -3497,7 +3493,7 @@ module sim_hists
 					endif 
 					
 					if(dieyoung .eqv. .true.)then
-						if(status_it_innov(i,Tsim-it+1)< PrDeath(d_hr,age_hr)) & !this is using the back end of status: if it's very high, then dead
+						if(dead_draw(i,it)< PrDeath(d_hr,age_hr)) & !this is using the back end of status: if it's very high, then dead
 							dead = .true.
 					endif
 					
@@ -3746,7 +3742,7 @@ module sim_hists
 
 									! eligible to apply?
 									if( (age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1)) &
-										& .or. ((age_hr ==1) .and. (status_it_innov(i,Tsim-it+1)<eligY) .and. (ineligNoNu .eqv. .true.) )) then !status_it_innov(i,it+1) is an independent draw
+										& .or. ((age_hr ==1) .and. (status_it_innov(mod(i+100,Nsim-1),it)<eligY) .and. (ineligNoNu .eqv. .true.) )) then !status_it_innov(i,it+1) is an independent draw
 									
 										!applying, do you get it?
 										if(status_it_innov(i,it) < xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)) then 
@@ -4630,16 +4626,12 @@ module find_params
 		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app,napp_t,nu1,nu0
 		integer :: ij=1,t0tT(2),it,i
 
-		!zrho = paramvec(1)
-		!zsig = paramvec(2)
+		
 		nu   = paramvec(1)
 		if( size(paramvec)>1 ) &
 		&	xizcoef = paramvec(2)
 	
 		call alloc_econ(vfs,pfs,hst)
-
-		print *, verbose
-		print *, print_lev
 
 		if(verbose >2) print *, "In the calibration"	
 
@@ -4886,6 +4878,7 @@ program V0main
 		endif
 	endif
 
+	print *, "Nsim,Tsim", Nsim,Tsim
 
 	caselabel = ""
 	agrid(1) = .05*(agrid(1)+agrid(2))
@@ -4903,6 +4896,7 @@ program V0main
 		call mat2csv(piz(:,:),"piz.csv",wo)
 		call mat2csv(pialf,"pial.csv",wo)
 		call mat2csv(PrDeath,"PrDeath.csv",wo)
+		call mat2csv(PrDage,"PrDage.csv",wo)
 		cumpid = 0._dp
 		do idi=1,ndi
 		do it =1,TT-1
@@ -5115,27 +5109,27 @@ program V0main
 	lb = (/ 1.5_dp, 0.0_dp/)
 	ub = (/ 2.5_dp, 0.25_dp /)
 	
-!~ 	!set up the grid over which to check derivatives 
-!~ 	open(unit=fcallog, file="cal_square.csv")
-!~ 	write(fcallog,*) nu, xizcoef, ervec
-!~ 	close(unit=fcallog)
-!~ 	do i=1,10
-!~ 	do j=1,10
-!~ 		verbose=1
-!~ 		print_lev =1
-!~ 		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-!~ 		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
-!~ 		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
+	!set up the grid over which to check derivatives 
+	open(unit=fcallog, file="cal_square.csv")
+	write(fcallog,*) nu, xizcoef, ervec
+	close(unit=fcallog)
+	do i=1,10
+	do j=1,10
+		verbose=1
+		print_lev =1
+		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
+		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
+		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
 		
-!~ 		call cal_dist(parvec,ervec,shk)
-!~ 		write(fcallog, "(G20.12)", advance='no')  nu
-!~ 		write(fcallog, "(G20.12)", advance='no')  xizcoef
-!~ 		write(fcallog, "(G20.12)", advance='no')  ervec(1)
-!~ 		write(fcallog, "(G20.12)", advance='yes') ervec(2)
-!~ 		print *, nu, xizcoef, ervec(1), ervec(2)
-!~ 		close(unit=fcallog)
-!~ 	enddo
-!~ 	enddo
+		call cal_dist(parvec,ervec,shk)
+		write(fcallog, "(G20.12)", advance='no')  nu
+		write(fcallog, "(G20.12)", advance='no')  xizcoef
+		write(fcallog, "(G20.12)", advance='no')  ervec(1)
+		write(fcallog, "(G20.12)", advance='yes') ervec(2)
+		print *, nu, xizcoef, ervec(1), ervec(2)
+		close(unit=fcallog)
+	enddo
+	enddo
 	
 	
 !~ 	if( dbg_skip .eqv. .false.) then

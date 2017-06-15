@@ -591,12 +591,23 @@ subroutine setparams()
 		PrD3age(t) = PrDage(nd,t)
 	enddo
 	!health structure extrapolate one period ahead - make the transition rate correct
+!~ 	PrDead_tp1 = 0.d0
 	do i=1,nd
 		do t=1,TT-2
 			PrDage_tp1(i,t) = (PrDage(i,t+1)-PrDage(i,t))/(agegrid(t+1)-agegrid(t))+PrDage(i,t)
+!~ 			PrDead_tp1(i,t) = (1.d0-(1.d0-PrDeath(i,t))**tlen)*PrDage(i,t) 
+			!some at each health/age will die. Add those in  too
+			PrDage_tp1(i,t) = PrDage_tp1(i,t)*(1.d0 + (1.d0-(1.d0-PrDeath(i,t))**tlen))
 		enddo
-		PrDage_tp1(i,TT-1) = PrDage(i,TT-1)
+		PrDage_tp1(i,TT-1) = PrDage(i,TT-1)*(1.d0+ (1.d0-(1.d0-PrDeath(i,TT-1))**tlen))
+!~ 		PrDead_tp1(i,TT-1) = (1.d0-(1.d0-PrDeath(i,t))**tlen)*PrDage(i,t) 
 	enddo
+!~ 	do t=1,TT-1
+!~ 		PrDage_tp1(:,t) = PrDage_tp1(:,t)/sum(PrDage_tp1(:,t))
+!~ 		PrDage_tp1(:,t) = PrDage_tp1(:,t)*(1.d0 - PrDead_tp1(:,t))
+!~  	enddo
+	
+	
 
 
 	!age structure extrapolate over periods
@@ -604,7 +615,7 @@ subroutine setparams()
 	do i=1,TT-1
 		call spline( age_read(:,1),age_read(:,i+1),age_read_wkr)
 		do t=1,Tsim
-			prob_age(i,t) = splint(age_read(:,1),age_read(:,i+1),age_read_wkr, dble(t-1)/tlen ) !prob_age(TT-1,Tsim)
+			prob_age(i,t) = splint(age_read(:,1),age_read(:,i+1),age_read_wkr, dble(t-1)/tlen ) 
 		enddo
 	enddo
 	
@@ -864,7 +875,7 @@ subroutine setparams()
 			
 			do iter=1,maxiter
 				do k=1,nd
-					r1(k) = 1._dp/sum(pid1(k,:))
+					r1(k) = ( (1.d0 - PrDeath(k,i))**(tlen) ) /sum(pid1(k,:))
 				enddo
 				!sdec = diag(r1)*pid1:
 				do k=1,nd
