@@ -882,8 +882,6 @@ module model_data
 					if(hst%status_hist(i,it) == 3) then
 						if(hst%app_dif_hist(i,it)>(-100.) .and. hst%app_dif_hist(i,it)<100.) then
 							dicont_hr = dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
-							dicont_hr = dicont_hr*2._dp-1._dp  !norm it from (.5,1) to (0,1)
-						!	moments_sim%init_di= moments_sim%init_di+ hst%di_prob_hist(i,it)*dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
 						endif
 						
 						if( hst%app_dif_hist(i,it) >=0 ) then
@@ -3371,7 +3369,7 @@ module sim_hists
 						if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_it(i,it) ==1 ) then
 							status_it(i,it) = 2
 						elseif( status_it_innov(i,it)<  dirt_target ) then
-							status_it(i,it) = 4
+							status_it(i,it) = 3 !make them eligible to apply for DI
 						endif
 						d_it(i,it) = d_hr
 						if(age_it(i,it)==1) then
@@ -3745,7 +3743,11 @@ module sim_hists
 										& .or. ((age_hr ==1) .and. (status_it_innov(mod(i+100,Nsim-1),it)<eligY) .and. (ineligNoNu .eqv. .true.) )) then !status_it_innov(i,it+1) is an independent draw
 									
 										!applying, do you get it?
-										if(status_it_innov(i,it) < xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)) then 
+										junk = xifun(d_hr,trgrid(tri_hr),age_hr,hlthprob)
+										!give these guys' applications that are like a full expected duration
+										if(it==1 ) &
+											junk = 1._dp - (1._dp-junk-hlthprob)**proc_time2 + 1._dp - (1._dp-hlthprob)**proc_time1 
+										if(status_it_innov(i,it) < junk) then 
 											status_tmrw = 4
 											if( status_it_innov(i,it) <  hlthprob) then
 												hst%hlth_voc_hist(i,it) = 1
@@ -3940,7 +3942,8 @@ module sim_hists
 								if( ep_hr < egrid(ei_hr) ) exit
 							enddo
 							ei_hr = max(ei_hr,1) !just to be sure we take base 1
-!~ 							if(ei_hr < ne) then
+							! round or floor
+!~ 							if(ei_hr < ne) then 
 !~ 								if( (ep_hr - egrid(ei_hr)) < (egrid(ei_hr+1) - ep_hr) ) then
 !~ 									e_it_int(i,it+1) = ei_hr
 !~ 								else
@@ -4022,7 +4025,7 @@ module sim_hists
 			endif
 			slice_len = iter
 			simiter_dist(iter) = sum((a_mean - a_mean_liter)**2) +sum((s_mean - s_mean_liter)**2)
-			if( (  sum((a_mean - a_mean_liter)**2)<simtol .and. ( sum((s_mean - s_mean_liter)**2)<simtol .or. sum((d_mean - d_mean_liter)**2) <simtol) ).or. &
+			if( (  sum((a_mean - a_mean_liter)**2)<simtol .and. ( sum((s_mean - s_mean_liter)**2)<simtol .or. sum((d_mean - d_mean_liter)**2) <simtol) .and. iter>2 ).or. &
 			&	(iter .ge. iter_draws-1) ) then
 				if(verbose >=2 ) then
 					print *, "done simulating after convergence in", iter
@@ -5106,30 +5109,30 @@ program V0main
 		print *, ervec
 	endif
 	
-	lb = (/ 1.5_dp, 0.0_dp/)
-	ub = (/ 2.5_dp, 0.25_dp /)
+	lb = (/ 1.5_dp, 0.01_dp/)
+	ub = (/ 3.0_dp, 0.25_dp /)
 	
 	!set up the grid over which to check derivatives 
-	open(unit=fcallog, file="cal_square.csv")
-	write(fcallog,*) nu, xizcoef, ervec
-	close(unit=fcallog)
-	do i=1,10
-	do j=1,10
-		verbose=1
-		print_lev =1
-		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
-		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
+!~ 	open(unit=fcallog, file="cal_square.csv")
+!~ 	write(fcallog,*) nu, xizcoef, ervec
+!~ 	close(unit=fcallog)
+!~ 	do i=1,10
+!~ 	do j=1,10
+!~ 		verbose=1
+!~ 		print_lev =1
+!~ 		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
+!~ 		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
+!~ 		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
 		
-		call cal_dist(parvec,ervec,shk)
-		write(fcallog, "(G20.12)", advance='no')  nu
-		write(fcallog, "(G20.12)", advance='no')  xizcoef
-		write(fcallog, "(G20.12)", advance='no')  ervec(1)
-		write(fcallog, "(G20.12)", advance='yes') ervec(2)
-		print *, nu, xizcoef, ervec(1), ervec(2)
-		close(unit=fcallog)
-	enddo
-	enddo
+!~ 		call cal_dist(parvec,ervec,shk)
+!~ 		write(fcallog, "(G20.12)", advance='no')  nu
+!~ 		write(fcallog, "(G20.12)", advance='no')  xizcoef
+!~ 		write(fcallog, "(G20.12)", advance='no')  ervec(1)
+!~ 		write(fcallog, "(G20.12)", advance='yes') ervec(2)
+!~ 		print *, nu, xizcoef, ervec(1), ervec(2)
+!~ 		close(unit=fcallog)
+!~ 	enddo
+!~ 	enddo
 	
 	
 !~ 	if( dbg_skip .eqv. .false.) then
@@ -5156,7 +5159,9 @@ program V0main
 !~ 		nu = parvec(1) ! new optimum
 !~ 		xizcoef = parvec(2)
 
-!~ 		call cal_dist(parvec_1,ervec_1,shk)
+!~ 		call cal_dist(parvec,ervec,shk)
+		
+!~ 		print *, ervec
 !~ 	endif
 
 !~ !****************************************************************************

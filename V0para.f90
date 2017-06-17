@@ -75,7 +75,7 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
-logical           ::  del_by_occ = .false.,& !delta is fully determined by occupation, right now alternative is fully random
+logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
