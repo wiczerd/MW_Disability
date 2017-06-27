@@ -76,7 +76,7 @@ module helper_funs
 		real(dp) :: di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
 		integer :: alloced
 		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+1,nj+1)
-		real(dp) :: s2, avg_hlth_acc,avg_di,init_hlth_acc,init_di
+		real(dp) :: s2, avg_hlth_acc,avg_di,init_hlth_acc,init_di,init_diaward
 		real(dp) :: hlth_acc_rt(TT-1)
 
 	end type 
@@ -707,7 +707,7 @@ module model_data
 
 		real(dp) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
 				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1), &
-				& status_Nt(5,Tsim),DIatriskpop,napp_t,ninsur_app, dicont_hr=0.
+				& status_Nt(5,Tsim),DIatriskpop,napp_t,ninsur_app, dicont_hr=0.,init_diaward_discr
 
 
 		if(hst%alloced /= 0) then
@@ -872,52 +872,62 @@ module model_data
 		napp_t = 0._dp
 		ninsur_app = 0._dp
 		moments_sim%init_di = 0._dp
+		init_diaward_discr = 0._dp
+		moments_sim%init_diaward = 0._dp
 		moments_sim%init_hlth_acc = 0._dp
 		do i=1,Nsim
 			dicont_hr = 0._dp
 			do it=1,(init_yrs*itlen)
 				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
-					
+					ninsur_app = 1._dp + ninsur_app
 					! latent value of an application
 					if(hst%status_hist(i,it) == 3) then
 						if(hst%app_dif_hist(i,it)>(-100.) .and. hst%app_dif_hist(i,it)<100.) then
 							dicont_hr = dexp(smthELPM*hst%app_dif_hist(i,it))/(1._dp+dexp(smthELPM*hst%app_dif_hist(i,it)))
 						endif
 						
-						if( hst%app_dif_hist(i,it) >=0 ) then
+						if( hst%app_dif_hist(i,it) >=0 .and. hst%di_prob_hist(i,it)>0) then
 							napp_t = napp_t+1._dp
-							if(hst%hlthprob_hist(i,it)>0)  moments_sim%init_hlth_acc = moments_sim%init_hlth_acc+ hst%hlthprob_hist(i,it)/(hst%di_prob_hist(i,it))
+							moments_sim%init_hlth_acc = hst%hlthprob_hist(i,it)/(hst%di_prob_hist(i,it)) + moments_sim%init_hlth_acc
 						endif
 					endif
 					
 					!if get DI then add the latent value when applied
 					if(hst%status_hist(i,it) == 4 ) then 
+						
 						if(hst%status_hist(i,it) == 4 .and. (it==1 .or. dicont_hr==0._dp)) then
 							moments_sim%init_di= moments_sim%init_di+1._dp
 						endif
 						if( it>1 ) then
-							moments_sim%init_di= moments_sim%init_di+dicont_hr
+							if(hst%status_hist(i,it-1) == 3) init_diaward_discr = init_diaward_discr+1._dp
+							moments_sim%init_di= moments_sim%init_di+1._dp
 						endif
-						ninsur_app = 1._dp + ninsur_app
 					elseif( hst%status_hist(i,it) == 3 ) then
-						if( it>1 ) then
-							moments_sim%init_di= moments_sim%init_di+dicont_hr*hst%di_prob_hist(i,it)
-						endif
+						moments_sim%init_di= moments_sim%init_di+dicont_hr*hst%di_prob_hist(i,it)
+						moments_sim%init_diaward = moments_sim%init_diaward+dicont_hr*hst%di_prob_hist(i,it)
 					endif
 				endif
 			enddo
 		enddo
 		if(ninsur_app>0._dp) then
 			moments_sim%init_di= moments_sim%init_di/ninsur_app
+			init_diaward_discr = init_diaward_discr/ninsur_app
+			moments_sim%init_diaward = moments_sim%init_diaward/ninsur_app
+			!make the award rates annual:
+			moments_sim%init_diaward = 1._dp-(1._dp-moments_sim%init_diaward)**(tlen)
+			init_diaward_discr = 1._dp-(1._dp-init_diaward_discr)**(tlen)
+			
 		else
+			moments_sim%init_diaward = 0._dp
 			moments_sim%init_di= 0._dp
+			init_diaward_discr = 0._dp
 		endif
 		if(napp_t > 0._dp) then
 			moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/napp_t
 		else
 			moments_sim%init_hlth_acc= 1._dp
 		endif
-
+		print *, "init_di, actual and 'smooth' ", init_diaward_discr,moments_sim%init_diaward
 		if(print_lev >= 2) then
 			call veci2csv(totst,"pop_st.csv")
 			call vec2csv(a_age,"a_age"//trim(caselabel)//".csv")
@@ -3146,7 +3156,7 @@ module sim_hists
 				& simiter_dist(maxiter)
 	
 		! Other
-		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., iiwt=1., ziwt=1., jwt=1., cumval=1., &
+		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., iiwt=1., ziwt=1., jwt=1., cumval=1., init_status3=.05_dp, &
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,triwt=1.
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1, ai_hr=1,api_hr=1,ei_hr=1,triH, &
@@ -3239,6 +3249,8 @@ module sim_hists
 			if(ptrsuccess .eqv. .false. ) print *, "failed to associate V"
 		endif
 
+		init_status3 = 0.55_dp !a programming parameter for the right number of status=3 in the begining
+		
 		hst%wage_hist    = 0.
 		Tret = (Longev - youngD - oldD*oldN)*tlen
 		work_dif_it      = 0.
@@ -3368,7 +3380,7 @@ module sim_hists
 						status_it(i,it) = 1
 						if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_it(i,it) ==1 ) then
 							status_it(i,it) = 2
-						elseif( status_it_innov(i,it)<  dirt_target ) then
+						elseif( status_it_innov(i,it)<  init_status3 ) then
 							status_it(i,it) = 3 !make them eligible to apply for DI
 						endif
 						d_it(i,it) = d_hr
@@ -4702,35 +4714,8 @@ module find_params
 		totapp_dif_hist = totapp_dif_hist/ninsur_app
 		if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
 		
-		ninsur_app = 0.
-		napp_t = 0.
-		moments_sim%init_di = 0._dp
-		moments_sim%init_hlth_acc = 0._dp
-		do it=itlen,(5*itlen)
-			do i=1,Nsim
-				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
-					if(hst%status_hist(i,it) == 4) moments_sim%init_di= moments_sim%init_di+1.
-				!	smoothing number of DI applications:
-					if(hst%status_hist(i,it) == 3) then
-						if(hst%app_dif_hist(i,it)>(-100.) .and. hst%app_dif_hist(i,it)<100.) &
-							moments_sim%init_di= moments_sim%init_di+dexp(smthELPM*hst%app_dif_hist(i,it))/(1.+dexp(smthELPM*hst%app_dif_hist(i,it)))*hst%di_prob_hist(i,it)
-					endif
-					ninsur_app = 1. + ninsur_app
-					if( hst%hlth_voc_hist(i,it) >0) then
-						napp_t = napp_t+1.
-						if(hst%hlth_voc_hist(i,it)==1)  moments_sim%init_hlth_acc = moments_sim%init_hlth_acc+ 1. 
-					endif
-				endif
-			enddo
-		enddo
-		moments_sim%init_di= moments_sim%init_di/ninsur_app
-		if(napp_t > 0.) then
-			moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/napp_t
-		else
-			moments_sim%init_hlth_acc= 1._dp
-		endif
 		
-		errvec(1) = (moments_sim%init_di - dirt_target)/dirt_target
+		errvec(1) = (moments_sim%init_diaward - diaward_target)/diaward_target
 		if(size(errvec)>1) &
 		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_accept)/hlth_accept
 		
@@ -5099,30 +5084,36 @@ program V0main
 		endif
 	endif !sol_once
 
+	!parameters from the 6/26/2017 calibration
+	!test parameter vector    1.82782573699951 0.152320480346680
+	nu = 1.82782573699951
+	xizcoef = 0.152320480346680
+
+
 	if(dbg_skip .eqv. .false.) then
 		parvec(1) = nu
 		parvec(2) = xizcoef
 		ervec = 0.
 		print *, "calibration routine"
 		call cal_dist(parvec,ervec,shk)
-		
+		print *, parvec
 		print *, ervec
 	endif
 	
-	lb = (/ 1.5_dp, 0.01_dp/)
-	ub = (/ 3.0_dp, 0.25_dp /)
+	lb = (/ 0.7_dp, 0.01_dp/)
+	ub = (/ 2.0_dp, 0.25_dp /)
 	
-	!set up the grid over which to check derivatives 
+!~ 	!set up the grid over which to check derivatives 
 !~ 	open(unit=fcallog, file="cal_square.csv")
 !~ 	write(fcallog,*) nu, xizcoef, ervec
 !~ 	close(unit=fcallog)
-!~ 	do i=1,10
-!~ 	do j=1,10
+!~ 	do i=1,8
+!~ 	do j=1,8
 !~ 		verbose=1
 !~ 		print_lev =1
 !~ 		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-!~ 		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/9._dp
-!~ 		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/9._dp
+!~ 		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/7._dp
+!~ 		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/7._dp
 		
 !~ 		call cal_dist(parvec,ervec,shk)
 !~ 		write(fcallog, "(G20.12)", advance='no')  nu
@@ -5196,86 +5187,86 @@ program V0main
 !~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
 !~ 	print *, "---------------------------------------------------"
 	
-	! without either the correlation between delta and occupation or wage trend
-!	del_by_occ = .false.
-!	w_strchng = .false.
-!	demog_dat = .true.
-!	caselabel = "wchng0deloc0"
-!	print *, caselabel, " ---------------------------------------------------"
-!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-!	if(verbose >2) print *, "Simulating the model"	
-!	call sim(vfs, pfs, hst,shk)
-!	if(verbose >2) print *, "Computing moments"
-!	call moments_compute(hst,moments_sim,shk)
-!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-!	print *, "---------------------------------------------------"
-	
-!	del_by_occ = .true.
-!	w_strchng = .true.
-!	demog_dat = .false.
-!	caselabel = "demog0"
-!	print *, caselabel, " ---------------------------------------------------"
-!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-!	if(verbose >2) print *, "Simulating the model"	
-!	call sim(vfs, pfs, hst,shk)
-!	if(verbose >2) print *, "Computing moments"
-!	call moments_compute(hst,moments_sim,shk)
-!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-!	print *, "---------------------------------------------------"
-	
-!	del_by_occ = .true.
-!	w_strchng = .false.
-!	demog_dat = .false.
-!	caselabel = "wchng0demog0"
-!	print *, caselabel, " ---------------------------------------------------"
-!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-!	if(verbose >2) print *, "Simulating the model"	
-!	call sim(vfs, pfs, hst,shk)
-!	if(verbose >2) print *, "Computing moments"
-!	call moments_compute(hst,moments_sim,shk)
-!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-!	print *, "---------------------------------------------------"
+!~ 	! without either the correlation between delta and occupation or wage trend
+!~ 	del_by_occ = .false.
+!~ 	w_strchng = .false.
+!~ 	demog_dat = .true.
+!~ 	caselabel = "wchng0deloc0"
+!~ 	print *, caselabel, " ---------------------------------------------------"
+!~ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!~ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!~ 	if(verbose >2) print *, "Simulating the model"	
+!~ 	call sim(vfs, pfs, hst,shk)
+!~ 	if(verbose >2) print *, "Computing moments"
+!~ 	call moments_compute(hst,moments_sim,shk)
+!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!~ 	print *, "---------------------------------------------------"
 
-!	del_by_occ = .false.
-!	w_strchng = .true.
-!	demog_dat = .false.
-!	caselabel = "deloc0demog0"
-!	print *, caselabel, " ---------------------------------------------------"
-!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-!	if(verbose >2) print *, "Simulating the model"	
-!	call sim(vfs, pfs, hst,shk)
-!	if(verbose >2) print *, "Computing moments"
-!	call moments_compute(hst,moments_sim,shk)
-!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-!	print *, "---------------------------------------------------"
+!~ 	del_by_occ = .true.
+!~ 	w_strchng = .true.
+!~ 	demog_dat = .false.
+!~ 	caselabel = "demog0"
+!~ 	print *, caselabel, " ---------------------------------------------------"
+!~ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!~ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!~ 	if(verbose >2) print *, "Simulating the model"	
+!~ 	call sim(vfs, pfs, hst,shk)
+!~ 	if(verbose >2) print *, "Computing moments"
+!~ 	call moments_compute(hst,moments_sim,shk)
+!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!~ 	print *, "---------------------------------------------------"
+	
+!~ 	del_by_occ = .true.
+!~ 	w_strchng = .false.
+!~ 	demog_dat = .false.
+!~ 	caselabel = "wchng0demog0"
+!~ 	print *, caselabel, " ---------------------------------------------------"
+!~ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!~ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!~ 	if(verbose >2) print *, "Simulating the model"	
+!~ 	call sim(vfs, pfs, hst,shk)
+!~ 	if(verbose >2) print *, "Computing moments"
+!~ 	call moments_compute(hst,moments_sim,shk)
+!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!~ 	print *, "---------------------------------------------------"
 
-!	del_by_occ = .false.
-!	w_strchng = .false.
-!	demog_dat = .false.
-!	caselabel = "wchng0deloc0demog0"
-!	print *, caselabel, " ---------------------------------------------------"
-!	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-!	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-!	if(verbose >2) print *, "Simulating the model"	
-!	call sim(vfs, pfs, hst,shk)
-!	if(verbose >2) print *, "Computing moments"
-!	call moments_compute(hst,moments_sim,shk)
-!	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-!	print *, "---------------------------------------------------"
+!~ 	del_by_occ = .false.
+!~ 	w_strchng = .true.
+!~ 	demog_dat = .false.
+!~ 	caselabel = "deloc0demog0"
+!~ 	print *, caselabel, " ---------------------------------------------------"
+!~ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!~ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!~ 	if(verbose >2) print *, "Simulating the model"	
+!~ 	call sim(vfs, pfs, hst,shk)
+!~ 	if(verbose >2) print *, "Computing moments"
+!~ 	call moments_compute(hst,moments_sim,shk)
+!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!~ 	print *, "---------------------------------------------------"
+
+!~ 	del_by_occ = .false.
+!~ 	w_strchng = .false.
+!~ 	demog_dat = .false.
+!~ 	caselabel = "wchng0deloc0demog0"
+!~ 	print *, caselabel, " ---------------------------------------------------"
+!~ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+!~ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+!~ 	if(verbose >2) print *, "Simulating the model"	
+!~ 	call sim(vfs, pfs, hst,shk)
+!~ 	if(verbose >2) print *, "Computing moments"
+!~ 	call moments_compute(hst,moments_sim,shk)
+!~ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+!~ 	print *, "---------------------------------------------------"
 	
 	
-!~ 	!****************************************************************************!
-!~ 	! IF you love something.... 
-!~ 	!****************************************************************************!
+!~  	!****************************************************************************!
+	! IF you love something.... 
+	!****************************************************************************!
 	
-	call nlo_destroy(calopt)
+!~ 	call nlo_destroy(calopt)
 	call dealloc_shocks(shk)
 	
-	call dealloc_econ(vfs,pfs,hst)
+!~ 	call dealloc_econ(vfs,pfs,hst)
 	
 
 !    .----.   @   @

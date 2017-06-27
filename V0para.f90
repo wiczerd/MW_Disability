@@ -56,9 +56,9 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			Nskill = 3,&			!number of skills that define occupations. First is always physical 
 			NpolyT = 2,&			!polynomial order or time trend for occupation
 			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 16000,&!10000*nj !how many agents to draw
+			Nsim = 80000,&!5000*nj	!how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
-			init_yrs = 2,&			!how many years for calibration to initial state of things
+			init_yrs = 3,&			!how many years for calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10
@@ -148,7 +148,7 @@ integer :: 	dgrid(nd), &		! just enumerate the d states
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 1., &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 1.2, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income process
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -170,7 +170,6 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 ! 	Health risk grid
 		dRiskL	= 0.95,&	!Lower bound on occupation-related extra disability risk (multiplicative)
 		dRiskH	= 1.05,&		!Upper bound on occupation-related extra disability risk
-
 		wmean	= 1.,&		! to set the average wage on which disability stuff is set
 !		
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
@@ -178,7 +177,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 !
 		proc_time1 =   2.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
 		proc_time2 = 14.12,&!The average time to decision	(could be 28.05 for appeal that continues)
-		xizcoef = 0.25, &	!change in acceptance rate with z deterioration
+		xizcoef = 0.2, &	!change in acceptance rate with z deterioration
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
 		voc_age	= 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
@@ -203,6 +202,7 @@ real(8) :: emp_persist = 0.98 ,&
 		emp_std = 0.01 ,&
 		apprt_target = .01,&	!target for application rates (to be filled below)
 		dirt_target = 0.018,&	!target for di rates
+		diaward_target = 0.003,& !target for new award rate
 		voc_accept = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_accept = 0.75		!fraction taken based on health criteria, target 1985
 		
