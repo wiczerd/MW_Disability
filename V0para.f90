@@ -75,7 +75,7 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
-logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
+logical           ::  del_by_occ = .false.,& !delta is fully determined by occupation, right now alternative is fully random
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
@@ -119,8 +119,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		prborn_constpop(Tsim),&	!probability of being born at each point t if population structure stays constant
 		hazborn_constpop(Tsim), &	!hazard of being born at each point t if population structure stays constant
 		
-		PrD3age(TT), &		!Fraction of D2 at each age
 		PrDage(nd,TT), &	!Fraction of each D at each age
+		PrDageDel(nd,TT,ndi), &	!Ergodic distribution of each D at each Age and Delta (implied by pid)
 		PrDeath(nd,TT),&	!Probability of death during work-life
 !
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
@@ -544,9 +544,14 @@ subroutine setparams()
 	agegrid(TT) = Longev/2 - (youngD + oldD*oldN) /2 + (youngD + oldD*oldN)
 
 	!Wage Bonus 0.0373076,-0.0007414
-	do i=1,TT-1							
-		wtau(i) = ageW*agegrid(i)+ageW2*agegrid(i)**2 !Old
-	enddo
+	!do i=1,TT-1							
+	!	wtau(i) = ageW*agegrid(i)+ageW2*agegrid(i)**2 !Old
+	!enddo
+	wtau(1) =  0.
+	wtau(2) = -0.032/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(2)-agegrid(1))
+	wtau(3) = -0.032/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(3)-agegrid(1))
+	wtau(4) = -0.12
+	wtau(5) = -0.174
 	
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
@@ -588,7 +593,6 @@ subroutine setparams()
 			enddo
 		endif
 		PrDage(:,t) = PrDage(:,t)/sum(PrDage(:,t))
-		PrD3age(t) = PrDage(nd,t)
 	enddo
 	!health structure extrapolate one period ahead - make the transition rate correct
 !~ 	PrDead_tp1 = 0.d0
@@ -788,8 +792,8 @@ subroutine setparams()
 	!Disability Extent-Specific Things
 	!Wage Penalty 
 	wd(1) = 0		!Healthy, no penalty
-	wd(2) = -0.095	!Partially Disabled, small penalty	
-	wd(3) = -0.246	!Full Disabled, large penalty
+	wd(2) = -0.097	!Partially Disabled, small penalty	
+	wd(3) = -0.266	!Full Disabled, large penalty
 
 	!DI Acceptance probability for each d,t status
 	xiagecoef = voc_age
@@ -899,6 +903,9 @@ subroutine setparams()
 				endif
 				
 			enddo
+			do k=1,nd
+				pid1(k,:) = pid1(k,:)/sum(pid1(k,:))
+			enddo
 		endif !RAS
 			
 		do j=1,ndi
@@ -938,6 +945,17 @@ subroutine setparams()
 				pid(t,:,j,i) = pid(t,:,j,i)/summy
 			enddo		
 			
+			!initialize
+			PrDageDel(:,:,j) = PrDage
+			sdec = pid1
+			call  dgeev( 'V', 'N', nd, sdec, nd, wr, wi, vl, nd, vr, nd, &
+		    	& wrk, lwrk, status)
+			do t=1,nd
+				if( dabs(wr(t)-1._dp)<1.e-4 ) &
+				&	PrDageDel(:,i,j) = vl(:,t)
+			enddo
+			summy = sum(PrDageDel(:,i,j))
+			PrDageDel(:,i,j) = PrDageDel(:,i,j)/summy
 		enddo
 	enddo
 
