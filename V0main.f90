@@ -2547,6 +2547,7 @@ module sim_hists
 		integer, dimension(:,:) :: al_it_int
 		integer :: ss=1, Ndraw, alfgrid_int, t,m,i,k
 		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i,alf_i
+		real(dp) :: alfcondsig,alfrhot,alfsigt,alfcondsigt 
 		real(dp) :: alfgrid_minE,alfgrid_maxE,alfgrid_Uval !min max value while employed and val of unemp
 		integer, allocatable :: bdayseed(:)
 		real(dp), allocatable :: cumpi_al(:,:)
@@ -2565,6 +2566,11 @@ module sim_hists
 		cumpi_al =0.
 		Ndraw = size(al_it,1)
 
+		alfrhot = alfrho**(1./tlen)
+		alfcondsig = (alfsig**2*(1-alfrho**2))**0.5
+		alfsigt = (alfsig**2/tlen)**0.5
+		alfcondsigt = (alfsigt**2*(1-alfrhot**2))**0.5
+
 		do i=1,nal
 			do k=2,nal+1
 				cumpi_al(i,k) = pialf(i,k-1)+cumpi_al(i,k-1)
@@ -2576,11 +2582,10 @@ module sim_hists
 		do i=1,Ndraw
 
 			! draw starting values
-			t =1
-			
+		
 			call random_normal(alf_innov) ! draw normal disturbances on 0,1
 			! transform it by the ergodic distribution for the first period:
-			alf_i = alf_innov*alfsig + alfmu
+			alf_i = alf_innov*alfsigt + alfmu
 
 			if(alf_i >alfgrid_maxE .or. alf_i < alfgrid_minE) success = 1+success !count how often we truncate
 			!impose bounds
@@ -2588,41 +2593,29 @@ module sim_hists
 			alf_i = min(alf_i,alfgrid_maxE)
 			alfgrid_int = finder(alfgrid,alf_i)
 			alfgrid_int = max(2, min(alfgrid_int,nal) )
-			! round up or down:
-			
-			if(al_contin .eqv. .true.) then
-				al_it(i,t) = alf_i ! log of wage shock
-			else
-				if( (alf_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
-				al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
-				alfgrid_i = alf_i
-			endif
-			al_it_int(i,t) = alfgrid_int
-			
+
 			
 			! draw sequence:
-			do t=2,Tsim
+			do t=(-Tsim),Tsim
 				if(al_contin .eqv. .true.) then
-					!call rand_num_closed(alf_innov)
-					! unemployment risk
-					!if( alf_innov < cumpi_al(alfgrid_int,2)) then
-					!	alf_i = alfgrid(1)
-					!	al_it(i,t) = alf_i
-					!	alfgrid_int = 1
-					!else
 						call random_normal(alf_innov)
-						alf_i  = alfrho*alf_i + (1.-alfrho**2)*alfsig*alf_innov + alfmu
-						al_it(i,t) = alf_i  ! log of wage shock
-						alfgrid_int = finder(alfgrid,alf_i)
+						alf_i  = alfrhot*alf_i + alfcondsigt*alf_innov + alfmu*(1-alfrhot)
+						alf_i = max(alf_i,alfgrid_minE)
+						alf_i = min(alf_i,alfgrid_maxE)
+						if(t >= 1)  then 
+							al_it(i,t) = alf_i  ! log of wage shock
+							if(alf_i >alfgrid_maxE .or. alf_i < alfgrid_minE) success = 1+success !count how often we truncate
+						endif
+						alfgrid_int = min(finder(alfgrid,alf_i),nal-1)
+						if( (alf_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
 						alfgrid_int = max(min(alfgrid_int,nal),2)
-					!endif
 				else
 					call rand_num_closed(alf_innov)
 					alfgrid_int = finder(cumpi_al(alfgrid_int,:), alf_innov )
 					alfgrid_int = max(min(alfgrid_int,nal),1)
-					al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
+					if(t>=1) al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
 				endif
-				al_it_int(i,t) = alfgrid_int					
+				if(t>=1) al_it_int(i,t) = alfgrid_int					
 			enddo
 		enddo
 		if(success > 0.2*Ndraw*Tsim)  success = success
@@ -3164,10 +3157,11 @@ module sim_hists
 	
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., iiwt=1., ziwt=1., jwt=1., cumval=1., init_status3(nd)=.05_dp, &
-					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,triwt=1.
+					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,& 
+					&   triwt=1.
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1, ai_hr=1,api_hr=1,ei_hr=1,triH, &
-			& tri=1, tri_hr=1,fnd_hr(nz),sep_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0,slice_len=1
+			& tri=1, tri_hr=1,fnd_hr(nz),sep_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0,slice_len=1, brn_yr_hr=1
 			
 		logical :: w_strchng_old = .false., final_iter = .false.,occaggs_hr =.true., converged = .false.
 		
@@ -3375,8 +3369,8 @@ module sim_hists
 
 					if((iter>1) ) then
 						do ii=1,Ncol
-							drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1) !drawi = drawi_ititer(i,ii)
-							drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)!iter-1
+							drawi = drawi_ititer(i,ii) !drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
+							drawt = drawt_ititer(i,ii) !drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
 							if( d_it(drawi,drawt) .eq. d_hr .and. status_it(drawi,drawt)>0 .and. status_it(drawi,drawt)<4 ) then 
 								status_it(i,it) = status_it(drawi,drawt)
 								d_it(i,it) = d_it(drawi,drawt)
@@ -3420,7 +3414,7 @@ module sim_hists
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,tri_hr,apc_hr,ep_hr, &
 			!$OMP& iiH, iiwt, ziwt,ziH,triwt,triH,il,fnd_hr, sep_hr, il_hr,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr, &
-			!$OMP& hlthprob,ii,sepi,fndi,invol_un,dead,status_tmrw) 
+			!$OMP& hlthprob,ii,sepi,fndi,invol_un,dead,status_tmrw,brn_yr_hr) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3438,11 +3432,14 @@ module sim_hists
 				do it=1,Tsim
 				if(age_it(i,it) > 0 ) then !they've been born 
 					
+					if(it==1) brn_yr_hr=it
+					
 					if((born_it(i,it) .eq. 1 .and. it> 1) ) then
 					! note: no one is ``born'' in the first period
 					
 					! draw state from distribution of age 1 
 						age_hr	= 1
+						brn_yr_hr = it
 						do d_hr=1,nd
 							if(health_it_innov(i,it) < cumPrDageDel(d_hr+1,age_hr,del_hr)) &
 								& exit
@@ -3464,7 +3461,7 @@ module sim_hists
 								drawi = drawi_ititer(i,ii)!drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
 								drawt = drawt_ititer(i,ii)!drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)!iter-1
 								if(age_it(drawi,drawt) .eq. 1 .and. d_it(drawi,drawt) .eq. d_hr & 
-								&	.and. status_it(drawi,drawt)>0 .and. status_it(drawi,drawt)<4) then 
+								&	.and. status_it(drawi,drawt) .eq. 1) then 
 
 									d_it(i,it)		= d_hr
 									a_it(i,it)      = a_it(drawi,drawt)
@@ -3545,6 +3542,7 @@ module sim_hists
 						do zi_hr = nz,1,-1
 							if(zgrid(zi_hr,j_hr)<z_hr) exit
 						enddo
+						zi_hr = min( max(zi_hr,1), nz )
 						ziH  = min(zi_hr+1,nz)
 						ziwt = (zgrid(ziH,j_hr)- z_hr)/( zgrid(ziH,j_hr) -   zgrid(zi_hr,j_hr) )
 						if( ziH == zi_hr ) ziwt = 1.
@@ -3586,15 +3584,16 @@ module sim_hists
 					
 					if( w_strchng .eqv. .true.) then
 						do tri_hr = ntr,1,-1
-							if( trgrid(tri_hr)<wage_trend(it,j_hr) ) &
-							&	exit
-							triH = min(tri_hr+1,ntr)
-							if(triH>tri_hr) then
-								triwt = (trgrid(triH)- wage_trend(it,j_hr))/(trgrid(triH) - trgrid(tri_hr))
-							else
-								triwt = 1._dp
-							endif
+							if( trgrid(tri_hr)<wage_trend(it,j_hr) ) exit
 						enddo
+						tri_hr = min( max(tri_hr, 1), ntr )
+						triH = min(tri_hr+1,ntr)
+						if(triH>tri_hr) then
+							triwt = (trgrid(triH)- wage_trend(it,j_hr))/(trgrid(triH) - trgrid(tri_hr))
+						else
+							triwt = 1._dp
+						endif
+
 						wtr_it(i,it) = wage_trend(it,j_hr) 
 					else
 						tri_hr = tri0
@@ -3960,13 +3959,14 @@ module sim_hists
 						!push forward AIME
 						if(status_hr .eq. 1) then
 							!here, it is continuous
-							ep_hr = min( (e_hr*dble(it-1) + wage_hr)/dble(it),egrid(ne) )
+							ep_hr = (e_hr*dble(it-brn_yr_hr-1) + wage_hr)/dble(it-brn_yr_hr)
+							ep_hr = max(min( ep_hr,egrid(ne) ),egrid(1))
 							e_it(i,it+1) = ep_hr
 							! assign to grid points by nearest neighbor
 							do ei_hr = ne,1,-1
-								if( ep_hr < egrid(ei_hr) ) exit
+								if( ep_hr > egrid(ei_hr) ) exit
 							enddo
-							ei_hr = max(ei_hr,1) !just to be sure we take base 1
+							ei_hr = min(max(ei_hr,1),ne) !just to be sure we take base 1
 							! round or floor
 							if(ei_hr < ne) then 
 !~ 								if( (ep_hr - egrid(ei_hr)) < (egrid(ei_hr+1) - ep_hr) ) then
@@ -3977,6 +3977,13 @@ module sim_hists
 							else
 								e_it_int(i,it+1) = ne
 							endif
+						elseif(status_hr .le. 3) then
+							e_it(i,it+1) = e_hr*dble(it-brn_yr_hr-1)/dble(it-brn_yr_hr)
+							ep_hr = max(min( ep_hr,egrid(ne) ),egrid(1))
+							do ei_hr = ne,1,-1
+								if( ep_hr > egrid(ei_hr) ) exit
+							enddo
+							e_it_int(i,it+1) = min(max(ei_hr,1),ne)
 						else
 							e_it(i,it+1) = e_hr
 							e_it_int(i,it+1) = ei_hr
@@ -4174,6 +4181,7 @@ module sim_hists
 			
 			if(print_lev > 1)then
 					call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
+					call mati2csv(e_it_int,"e_int_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(status_it,"status_it_hist"//trim(caselabel)//".csv")
@@ -4343,6 +4351,7 @@ module find_params
 							do ali_hr = nal,2,-1
 								if(alfgrid(ali_hr)<ali_hr) exit
 							enddo
+							ali_hr = min( max(ali_hr,2 ),nal-1 )
 							if( (alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr)) .and. (ali_hr <nal) ) ali_hr = ali_hr+1
 						endif
 						if(it==1 ) then
@@ -5177,34 +5186,34 @@ program V0main
 !~ 	enddo
 	
 	
-	if( dbg_skip .eqv. .false.) then
-		call nlo_create(calopt,NLOPT_LN_SBPLX,2)
-	! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
-	! 	lb_1 = (/.01/)
-		call nlo_set_lower_bounds(ires,calopt,lb)
-	! 	ub_1 = (/5./)
-		call nlo_set_upper_bounds(ires,calopt,ub)
-		call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
-		call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
-		call nlo_set_maxeval(ires,calopt,500_dp)
+!~ 	if( dbg_skip .eqv. .false.) then
+!~ 		call nlo_create(calopt,NLOPT_LN_SBPLX,2)
+!~ 	! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
+!~ 	! 	lb_1 = (/.01/)
+!~ 		call nlo_set_lower_bounds(ires,calopt,lb)
+!~ 	! 	ub_1 = (/5./)
+!~ 		call nlo_set_upper_bounds(ires,calopt,ub)
+!~ 		call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
+!~ 		call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
+!~ 		call nlo_set_maxeval(ires,calopt,500_dp)
 		
-		call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+!~ 		call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 		
-		parvec(1) = nu
-		parvec(2) = xizcoef
-!~ 		!parvec_1(1) = nu
+!~ 		parvec(1) = nu
+!~ 		parvec(2) = xizcoef
+		!parvec_1(1) = nu
 
-		open(unit=fcallog, file=callog)
-		write(fcallog,*) " "
-		close(unit=fcallog)
-		call nlo_optimize(ires, calopt, parvec, erval)
-		nu = parvec(1) ! new optimum
-		xizcoef = parvec(2)
+!~ 		open(unit=fcallog, file=callog)
+!~ 		write(fcallog,*) " "
+!~ 		close(unit=fcallog)
+!~ 		call nlo_optimize(ires, calopt, parvec, erval)
+!~ 		nu = parvec(1) ! new optimum
+!~ 		xizcoef = parvec(2)
 
-		call cal_dist(parvec,ervec,shk)
+!~ 		call cal_dist(parvec,ervec,shk)
 		
-		print *, ervec
-	endif
+!~ 		print *, ervec
+!~ 	endif
 
 !~ !****************************************************************************
 !~ !   Now run some experiments:

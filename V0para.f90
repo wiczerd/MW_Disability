@@ -75,7 +75,7 @@ logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
-logical           ::  del_by_occ = .false.,& !delta is fully determined by occupation, right now alternative is fully random
+logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
@@ -159,10 +159,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
 		xsep = 0.015, &		!Separation probability into unemployment
-		
-		ageW = 0.0373076, &	!Coefficient on Age in Mincer,
-		ageW2 = -.0007414,&	!Coefficient on Age^2 in Mincer
-		
+				
 !	Agregate income risk
 		zrho	= 0.95,	&	!Persistence of the AR process
 		zmu		= 0.,	&	!Drift of the AR process, should always be 0
@@ -391,7 +388,6 @@ subroutine setparams()
 	
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!Earnings
-	
 
 	!Individual Wage component (alpha)- grid= 2 std. deviations
 	alfrhot = alfrho**(1./tlen)
@@ -828,7 +824,6 @@ subroutine setparams()
 	!Make linear from lowest possible wage (disabled entrant, lowest types)
 	emin = dexp(alfgrid(2)+minval(wtau)+minval(wd))
 	!... to highest, maximizing over t
-	!wtmax = int(min(floor(ageW/(2*ageW2)),TT-1))
 	emax = dexp(maxval(alfgrid)+maxval(wtau)+maxval(wd))
 	step = (emax-emin)/dble(ne-1)
 	do i=1,ne
