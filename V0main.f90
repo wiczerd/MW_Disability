@@ -2890,11 +2890,11 @@ module sim_hists
 	
 	end subroutine set_age
 
-	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it, seed0, success)
+	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it,al_it_int, seed0, success)
 
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
-		integer,intent(in) :: age_it(:,:)
+		integer,intent(in) :: age_it(:,:),al_it_int(:,:)
 		integer, allocatable :: bdayseed(:)
 		integer,intent(out) :: drawi_ititer(:,:),drawt_ititer(:,:)
 		integer :: i,it,id,m,ss=1,drawt,drawi,ndraw,Ncols, seedi,brn_yr(Nsim)
@@ -2918,8 +2918,9 @@ module sim_hists
 				enddo
 			endif
 		enddo
-		!need to draw these from age-specific distributions for iterations > 1
-		! OMP parallel do firstprivate(id, i, it, junk, seedi, drawi, drawt,ss,bdayseed,m) <- this makes it much slower
+		!need to draw these from age- and alpha- specific distributions for iterations > 1
+		! \|/ this makes it much slower
+		! OMP parallel do private(id, i, it, junk, seedi, drawi, drawt,ss,bdayseed,m) 
 		do id = 1,Ncols
 			seedi = seed0+id
 			do m=1,ss
@@ -2927,29 +2928,28 @@ module sim_hists
 			enddo
 			call random_seed(put = bdayseed )		
 			do i=1,Ndraw
+			!initialize:
+				drawi_ititer(i,id) = i
+				drawt_ititer(i,id) = it
 				it=brn_yr(i)
 				ageloop: do 
 					call random_number(junk)
 					drawi = max(1,idnint(junk*Nsim))
 					call random_number(junk)
-!~ 					if( it==1 ) then
-!~ 						drawt = max(1,init_yrs*idnint(junk*tlen)) !max(1,idnint(junk*(dble(Tblock_sim)*tlen)-1))
-!~ 					else
-						drawt = max(1,idnint(junk*Tsim))
-!~ 					endif
-					if(age_it(drawi,drawt) .eq. age_it(i,it)) then
+					drawt = max(1,idnint(junk*Tsim))
+					if( (age_it(drawi,drawt) .eq. age_it(i,it)) .and. (al_it_int(drawi,drawt) .eq. al_it_int(i,it)) ) then
+						drawi_ititer(i,id) = drawi
+						drawt_ititer(i,id) = drawt
 						exit ageloop
 					endif
 				end do ageloop
-				drawi_ititer(i,id) = drawi
-				drawt_ititer(i,id) = drawt
 			enddo
 		enddo
 		! OMP end parallel do
 		
 		deallocate(bdayseed)
 		success = 0
-	end subroutine
+	end subroutine draw_draw
 
 
 	subroutine draw_shocks(shk)
@@ -2977,7 +2977,7 @@ module sim_hists
 		seed0 = seed0 + 1
 		call draw_zjt(shk%z_jt_select,shk%z_jt_innov, seed1, status)
 		seed1 = seed1 + 1
-		call draw_draw(shk%drawi_ititer, shk%drawt_ititer, shk%age_hist, seed0, status)
+		call draw_draw(shk%drawi_ititer, shk%drawt_ititer, shk%age_hist, shk%al_int_hist,seed0, status)
 		seed0 = seed0 + 1
 		call draw_status_innov(shk%status_it_innov, shk%health_it_innov, shk%dead_draw,seed1, status)
 		seed1 = seed1 + 1
@@ -3103,6 +3103,7 @@ module sim_hists
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
 !		integer, allocatable :: hlthvocSSDI(:,:) ! got into ssdi on health or vocational considerations, 0= no ssdi, 1=health, 2=vocation
 		real(dp), allocatable :: e_it(:,:), median_wage(:,:)
+		integer, allocatable :: brn_drawi_drawt(:,:,:)
 		
 		! FOR DEBUGGING
 		real(dp), allocatable :: val_hr_it(:)
@@ -3162,7 +3163,7 @@ module sim_hists
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1, ai_hr=1,api_hr=1,ei_hr=1,triH, &
 			& tri=1, tri_hr=1,fnd_hr(nz),sep_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0,slice_len=1, brn_yr_hr=1
-			
+
 		logical :: w_strchng_old = .false., final_iter = .false.,occaggs_hr =.true., converged = .false.
 		
 		if(present(occaggs)) then
@@ -3186,6 +3187,7 @@ module sim_hists
 		allocate(al_it_endog(Nsim,Tsim))
 		allocate(wtr_it(Nsim,Tsim))
 		allocate(trX_it(Nsim,Tsim))
+		allocate(brn_drawi_drawt(Nsim,Tsim,2))
 !		allocate(hlthvocSSDI(Nsim,Tsim))
 
 
@@ -3265,6 +3267,11 @@ module sim_hists
 		if(shk%drawn /= 1 )then
 			call draw_shocks(shk)
 		endif		
+		do i=1,Nsim
+			do it=1,Tsim 
+				brn_drawi_drawt(i,it,:) = (/ i,it /) 
+			enddo
+		enddo
 
 		!set up cumpid,cumptau
 		cumpid = 0.
@@ -3369,9 +3376,10 @@ module sim_hists
 
 					if((iter>1) ) then
 						do ii=1,Ncol
-							drawi = drawi_ititer(i,ii) !drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
-							drawt = drawt_ititer(i,ii) !drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
+							drawi = drawi_ititer(i,ii) !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1) 
+							drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
 							if( d_it(drawi,drawt) .eq. d_hr .and. status_it(drawi,drawt)>0 .and. status_it(drawi,drawt)<4 ) then 
+								brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
 								status_it(i,it) = status_it(drawi,drawt)
 								d_it(i,it) = d_it(drawi,drawt)
 								a_it(i,it) = a_it(drawi,drawt)
@@ -3385,14 +3393,14 @@ module sim_hists
 						enddo
 					endif
 					if( (iter==1) .or. ii >=Ncol ) then
-
 						status_it(i,it) = 1
-						if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_it(i,it) ==1 ) then
+						if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_it_int(i,it) ==1 ) then
 							status_it(i,it) = 2
 !~ 						elseif( status_it_innov(i,it)<  init_status3(d_hr) ) then
 !~ 							status_it(i,it) = 3 !make them eligible to apply for DI
 						endif
 						d_it(i,it) = d_hr
+						brn_drawi_drawt(i,it,:) = (/i,it/) 
 						if(age_it(i,it)==1) then
 							a_it_int(i,it) = 1
 							a_it(i,it) = minval(agrid)
@@ -3414,7 +3422,7 @@ module sim_hists
 			!$OMP  parallel do &
 			!$OMP& private(i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,tri_hr,apc_hr,ep_hr, &
 			!$OMP& iiH, iiwt, ziwt,ziH,triwt,triH,il,fnd_hr, sep_hr, il_hr,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr, &
-			!$OMP& hlthprob,ii,sepi,fndi,invol_un,dead,status_tmrw,brn_yr_hr) 
+			!$OMP& hlthprob,ii,drawi,drawt,sepi,fndi,invol_un,dead,status_tmrw,brn_yr_hr) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3445,6 +3453,7 @@ module sim_hists
 								& exit
 						enddo
 						if(iter ==1) then
+							brn_drawi_drawt(i,it,:) = (/i,it /)
 							a_hr 	= minval(agrid)
 							ei_hr	= 1
 							e_hr 	= minval(egrid)
@@ -3458,11 +3467,11 @@ module sim_hists
 							status_it(i,it) = 1
 						else
 							do ii=1,Ncol
-								drawi = drawi_ititer(i,ii)!drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
-								drawt = drawt_ititer(i,ii)!drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)!iter-1
+								drawi = drawi_ititer(i,ii)  !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
+								drawt = drawt_ititer(i,ii)  !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
 								if(age_it(drawi,drawt) .eq. 1 .and. d_it(drawi,drawt) .eq. d_hr & 
-								&	.and. status_it(drawi,drawt) .eq. 1) then 
-
+								&	.and. status_it(drawi,drawt) .gt. 0 .and. status_it(drawi,drawt) .le. 3) then 
+									brn_drawi_drawt(i,it,:) = (/drawi, drawt /)
 									d_it(i,it)		= d_hr
 									a_it(i,it)      = a_it(drawi,drawt)
 									e_it(i,it)      = e_it(drawi,drawt)
@@ -3477,6 +3486,8 @@ module sim_hists
 									status_hr = status_it(drawi,drawt)
 									exit
 								elseif(ii==Ncol) then
+									brn_drawi_drawt(i,it,1) = i 
+									brn_drawi_drawt(i,it,2) = it 
 									a_hr 	= minval(agrid)
 									ei_hr	= 1
 									e_hr 	= minval(egrid)
@@ -3548,39 +3559,20 @@ module sim_hists
 						if( ziH == zi_hr ) ziwt = 1.
 					endif
 
-
 					!set the idiosyncratic income state
 					al_hr	= al_it(i,it)
 					ali_hr	= al_it_int(i,it)
+					if( (born_it(i,it) .eq. 1) .or. (it .eq. 1 .and. age_it(i,it) .gt. 0) ) then
+						drawi = brn_drawi_drawt(i,it,1)
+						drawt = brn_drawi_drawt(i,it,2)
+						al_hr = al_it_endog(drawi,drawt)	
+						ali_hr = al_int_it_endog(drawi,drawt)
+						if(ali_hr .eq. 1) invol_un = 1 
+					endif
 					if(invol_un .eq. 1 )then
 						al_hr	= alfgrid(1)
 						ali_hr	= 1
 					endif
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!RETURN TO THIS PART!
-!!!!Setting the number of invol unemp in the first period
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-					!in the first period need to establish the right number of exog unemp
-!~ 					if((it==1) .and. (iter>1) .and. (status_hr<=3) .and. (age_hr>0)) then
-!~ 						if(status_it_innov(i,Tsim-1) < PrAl1(zi_hr)) then
-!~ 							ali_hr = 1
-!~ 							al_last_invol = al_hr
-!~ 							invol_un = 1
-!~ 							iiwt = 1._dp
-!~ 							iiH = 2
-!~ 							al_hr = alfgrid(ali_hr)
-!~ 							if(status_it_innov(i,Tsim-2)<PrAl1St3(zi_hr)) then
-!~ 								status_hr=3
-!~ 								status_tmrw = 3
-!~ 								status_it(i,it) = 3
-!~ 							else 
-!~ 								status_hr=2
-!~ 								status_tmrw = 2
-!~ 								status_it(i,it) = 2
-!~ 							endif
-!~ 						endif
-!~ 					endif
 					
 					if( w_strchng .eqv. .true.) then
 						do tri_hr = ntr,1,-1
@@ -4203,7 +4195,8 @@ module sim_hists
 					call mat2csv (hst%hlthprob_hist,"hlthprob_hist"//trim(caselabel)//".csv")
 					call mat2csv (PrStatus_AgeD(:,1,:),"PrStatus_AgeYD"//trim(caselabel)//".csv")
 					call mat2csv (PrStatus_AgeD(:,4,:),"PrStatus_AgeOD"//trim(caselabel)//".csv")
-					
+					call mati2csv(brn_drawi_drawt(:,:,1),"brn_drawi_drawt.csv",0)
+					call mati2csv(brn_drawi_drawt(:,:,2),"brn_drawi_drawt.csv",1)
 			endif
 		endif
 		
@@ -4214,6 +4207,7 @@ module sim_hists
 		deallocate(val_hr_it)
 		deallocate(wtr_it)
 		deallocate(trX_it)
+		deallocate(brn_drawi_drawt)
 		!deallocate(hlthvocSSDI)
 		!deallocate(status_it_innov)
 		!deallocate(drawi_ititer,drawt_ititer)
@@ -5160,60 +5154,60 @@ program V0main
 		print *, ervec
 	endif
 	
-	lb = (/ 0.7_dp, 0.01_dp/)
-	ub = (/ 10._dp, 0.25_dp /)
+	lb = (/ 0.25_dp, 0.01_dp/)
+	ub = (/ 1._dp, 0.25_dp /)
 	
-!~ 	!set up the grid over which to check derivatives 
-!~ 	open(unit=fcallog, file="cal_square.csv")
-!~ 	write(fcallog,*) nu, xizcoef, ervec
-!~ 	close(unit=fcallog)
-!~ 	do i=1,8
-!~ 	do j=1,8
-!~ 		verbose=1
-!~ 		print_lev =1
-!~ 		open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-!~ 		parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/7._dp
-!~ 		parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/7._dp
-		
-!~ 		call cal_dist(parvec,ervec,shk)
-!~ 		write(fcallog, "(G20.12)", advance='no')  nu
-!~ 		write(fcallog, "(G20.12)", advance='no')  xizcoef
-!~ 		write(fcallog, "(G20.12)", advance='no')  ervec(1)
-!~ 		write(fcallog, "(G20.12)", advance='yes') ervec(2)
-!~ 		print *, nu, xizcoef, ervec(1), ervec(2)
-!~ 		close(unit=fcallog)
-!~ 	enddo
-!~ 	enddo
+	!set up the grid over which to check derivatives 
+ 	! open(unit=fcallog, file="cal_square.csv")
+ 	! write(fcallog,*) nu, xizcoef, ervec
+ 	! close(unit=fcallog)
+ 	! do i=1,6
+ 	! do j=1,6
+ 	! 	verbose=1
+ 	! 	print_lev =1
+ 	! 	open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
+ 	! 	parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/5._dp
+ 	! 	parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/5._dp
+	
+ 	! 	call cal_dist(parvec,ervec,shk)
+ 	! 	write(fcallog, "(G20.12)", advance='no')  nu
+ 	! 	write(fcallog, "(G20.12)", advance='no')  xizcoef
+ 	! 	write(fcallog, "(G20.12)", advance='no')  ervec(1)
+ 	! 	write(fcallog, "(G20.12)", advance='yes') ervec(2)
+ 	! 	print *, nu, xizcoef, ervec(1), ervec(2)
+ 	! 	close(unit=fcallog)
+ 	! enddo
+ 	! enddo
 	
 	
-!~ 	if( dbg_skip .eqv. .false.) then
-!~ 		call nlo_create(calopt,NLOPT_LN_SBPLX,2)
-!~ 	! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
-!~ 	! 	lb_1 = (/.01/)
-!~ 		call nlo_set_lower_bounds(ires,calopt,lb)
-!~ 	! 	ub_1 = (/5./)
-!~ 		call nlo_set_upper_bounds(ires,calopt,ub)
-!~ 		call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
-!~ 		call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
-!~ 		call nlo_set_maxeval(ires,calopt,500_dp)
+! 	if( dbg_skip .eqv. .false.) then
+! 		call nlo_create(calopt,NLOPT_LN_SBPLX,2)
+! 	! 	call nlo_create(calopt,NLOPT_LN_SBPLX,1)
+! 	! 	lb_1 = (/.01/)
+! 		call nlo_set_lower_bounds(ires,calopt,lb)
+! 	! 	ub_1 = (/5./)
+! 		call nlo_set_upper_bounds(ires,calopt,ub)
+! 		call nlo_set_xtol_abs(ires, calopt, 0.001_dp) !integer problem, so it is not very sensitive
+! 		call nlo_set_ftol_abs(ires,calopt, 0.0005_dp)  ! ditto 
+! 		call nlo_set_maxeval(ires,calopt,500_dp)
 		
-!~ 		call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+! 		call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 		
-!~ 		parvec(1) = nu
-!~ 		parvec(2) = xizcoef
-		!parvec_1(1) = nu
+! 		parvec(1) = nu
+! 		parvec(2) = xizcoef
+! !~ 		!parvec_1(1) = nu
 
-!~ 		open(unit=fcallog, file=callog)
-!~ 		write(fcallog,*) " "
-!~ 		close(unit=fcallog)
-!~ 		call nlo_optimize(ires, calopt, parvec, erval)
-!~ 		nu = parvec(1) ! new optimum
-!~ 		xizcoef = parvec(2)
+! 		open(unit=fcallog, file=callog)
+! 		write(fcallog,*) " "
+! 		close(unit=fcallog)
+! 		call nlo_optimize(ires, calopt, parvec, erval)
+! 		nu = parvec(1) ! new optimum
+! 		xizcoef = parvec(2)
 
-!~ 		call cal_dist(parvec,ervec,shk)
+! 		call cal_dist(parvec,ervec,shk)
 		
-!~ 		print *, ervec
-!~ 	endif
+! 		print *, ervec
+! 	endif
 
 !~ !****************************************************************************
 !~ !   Now run some experiments:
