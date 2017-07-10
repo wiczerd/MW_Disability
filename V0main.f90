@@ -686,6 +686,18 @@ module helper_funs
 
 end module helper_funs
 
+
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+! Compute data from the model
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+
+
 module model_data
 
 	use V0para
@@ -949,9 +961,14 @@ end module model_data
 
 !**************************************************************************************************************!
 !**************************************************************************************************************!
+!**************************************************************************************************************!
+!**************************************************************************************************************!
 !						Solve the model						       !
 !**************************************************************************************************************!
 !**************************************************************************************************************!
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+
 
 module sol_val
 
@@ -2284,9 +2301,15 @@ end module sol_val
 
 !**************************************************************************************************************!
 !**************************************************************************************************************!
+!**************************************************************************************************************!
+!**************************************************************************************************************!
 !						Simulate from solution					       !
 !**************************************************************************************************************!
 !**************************************************************************************************************!
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+
+
 module sim_hists
 	use V0para
 	use helper_funs
@@ -3088,8 +3111,8 @@ module sim_hists
 		
 		implicit none
 
-		type(val_struct), intent(inout), target :: vfs
-		type(pol_struct), intent(inout), target :: pfs	
+		type(val_struct), intent(in), target :: vfs
+		type(pol_struct), intent(in), target :: pfs	
 		type(hist_struct), intent(inout), target :: hst
 		type(shocks_struct), intent(inout), target :: shk
 		
@@ -3154,7 +3177,7 @@ module sim_hists
 		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),pialf_conddist(nal), cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1), &
 				& d_var(TT-1),a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), cumPrDage(nd+1,TT), cumPrDageDel(nd+1,TT,ndi), &
 				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj),PrAl1(nz),PrAl1St3(nz),totpopz(nz),&
-				& simiter_dist(maxiter), simiter_di(maxiter), PrStatus_AgeD( 3,1+oldn,nd)
+				& simiter_dist(maxiter)
 	
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., iiwt=1., ziwt=1., jwt=1., cumval=1., init_status3(nd)=.05_dp, &
@@ -3176,7 +3199,7 @@ module sim_hists
 		! Allocate things
 		!************************************************************************************************!
 
-		iter_draws = min(maxiter,10) !globally set variable
+		iter_draws = min(maxiter,50) !globally set variable
 		
 		allocate(a_it_int(Nsim,Tsim))		
 		allocate(e_it(Nsim,Tsim))
@@ -3305,7 +3328,7 @@ module sim_hists
 		d_it = 1
 		a_it = agrid(1)
 		a_it_int = 1
-		e_it = egrid(1)
+		e_it = 0._dp !if not yet alive, then 0
 		e_it_int = 1
 		status_it = 1 ! just to initialize on the first round 
 		do i=1,Nsim
@@ -3330,35 +3353,13 @@ module sim_hists
 		converged = .false.
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions 
 		do iter=1,iter_draws
-			!if(verbose >3) print *, "iter: ", iter
 			
 			di_prob_it = 0.
 			app_dif_it = 0.
 			work_dif_it = 0.
 			hst%hlthprob_hist = 0.
 			hst%hlth_voc_hist= 0 
-			!set prob alpha=1 for each z state.  Only works now for z_contin == .false.
-			if(iter>1)then 
-				PrAl1= 0._dp
-				totpopz = 0._dp
-				PrAl1St3 = 0._dp
-				do zi_hr=1,nz
-					do i=1,Nsim
-						do it=2,Tsim
-							if((z_jt_macroint(it)==zi_hr) .and. (age_it(i,it)>0 ).and. (status_it(i,it) <=3  .and. status_it(i,it)>0 ) ) then 
-								totpopz(zi_hr) = totpopz(zi_hr) + 1._dp
-								if(al_int_it_endog(i,it)==1) then
-									PrAl1(zi_hr) = PrAl1(zi_hr)+1._dp
-									if(status_it(i,it)==3) &
-										& PrAl1St3(zi_hr) = PrAl1St3(zi_hr)+1._dp
-								endif
-							endif
-						enddo!it
-					enddo !i
-					PrAl1St3(zi_hr) = PrAl1St3(zi_hr)/PrAl1(zi_hr)
-					PrAl1(zi_hr) = PrAl1(zi_hr)/totpopz(zi_hr)
-				enddo !zi_hr
-			endif!iter>1
+			
 			it = 1
 			nomatch = 0
 			junk =0.
@@ -3401,7 +3402,7 @@ module sim_hists
 						endif
 						d_it(i,it) = d_hr
 						brn_drawi_drawt(i,it,:) = (/i,it/) 
-						if(age_it(i,it)==1) then
+						if(age_it(i,it)==1) then 
 							a_it_int(i,it) = 1
 							a_it(i,it) = minval(agrid)
 							e_it(i,it) = minval(egrid)
@@ -3951,9 +3952,14 @@ module sim_hists
 						!push forward AIME
 						if(status_hr .eq. 1) then
 							!here, it is continuous
-							ep_hr = (e_hr*dble(it-brn_yr_hr-1) + wage_hr)/dble(it-brn_yr_hr)
+							if( it>brn_yr_hr ) then
+								ep_hr = (e_hr*dble(it-brn_yr_hr) + wage_hr)/dble(it-brn_yr_hr+1)
+							elseif(it == brn_yr_hr) then 
+								ep_hr = wage_hr 
+							endif
 							ep_hr = max(min( ep_hr,egrid(ne) ),egrid(1))
 							e_it(i,it+1) = ep_hr
+							if(it== brn_yr_hr) e_it(i,it) = ep_hr
 							! assign to grid points by nearest neighbor
 							do ei_hr = ne,1,-1
 								if( ep_hr > egrid(ei_hr) ) exit
@@ -3961,14 +3967,15 @@ module sim_hists
 							ei_hr = min(max(ei_hr,1),ne) !just to be sure we take base 1
 							! round or floor
 							if(ei_hr < ne) then 
-!~ 								if( (ep_hr - egrid(ei_hr)) < (egrid(ei_hr+1) - ep_hr) ) then
+ 								if( (ep_hr - egrid(ei_hr)) < (egrid(ei_hr+1) - ep_hr) ) then
 									e_it_int(i,it+1) = ei_hr
-!~ 								else
-!~ 									e_it_int(i,it+1) = ei_hr + 1
-!~ 								endif
+ 								else
+ 									e_it_int(i,it+1) = ei_hr + 1
+ 								endif
 							else
 								e_it_int(i,it+1) = ne
 							endif
+							if(it== brn_yr_hr) e_it_int(i,it) = e_it_int(i,it+1)
 						elseif(status_hr .le. 3) then
 							e_it(i,it+1) = e_hr*dble(it-brn_yr_hr-1)/dble(it-brn_yr_hr)
 							ep_hr = max(min( ep_hr,egrid(ne) ),egrid(1))
@@ -3982,7 +3989,7 @@ module sim_hists
 						endif
 
 						!push forward d 
-						if(age_hr .lt. 6) then !if not retired 
+						if(age_hr .lt. 6)  then
 							do ii=1,nd
 								if(health_it_innov(i,it) < cumpid(d_hr,ii+1,del_hr,age_hr) ) then
 									d_it(i,it+1) = ii
@@ -3992,6 +3999,15 @@ module sim_hists
 						else 
 							d_it(i,it+1) = d_hr
 						endif
+						if( brn_yr_hr == 1 .and. age_it(i,it)<age_it(i,it+1) )then !correct for health/aging by alive in first period:
+							do ii=1,nd
+								if( cumPrDageDel(ii+1,age_it(i,it+1),del_hr)> health_it_innov(i,it) ) then 
+									d_it(i,it+1) = ii
+									exit
+								endif
+							enddo
+						endif
+
 					endif
 				else !age_it(i,it) <= 0, they've not been born or they are dead
 					a_it(i,it) = 0.
@@ -4011,25 +4027,6 @@ module sim_hists
 				call mati2csv(a_it_int,"a_it_int.csv")
 				call mati2csv(status_it,"status_it.csv")
 				call mati2csv(d_it,"d_it.csv")
-			endif
-			PrStatus_AgeD = 0._dp
-			simiter_di(iter) = 0._dp
-			if( print_lev .ge. 2 )then
-!~ 				do i=1,Nsim
-!~ 					do it=1,Tsim
-!~ 						age_hr = age_it(i,it)
-!~ 						if(status_it(i,it) .le. 3 .and. status_it(i,it)>0 .and. age_hr>0 .and. age_hr<TT) then
-!~ 							PrStatus_AgeD( status_it(i,it),age_hr,d_it(i,it) ) = 1._dp + PrStatus_AgeD( status_it(i,it),age_hr,d_it(i,it) )
-!~ 						endif
-!~ 						if(status_it(i,it)==4) simiter_di(iter) = simiter_di(iter)+1._dp
-!~ 					enddo
-!~ 				enddo
-!~ 				simiter_di(iter) = simiter_di(iter)/(simiter_di(iter) + sum(PrStatus_AgeD) )
-!~ 				do i=1,TT-1
-!~ 				do it=1,nd
-!~ 					PrStatus_AgeD(:,i,id) = PrStatus_AgeD(:,i,id)/sum(PrStatus_AgeD(:,i,id))
-!~ 				enddo
-!~ 				enddo
 			endif
 			a_mean = 0._dp
 			d_mean = 0._dp
@@ -4065,7 +4062,6 @@ module sim_hists
 			
 			
 			if( final_iter .eqv. .true. ) then 
-				if(verbose > 2) print *, "prob al1" ,PrAl1(1), ",", PrAl1(2)
 				exit !leave the iter loop!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 			endif
 			slice_len = iter
@@ -4080,8 +4076,8 @@ module sim_hists
 					converged = .true.
 				endif
 			endif
-!			if( (  (converged .eqv. .true.) .and. (iter .ge. 5) ) .or. &
-			if(iter .ge. iter_draws-1)  then
+			if( (  (converged .eqv. .true.) .and. (iter .ge. 5) ) .or. &
+			&  (iter .ge. iter_draws-1)  ) then
 				if(verbose >=2 ) then
 					print *, "done simulating on iteration ", iter, " of ", iter_draws
 					print *, "dif a mean, log a var ",  sum(dabs(a_mean - a_mean_liter)), sum(dabs(a_var - a_var_liter))
@@ -4119,7 +4115,6 @@ module sim_hists
 		if( print_lev>=2) then
 			slice_len = max(1,slice_len)
 			call vec2csv(simiter_dist(1:slice_len), "simiter_dist.csv" )
-			call vec2csv(simiter_di(1:slice_len),"simiter_di.csv")
 		endif
 
 		! calc occupation growth rates
@@ -4193,8 +4188,6 @@ module sim_hists
 					call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
 					call mati2csv (hst%hlth_voc_hist,"hlth_voc_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%hlthprob_hist,"hlthprob_hist"//trim(caselabel)//".csv")
-					call mat2csv (PrStatus_AgeD(:,1,:),"PrStatus_AgeYD"//trim(caselabel)//".csv")
-					call mat2csv (PrStatus_AgeD(:,4,:),"PrStatus_AgeOD"//trim(caselabel)//".csv")
 					call mati2csv(brn_drawi_drawt(:,:,1),"brn_drawi_drawt.csv",0)
 					call mati2csv(brn_drawi_drawt(:,:,2),"brn_drawi_drawt.csv",1)
 			endif
@@ -4217,12 +4210,16 @@ module sim_hists
 end module sim_hists
 
 
-
+!**************************************************************************************************************!
+!**************************************************************************************************************!
 !**************************************************************************************************************!
 !**************************************************************************************************************!
 !						Searches for parameters						       !
 !**************************************************************************************************************!
 !**************************************************************************************************************!
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+
 module find_params
 
 	use V0para
@@ -4806,6 +4803,8 @@ module find_params
 
 		
 		paramwt = 1./dble(nparam)		! equal weight
+		paramwt(1) = 2.0_dp
+		paramwt(2) = 0.5_dp
 		fval = 0.
 		do i = 1,nparam
 			fval = errvec(i)**2*paramwt(i) + fval
@@ -5154,7 +5153,7 @@ program V0main
 		print *, ervec
 	endif
 	
-	lb = (/ 0.25_dp, 0.01_dp/)
+	lb = (/ 0.1_dp, 0.01_dp/)
 	ub = (/ 1._dp, 0.25_dp /)
 	
 	!set up the grid over which to check derivatives 
