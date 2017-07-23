@@ -1,0 +1,22 @@
+These are the files need for the calibration. They are generated from:
+AGES_80.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/CPSTrends/AgeDemographics/Dofiles/age_struct.do
+Annual_apprt.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/ApplicationRates
+causal_phys.csv: 
+EU_occ.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/Flows/calc_frate.do
+hpShare.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/CPSTrends/OccupationEmployment/process_to_csv.do
+initial_AGE_OCC.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/CPSTrends
+maxADL.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/ApplicationRates/ADL_rates
+occupation_del.csv: 
+UE_occ.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/Flows/calc_frate.do
+wageLev.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/CPSTrends/OccupationWages/process_to_csv.do
+wageTrend.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/CPSTrends/OccupationWages/process_to_csv.do
+
+PrD_Age.csv: [GoogleDrive]/Disability/DisabilityOption/Data/psid/Bloom/Main_Calib_DWAM_Bton_DWvers1.do
+PrDDp_Age.csv: [GoogleDrive]/Disability/DisabilityOption/Data/psid/Bloom/Main_Calib_DWAM_Bton_DWvers1.do
+pid_in.csv: [GoogleDrive]/Disability/DisabilityOption/Code/sol_pid.m
+PrDeath_in.csv: [GoogleDrive]/Disability/DisabilityOption/Code/sol_pid.m
+
+PrAge.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/CPSTrends/AgeDemographics/Dofiles/age_struct_usingDeomgT.do
+ONETpca.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/PSID/
+Hmat.csv: [GoogleDrive]/Disability/DisabilityOption/Quantitative_InputFiles/PSID/
+
