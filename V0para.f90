@@ -25,12 +25,12 @@ integer, parameter:: dp=kind(0.d0) ! double precision
 logical :: dbg_skip = .false. !skip stuff for a minimal debug
 
 !**Environmental Parameters**********************************************************************!
-real(8), parameter ::	youngD = 20., &	!Length of initial young period
+real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		oldD = 5., &		!Length of each old period
 		tlen =12., &		!Number of periods per year (monthly)	
-		Longev = 82.- 25.,&	!Median longevity	
+		Longev = 82.- 30.,&	!Median longevity	
 		UIrr = 0.4, &		!Replacement Rate in UI
-		eligY  = 0.407,&	!Fraction young who are eligable
+		eligY  = 0.834,&	!Fraction young who are eligable
 		R =1.,&!dexp(.02/tlen),&	!People can save in the backyard
 		avg_unrt = 0.055,&	!average rate of unemployment over the period.
 		avg_undur = 3.,&	! average months of unemployment
@@ -143,8 +143,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		occsz0(nj),&		!Fraction in each occupation
 		occpr_trend(Tsim,nj)!trend in occupation choice
 		
-integer :: 	dgrid(nd), &		! just enumerate the d states
-		agegrid(TT)		! the mid points of the ages
+integer :: 	dgrid(nd)	! just enumerate the d states
+real(8)	::	agegrid(TT)		! the mid points of the ages
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
@@ -183,7 +183,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		DItest1 = 1.0, &	!Earnings Index threshold 1 (These change based on the average wage)
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3
-		smthELPM = 1.		!Smoothing for the LPM
+		smth_dicont = 1.	!Smoothing for the di application value
 !		
 		
 		
@@ -194,12 +194,19 @@ integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
 			ialL	= 2 ,&
 			tri0	= ntr/2	! the index of the trgrid that is 0
 
+logical  :: cal_on_iter_wgtrend = .true.
+integer  :: cal_niter = 0
+real(8)  :: cal_obj = 1.
+logical  :: cal_on_grad = .false.
+
+
+
 !**** calibration targets
 real(8) :: emp_persist = 0.98 ,&
 		emp_std = 0.01 ,&
 		apprt_target = .01,&	!target for application rates (to be filled below)
 		dirt_target = 0.018,&	!target for di rates
-		diaward_target = 0.003,& !target for new award rate
+		diaward_target = 0.0038,& !target for new award rate
 		voc_accept = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_accept = 0.75		!fraction taken based on health criteria, target 1985
 		
@@ -232,7 +239,7 @@ subroutine setparams()
 	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(31,TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
 		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(31), &
-		& wage_coef_read(17)
+		& wage_coef_O2_read(17),wage_coef_O3_read(21)
 	
 	real(8) :: pid1(nd,nd),r1(nd),s1(nd),PrDage_tp1(nd,TT-1)
 		
@@ -297,9 +304,16 @@ subroutine setparams()
 
 	open(unit= fread, file = "OLSWageTrend_O2.csv")
 	do j=1,17
-		read(fread,*) wage_coef_read(j)
+		read(fread,*) wage_coef_O2_read(j)
 	enddo
 	close(fread)
+
+	open(unit= fread, file = "OLSWageTrend_O3.csv")
+	do j=1,21
+		read(fread,*) wage_coef_O3_read(j)
+	enddo
+	close(fread)	
+	
 
 	
 	!Read in the disability means by occuaption
@@ -454,7 +468,9 @@ subroutine setparams()
 	do j=1,(NpolyT+1)
 		do k=1,(Nskill+1)
 			if(k > 1 .or. j > 1) then
-				occwg_coefs(k,j) = wage_coef_read(t)
+			
+				if(NpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read(t)
+				if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read(t)
 				t = t+1
 			else 
 				occwg_coefs(k,j) = 0._dp
@@ -539,10 +555,9 @@ subroutine setparams()
 	enddo
 	agegrid(TT) = Longev/2 - (youngD + oldD*oldN) /2 + (youngD + oldD*oldN)
 
-	!Wage Bonus 0.0373076,-0.0007414
-	!do i=1,TT-1							
-	!	wtau(i) = ageW*agegrid(i)+ageW2*agegrid(i)**2 !Old
-	!enddo
+	agegrid = agegrid + 10._dp !started them at 30, but they've been working since 20
+
+	!from Mincer regressions (see Appendix) with Heckman 2-step
 	wtau(1) =  0.
 	wtau(2) = -0.032/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(2)-agegrid(1))
 	wtau(3) = -0.032/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(3)-agegrid(1))
