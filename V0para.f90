@@ -451,13 +451,6 @@ subroutine setparams()
 
 	!~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	! Occupation wage component
-!~ 	do i=1,nj
-!~ 		occwg_lev(i) = wage_lev_read(i)
-!~ 		do t=1,Tsim	
-!~ 			occwg_trend(t,i) = wage_trend_read(t,i+1)
-!~ 		enddo
-!~ 	enddo
-
 	do i=1,nj
 		do k=2,(Nskill+1)
 			occ_onet(i,k-1) = ONET_read(i,k)
@@ -468,12 +461,13 @@ subroutine setparams()
 	do j=1,(NpolyT+1)
 		do k=1,(Nskill+1)
 			if(k > 1 .or. j > 1) then
-			
 				if(NpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read(t)
 				if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read(t)
 				t = t+1
-			else 
-				occwg_coefs(k,j) = 0._dp
+			else
+				occwg_coefs(k,j) = 0._dp 
+			!	if(NpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read( (NpolyT+1)*(Nskill+1) +5 )
+			!	if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read( (NpolyT+1)*(Nskill+1) +5 )
 			endif
 		enddo
 	enddo
@@ -504,7 +498,7 @@ subroutine setparams()
 
 
 	!Wage-trend grid-setup
-	trgrid(1) = minval(occwg_trend)*0.9_dp
+	trgrid(1) = minval(occwg_trend)*1.1_dp
 	if(ntr>1) then
 		trgrid(ntr) = maxval(occwg_trend)*1.1_dp
 		do tri=2,(ntr-1)

@@ -3140,7 +3140,7 @@ module sim_hists
 		integer, allocatable :: brn_drawi_drawt(:,:,:)
 		
 		! FOR DEBUGGING
-		real(dp), allocatable :: val_hr_it(:)
+		real(dp), allocatable :: val_hr_it(:),ewt_it(:,:)
 		! because the actual alpha is endgoenous to unemployment and trend
 		real(dp), allocatable :: al_it_endog(:,:)
 		integer, allocatable  :: al_int_it_endog(:,:)
@@ -3227,7 +3227,8 @@ module sim_hists
 
 		!!!!!!!!!!!!!!! DEBUGGING
 		allocate(val_hr_it(Nsim))
-		
+		allocate(ewt_it(Nsim,Tsim))
+		ewt_it = 0._dp
 		!************************************************************************************************!
 		! Pointers
 		!************************************************************************************************!
@@ -3433,7 +3434,7 @@ module sim_hists
 			!$OMP  parallel do &
 			!$OMP& private(i,interp_i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,tri_hr,apc_hr,ep_hr, &
 			!$OMP& ewt, eiH, iiH, iiwt, ziwt,ziH,triwt,triH,il,fnd_hr, sep_hr, il_hr,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr, &
-			!$OMP& hlthprob,ii,drawi,drawt,sepi,fndi,invol_un,dead,status_tmrw,brn_yr_hr) 
+			!$OMP& hlthprob,ii,drawi,drawt,sepi,fndi,invol_un,dead,status_tmrw,brn_yr_hr, agrid) 
 			do i=1,Nsim
 				!fixed traits
 	
@@ -3619,7 +3620,7 @@ module sim_hists
 					else !unemp
 						ewt = 1._dp
 					endif
-					
+					ewt_it(i,it) = ewt
 					
 					junk = 0._dp
 					if(w_strchng .eqv. .true.) junk = wage_trend(it,j_hr)
@@ -4201,6 +4202,7 @@ module sim_hists
 			
 			if(print_lev > 1)then
 					call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
+					call mat2csv (ewt_it,"ewt_it_hist.csv")
 					call mati2csv(e_it_int,"e_int_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
@@ -4228,6 +4230,7 @@ module sim_hists
 		
 		deallocate(al_int_it_endog,al_it_endog)
 		deallocate(e_it)
+		deallocate(ewt_it)
 		deallocate(a_it_int,e_it_int)
 		deallocate(app_it,work_it)
 		deallocate(val_hr_it)
@@ -4592,7 +4595,7 @@ module find_params
 					if(ik > 1 .or. ip > 1) then
 						if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
 							!distance
-							dist_wgtrend = dabs((coef_est(ri) - occwg_coefs(ik,ip))/occwg_coefs(ik,ip)) + dist_wgtrend
+							dist_wgtrend = (dabs(coef_est(ri) - occwg_coefs(ik,ip)))/(dabs(occwg_coefs(ik,ip))+1._dp) + dist_wgtrend
 							!update
 							wage_coef(ri) = -upd_wgtrnd*(coef_est(ri) - occwg_coefs(ik,ip)) + wage_coef(ri)
 						endif
@@ -4649,8 +4652,6 @@ module find_params
 			fndrt_mul1 = fndrt_mul0 - 0.01_dp*(Efrt-avg_frt)/avg_frt
 			if( (fndrt_mul1>10) .or.  (fndrt_mul1 <0.) .or. isnan(fndrt_mul1)  ) fndrt_mul1 =1. !bring it back to the center
 			fndrt_mul1 = upd_wgtrnd*fndrt_mul1 + (1.-upd_wgtrnd)*fndrt_mul0
-			!just set fndrt_mul1 =1
-			!fndrt_mul1 =1
 
 			sep_implied = (Efrt*avg_unrt)/(1.-avg_unrt)
 
@@ -4674,6 +4675,7 @@ module find_params
 			if(vO .ge. 2 .and. mod(iter,100)==0) then
 				print*, "iter ", iter, "dist ", dist_wgtrend
 			endif
+	
 		enddo !iter
 		
 		print_lev = plO
@@ -5180,8 +5182,8 @@ program V0main
 
 	!parameters from the 7/23/2017 calibration
 	!test parameter vector     0.812298608310627       0.123992114316186
-	nu = 0.812298608310627
-	xizcoef = 0.123992114316186
+	! nu = 0.812298608310627
+	! xizcoef = 0.123992114316186
 
 
 	if(dbg_skip .eqv. .false.) then
@@ -5223,51 +5225,51 @@ program V0main
 !~  	enddo
 	
 	
-	! if( dbg_skip .eqv. .false.) then
+	if( dbg_skip .eqv. .false.) then
 		
-	! !	call nlo_create(calopt,NLOPT_LN_BOBYQA,2)
-	! !	call nlo_create(calopt,NLOPT_LD_LBFGS,2) !try it with derivatives
-	! 	call nlo_create(calopt, NLOPT_G_MLSL_LDS,2) !global search
-	! 	call nlo_create(calopt_loc,NLOPT_LD_LBFGS,2) !local optimizer with derivatives
+	!	call nlo_create(calopt,NLOPT_LN_BOBYQA,2)
+	!	call nlo_create(calopt,NLOPT_LD_LBFGS,2) !try it with derivatives
+		call nlo_create(calopt, NLOPT_G_MLSL_LDS,2) !global search
+		call nlo_create(calopt_loc,NLOPT_LD_LBFGS,2) !local optimizer with derivatives
 		
 		
-	! 	call nlo_set_lower_bounds(ires,calopt,lb)
-	! 	call nlo_set_upper_bounds(ires,calopt,ub)
-	! 	call nlo_set_xtol_rel(ires, calopt, 0.001_dp) 
-	! 	call nlo_set_ftol_abs(ires,calopt, 0.005_dp)  ! ditto 
-	! 	call nlo_set_maxeval(ires,calopt,500_dp)
+		call nlo_set_lower_bounds(ires,calopt,lb)
+		call nlo_set_upper_bounds(ires,calopt,ub)
+		call nlo_set_xtol_rel(ires, calopt, 0.001_dp) 
+		call nlo_set_ftol_abs(ires,calopt, 0.005_dp)
+		call nlo_set_maxeval(ires,calopt,500_dp)
 		
-	! 	call nlo_set_lower_bounds(ires_loc,calopt_loc,lb)
-	! 	call nlo_set_upper_bounds(ires_loc,calopt_loc,ub)
-	! 	call nlo_set_xtol_rel(ires_loc, calopt_loc, 0.001_dp) 
-	! 	call nlo_set_ftol_abs(ires_loc,calopt_loc, 0.005_dp)  ! ditto 
-	! 	call nlo_set_maxeval(ires_loc,calopt_loc,500_dp)
+		call nlo_set_lower_bounds(ires_loc,calopt_loc,lb)
+		call nlo_set_upper_bounds(ires_loc,calopt_loc,ub)
+		call nlo_set_xtol_rel(ires_loc, calopt_loc, 0.0005_dp) 
+		call nlo_set_ftol_abs(ires_loc,calopt_loc, 0.005_dp)
+		call nlo_set_maxeval(ires_loc,calopt_loc,500_dp)
 		
-	! 	call nlo_set_local_optimizer(ires, calopt, calopt_loc)
+		call nlo_set_local_optimizer(ires, calopt, calopt_loc)
 		
-	! 	cal_niter = 0
-	! 	call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
+		cal_niter = 0
+		call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
 
-	! 	parvec(1) = nu
-	! 	parvec(2) = xizcoef
+		parvec(1) = nu
+		parvec(2) = xizcoef
 
-	! 	open(unit=fcallog, file=callog)
-	! 	write(fcallog,*) " "
-	! 	close(unit=fcallog)
-	! 	call nlo_optimize(ires, calopt, parvec, erval)
-	! 	if(verbose >0 ) then 
-	! 		print *, "completed calibration after ", cal_niter
-	! 		if( ires>0 .or. ires==-4 ) print *, " successful termination, code ", ires
-	! 		if( ires<0 .and. ires .ne. -4 ) print *, " unsuccessful termination, code ", ires
-	! 	endif
+		open(unit=fcallog, file=callog)
+		write(fcallog,*) " "
+		close(unit=fcallog)
+		call nlo_optimize(ires, calopt, parvec, erval)
+		if(verbose >0 ) then 
+			print *, "completed calibration after ", cal_niter
+			if( ires>0 .or. ires==-4 ) print *, " successful termination, code ", ires
+			if( ires<0 .and. ires .ne. -4 ) print *, " unsuccessful termination, code ", ires
+		endif
 
-	! 	nu = parvec(1) ! new optimum
-	! 	xizcoef = parvec(2)
+		nu = parvec(1) ! new optimum
+		xizcoef = parvec(2)
 
-	! 	call cal_dist(parvec,ervec,shk)
+		call cal_dist(parvec,ervec,shk)
 		
-	! 	print *, ervec
-	! endif
+		print *, ervec
+	endif
 
 !~ !****************************************************************************
 !~ !   Now run some experiments:
