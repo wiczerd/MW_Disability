@@ -22,7 +22,7 @@ integer           :: fcallog = 7
 integer, parameter:: dp=kind(0.d0) ! double precision
 
 
-logical :: dbg_skip = .false. !skip stuff for a minimal debug
+logical :: dbg_skip = .true. !skip stuff for a minimal debug
 
 !**Environmental Parameters**********************************************************************!
 real(8), parameter ::	youngD = 15., &	!Length of initial young period
@@ -44,19 +44,19 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types 
-			ntr = 4, &!5	        !Number of occupation trend points
+integer, parameter ::	nal = 3,  &!5		!Number of individual alpha types 
+			ntr = 3, &!5	        !Number of occupation trend points
 			ndi = 2,  &		    	!Number of individual disability risk types
 			nl	= 2,  &				!Number of finding/separation rates
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 30, &!50	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			nj  = 16, &!16			!Number of occupations
 			Nskill = 3,&			!number of skills that define occupations. First is always physical 
 			NpolyT = 2,&			!polynomial order or time trend for occupation
-			maxiter = 2000, &		!Tolerance parameter	
-			Nsim = 80000,&!5000*nj	!how many agents to draw
+			maxiter = 20, &		!Tolerance parameter	
+			Nsim = 300,&!5000*nj	!how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
 			init_yrs = 3,&			!how many years for calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
@@ -137,6 +137,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
 		occ_onet(nj,Nskill),&!physical and 3 KSA
 		occwg_coefs(Nskill+1,NpolyT+1),& !coefficients for wage regression. also includes 0-order and time-only
+		occwg_coefvec(Nskill*2+3),& !!coefficients for wage regression. First is cubic in time, then linear in skill dimension
 		occwg_trend(Tsim,nj),& !trend in occupation wage
 		occwg_lev(nj),&		!level of occupation wage
 !
@@ -239,7 +240,7 @@ subroutine setparams()
 	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(31,TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
 		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(31), &
-		& wage_coef_O2_read(17),wage_coef_O3_read(21)
+		& wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(23)
 	
 	real(8) :: pid1(nd,nd),r1(nd),s1(nd),PrDage_tp1(nd,TT-1)
 		
@@ -248,7 +249,7 @@ subroutine setparams()
 	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3 
 	real(8) :: pNy,pNm,Ny,Nm,dy,dm, Nbar,totborn,prH,prL, bN(Tsim)
 	
-	real(8) :: wr(nd),wi(nd),vl(nd,nd),vr(nd,nd),abnrm,rcondv(nd),sdec(nd,nd),rconde(nd),wrk(nd*(nd+6))
+	real(8) :: wr(nd),wi(nd),vl(nd,nd),vr(nd,nd),abnrm,rcondv(nd),scl(nd),sdec(nd,nd),rconde(nd),wrk(nd*(nd+6))
 	integer :: ilo,ihi,iwrk(nd*2-2),lwrk,status
 	
 	
@@ -312,9 +313,14 @@ subroutine setparams()
 	do j=1,21
 		read(fread,*) wage_coef_O3_read(j)
 	enddo
+	close(fread)		
+
+	open(unit= fread, file = "OLSWageTrend_O1.csv")
+	do j=1,23
+		read(fread,*) wage_coef_O1_read(j)
+	enddo
 	close(fread)	
 	
-
 	
 	!Read in the disability means by occuaption
 	open(unit= fread, file="maxADL.csv")
@@ -457,20 +463,34 @@ subroutine setparams()
 		enddo
 	enddo
 
-	t=6
-	do j=1,(NpolyT+1)
-		do k=1,(Nskill+1)
-			if(k > 1 .or. j > 1) then
-				if(NpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read(t)
-				if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read(t)
-				t = t+1
-			else
-				occwg_coefs(k,j) = 0._dp 
-			!	if(NpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read( (NpolyT+1)*(Nskill+1) +5 )
-			!	if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read( (NpolyT+1)*(Nskill+1) +5 )
-			endif
+
+	if(NpolyT >= 2) then
+		t=6
+		do j=1,(NpolyT+1)
+			do k=1,(Nskill+1)
+				if(k > 1 .or. j > 1) then
+					if(NpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read(t)
+					if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read(t)
+					t = t+1
+				else
+					occwg_coefs(k,j) = 0._dp 
+				!	if(NpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read( (NpolyT+1)*(Nskill+1) +5 )
+				!	if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read( (NpolyT+1)*(Nskill+1) +5 )
+				endif
+			enddo
 		enddo
-	enddo
+	else
+		t= 14
+		do j=1,3 !read the cubic in time
+			occwg_coefvec(j) = wage_coef_O1_read(t)
+			t=t+1
+		enddo
+		do k=1,(2*Nskill) !level and then trend for each skill
+			occwg_coefvec(k+3) = wage_coef_O1_read(t)
+			t=t+1
+		enddo
+	endif
+
 
 	!use the coefficients:
 	do i=1,nj
@@ -604,19 +624,12 @@ subroutine setparams()
 	do i=1,nd
 		do t=1,TT-2
 			PrDage_tp1(i,t) = (PrDage(i,t+1)-PrDage(i,t))/(agegrid(t+1)-agegrid(t))+PrDage(i,t)
-!~ 			PrDead_tp1(i,t) = (1.d0-(1.d0-PrDeath(i,t))**tlen)*PrDage(i,t) 
 			!some at each health/age will die. Add those in  too
 			PrDage_tp1(i,t) = PrDage_tp1(i,t)*(1.d0 + (1.d0-(1.d0-PrDeath(i,t))**tlen))
 		enddo
 		PrDage_tp1(i,TT-1) = PrDage(i,TT-1)*(1.d0+ (1.d0-(1.d0-PrDeath(i,TT-1))**tlen))
-!~ 		PrDead_tp1(i,TT-1) = (1.d0-(1.d0-PrDeath(i,t))**tlen)*PrDage(i,t) 
 	enddo
-!~ 	do t=1,TT-1
-!~ 		PrDage_tp1(:,t) = PrDage_tp1(:,t)/sum(PrDage_tp1(:,t))
-!~ 		PrDage_tp1(:,t) = PrDage_tp1(:,t)*(1.d0 - PrDead_tp1(:,t))
-!~  	enddo
-	
-	
+
 
 
 	!age structure extrapolate over periods
@@ -933,7 +946,7 @@ subroutine setparams()
 			!want to construct right-side eigen vectors into matrix
 						!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
 			call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
-		&	 vl, nd  , vr, nd  , ilo, ihi, summy, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
+		&	 vl, nd  , vr, nd  , ilo, ihi, scl, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
 			!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
 			
 			!replace vl = vr^-1
