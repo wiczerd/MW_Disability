@@ -10,6 +10,11 @@
 !       	     ifort -mkl -init=snan -init=array -g V0para.f90 V0main.f90 -lnlopt -o V0main_dbg.out
 !				 ifort -mkl -qopenmp -parallel -O3 -xhost V0para.f90 V0main.f90 -L$HOME/Resources/lib -lnlopt -o V0main.out
 ! val grind line: valgrind --leak-check=yes --error-limit=no --track-origins=yes --log-file=V0valgrind.log ./V0main_dbg.out &
+
+
+include './toms659.f90'
+
+
 module helper_funs
 	
 	use V0para
@@ -4139,13 +4144,13 @@ module sim_hists
 			slice_len = iter
 			simiter_dist(iter) = sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter)/5 )/TT
 			simiter_status_dist(iter) = sum(dabs(s_mean - s_mean_liter))
-			if( (sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter  )/5 )/TT < simtol)  .and. (iter .ge. 30)  ) then
+			if( (sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter  )/5 )/TT < simtol) ) then
 				converged = .true.
 			else 
 				converged = .false.
 			endif
-			if( iter> 10 ) then
-				if( dabs(sum(simiter_dist(iter-5:iter)) - sum(simiter_dist(iter-10:iter-5)) ) < 1e-2 .and. sum(simiter_dist(iter-5:iter))/5._dp<1e-2 ) then
+			if( iter> 20 ) then
+				if( dabs(sum(simiter_dist(iter-10:iter)) - sum(simiter_dist(iter-20:iter-10)) ) < 1e-3 .and. sum(simiter_dist(iter-5:iter))/5._dp<simtol*100 ) then
 					converged = .true.
 					print *, "simulations did not actually converge" !need a better error here 
 				endif
@@ -4186,11 +4191,11 @@ module sim_hists
 			a_var_liter = a_var
 			d_var_liter = d_var
 		enddo! iter
-!		if( print_lev>=2) then
+		if( print_lev>=2) then
 			slice_len = max(1,slice_len)
 			call vec2csv(simiter_dist(1:slice_len), "simiter_dist.csv" )
 			call vec2csv(simiter_status_dist(1:slice_len), "simiter_status_dist.csv" )
-!		endif
+		endif
 
 		! calc occupation growth rates
 		if(occaggs_hr) then
@@ -5037,6 +5042,29 @@ module find_params
 
 end module find_params
 
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+! DFBOLS OBJECTIVE
+!**************************************************************************************************************!
+!**************************************************************************************************************!
+!objective function(s) for DFBOLS goes here. For multiple objectives, use a flag set at module level in find_params
+
+subroutine dfovec(ntheta, mv, theta0, v_err)
+	use V0para
+	use find_params
+	
+	
+	integer, intent(in) 	:: ntheta,mv
+	real(dp), dimension(mv)	:: v_err
+	real(dp), dimension(ntheta) :: theta0
+	integer :: i
+	
+	! I'm going to find Chebyshev zeros (should be an easy problem)
+	do i=1,ntheta
+		v_err(i) = cos((i+5)*acos(theta0(i)))
+	enddo
+
+end subroutine dfovec
 
 
 !**************************************************************************************************************!
