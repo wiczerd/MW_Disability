@@ -8,6 +8,7 @@
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -lnlopt -o V0main.out  
 !       	     ifort -mkl -qopenmp -parallel -O3 -xhost V0para.f90 V0main.f90 -lnlopt -o V0main.out
 !       	     ifort -mkl -init=snan -init=array -g V0para.f90 V0main.f90 -lnlopt -o V0main_dbg.out
+!				 ifort -mkl -qopenmp -parallel -O3 -xhost V0para.f90 V0main.f90 -L$HOME/Resources/lib -lnlopt -o V0main.out
 ! val grind line: valgrind --leak-check=yes --error-limit=no --track-origins=yes --log-file=V0valgrind.log ./V0main_dbg.out &
 module helper_funs
 	
@@ -3222,7 +3223,7 @@ module sim_hists
 		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),pialf_conddist(nal), cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1), &
 				& d_var(TT-1),a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), cumPrDage(nd+1,TT), cumPrDageDel(nd+1,TT,ndi), &
 				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj),PrAl1(nz),PrAl1St3(nz),totpopz(nz),&
-				& simiter_dist(maxiter)
+				& simiter_dist(maxiter),simiter_status_dist(maxiter)
 	
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., iiwt=1., ziwt=1., jwt=1., cumval=1., init_status3(nd)=.05_dp, &
@@ -4137,7 +4138,8 @@ module sim_hists
 			endif
 			slice_len = iter
 			simiter_dist(iter) = sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter)/5 )/TT
-			if( sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter  )/5 )/TT < simtol  ) then
+			simiter_status_dist(iter) = sum(dabs(s_mean - s_mean_liter))
+			if( (sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter  )/5 )/TT < simtol)  .and. (iter .ge. 30)  ) then
 				converged = .true.
 			else 
 				converged = .false.
@@ -4145,6 +4147,7 @@ module sim_hists
 			if( iter> 10 ) then
 				if( dabs(sum(simiter_dist(iter-5:iter)) - sum(simiter_dist(iter-10:iter-5)) ) < 1e-2 .and. sum(simiter_dist(iter-5:iter))/5._dp<1e-2 ) then
 					converged = .true.
+					print *, "simulations did not actually converge" !need a better error here 
 				endif
 			endif
 			if( (  (converged .eqv. .true.) .and. (iter .ge. 5) ) .or. &
@@ -4183,10 +4186,11 @@ module sim_hists
 			a_var_liter = a_var
 			d_var_liter = d_var
 		enddo! iter
-		if( print_lev>=2) then
+!		if( print_lev>=2) then
 			slice_len = max(1,slice_len)
 			call vec2csv(simiter_dist(1:slice_len), "simiter_dist.csv" )
-		endif
+			call vec2csv(simiter_status_dist(1:slice_len), "simiter_status_dist.csv" )
+!		endif
 
 		! calc occupation growth rates
 		if(occaggs_hr) then
@@ -4513,6 +4517,106 @@ module find_params
 	
 	end subroutine comp_ustats
 	
+	
+	subroutine reg_wgtrend( coefs,vfs, pfs, hst,shk )
+	!simulates and pumps out wage coefficients
+		
+		type(shocks_struct) :: shk
+		type(val_struct) :: vfs
+		type(pol_struct) :: pfs
+		type(hist_struct):: hst
+		real(dp), intent(out) :: coefs(:)
+		
+		integer :: Ncoef,status, i, it,ri,ii,ip,ik,ij
+		
+		real(dp), allocatable :: XX(:,:), yy(:), coef_est(:), cov_coef(:,:), XX_ii(:,:), yy_ii(:)
+		real(dp) :: hatsig2
+
+		if( NpolyT>=2 ) then
+			Ncoef = (Nskill+1)*(NpolyT+1)+2 !NpolyT*Nskill + Nskill + NpolyT + 2 + const
+		else
+			Ncoef = Nskill*2 + 3+3 !Nskill-level, Nskill-time trend, cubic time, 2 age, const
+		endif
+		
+		allocate(XX(Tsim*Nsim,Ncoef))
+		allocate(yy(Tsim*Nsim))
+		allocate(coef_est(Ncoef))
+		allocate(cov_coef(Ncoef,Ncoef))
+
+		if(Ncoef .ne. size(coefs)) then
+			print *, "coefs passed not the same as expected number of coefficients"
+		endif
+		
+		call sim(vfs, pfs, hst,shk,.false.)
+
+		ii = 0
+		do i=1,Nsim
+			do it=1,Tsim
+				if(  (shk%age_hist(i,it) > 0) .and. (hst%status_hist(i,it)==1)) then
+					ii = 1+ii
+					ij = shk%j_i(i) !this guy's occupation
+					yy(ii) = log(hst%wage_hist(i,it))
+					ri=1
+					if(NPolyT >= 2) then
+						do ip=1,(NpolyT+1)
+							do ik=1,(Nskill+1)
+								if(ik == 1 .and. ip == 1) then
+									XX(ii,ri) = 1._dp
+								elseif( ik==1 .and. ip>1) then
+									XX(ii,ri) = (dble(it)/tlen)**(ip-1)
+								else
+									XX(ii,ri) = occ_onet(ij,ik-1)*(dble(it)/tlen)**(ip-1)
+								endif
+								ri = ri+1
+							enddo !ik, skill
+						enddo !ip, poly degree
+					else 
+						do ip=1,3
+							XX(ii,ri) = (dble(it)/tlen)**ip
+							ri = ri+1
+						enddo
+						do ik=1,Nskill
+							XX(ii,ri) = occ_onet(ij,ik) 
+							ri = ri+1
+						enddo
+						do ik=1,Nskill
+							XX(ii,ri) = (dble(it)/tlen)*occ_onet(ij,ik)
+							ri = ri+1
+						enddo
+						XX(ii,ri) = 1._dp
+						ri = ri+1
+					endif
+					XX(ii,ri) = agegrid( shk%age_hist(i,it) )
+					ri=ri+1
+					XX(ii,ri) = agegrid( shk%age_hist(i,it) )** 2
+				endif ! participating
+			enddo !it
+		enddo ! i
+		
+		allocate(XX_ii(ii,ri))
+		allocate(yy_ii(ii))
+		do i=1,ii
+			XX_ii(i,:) = XX(i,:)
+			yy_ii(i) = yy(i)
+		enddo
+		
+		call OLS(XX_ii,yy_ii,coef_est,cov_coef, hatsig2, status)
+		
+		do i=1,Ncoef
+			coefs(i) = coef_est(i)
+		enddo
+!		if( print_lev .ge. 2) then 
+!			call mat2csv(XX_ii, "XX_ii.csv")
+!			call vec2csv(yy_ii, "yy_ii.csv") 
+			call vec2csv(coef_est, "coef_est.csv")
+!		endif
+		
+		deallocate(XX_ii,yy_ii)
+			
+		deallocate(XX,yy,coef_est,cov_coef)
+	
+	end subroutine reg_wgtrend
+	
 	subroutine iter_wgtrend(vfs, pfs, hst,shk )
 
 		type(shocks_struct) :: shk
@@ -4521,7 +4625,7 @@ module find_params
 		type(hist_struct):: hst
 		
 		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter),dist_urt(maxiter),dist_udur(maxiter), sep_fnd_mul(maxiter,2)
-		real(dp), allocatable :: jwages(:), dist_wgtrend_jt(:,:),med_wage_jt(:,:)
+		real(dp), allocatable :: dist_wgtrend_jt(:,:)
 		real(dp) :: wage_trend_hr
 		integer  :: i,ii,ij,it, iter,iout,plO,vO, ik, ip,ri
 		real(dp) :: urt,Efrt,Esrt
@@ -4530,22 +4634,23 @@ module find_params
 		integer  :: miniter = 3, status, Ncoef
 		
 		!for running/matching the wage regression:
-		real(dp), allocatable :: XX(:,:), yy(:), coef_est(:), wage_coef(:),cov_coef(:,:), XX_ii(:,:), yy_ii(:)
-		real(dp):: hatsig2
+		real(dp), allocatable :: coef_est(:), wage_coef(:),wage_coef_last(:)
 		
+		real(dp), allocatable :: coef_dist_der_hist(:,:)
 		
-		Ncoef = (Nskill+1)*(NpolyT+1)+2 !NpolyT*Nskill + Nskill + NpolyT + 2 + const
+		if( NpolyT>=2 ) then
+			Ncoef = (Nskill+1)*(NpolyT+1)+2 !NpolyT*Nskill + Nskill + NpolyT + 2 + const
+		else
+			Ncoef = Nskill*2 + 3+3 !Nskill-level, Nskill-time trend, cubic time, 2 age, const
+		endif
 		
-		allocate(XX(Tsim*Nsim,Ncoef))
-		allocate(yy(Tsim*Nsim))
 		allocate(coef_est(Ncoef))
 		allocate(wage_coef(Ncoef))
-		allocate(cov_coef(Ncoef,Ncoef))
+		allocate(wage_coef_last(Ncoef))
+		allocate(coef_dist_der_hist(maxiter,Ncoef*2)) !distance and derivative
 		
-		allocate(jwages(Nsim))
+		coef_dist_der_hist = 1._dp !initialize
 		allocate(dist_wgtrend_jt(Tsim,nj))
-		allocate(med_wage_jt(Tsim,nj))
-		
 		
 		plO = print_lev
 		if(plO<4) print_lev = 1
@@ -4556,12 +4661,17 @@ module find_params
 
 		!iniitialize wage_coef
 		ri=1
-		do ip=1,(NpolyT+1)
-			do ik=1,(Nskill+1)
-				wage_coef(ri) = occwg_coefs(ik,ip)
-				ri = ri+1
-			enddo !ik, skill
-		enddo !ip, poly degree		
+		if(NpolyT>=2) then
+			do ip=1,(NpolyT+1)
+				do ik=1,(Nskill+1)
+					wage_coef(ri) = occwg_coefs(ik,ip)
+					ri = ri+1
+				enddo !ik, skill
+			enddo !ip, poly degree		
+		else 
+			wage_coef = occwg_datcoef
+		endif
+		wage_coef_last = wage_coef
 
 		!initialize fmul stuff
 		fndrt_mul0 = 1. 
@@ -4571,7 +4681,7 @@ module find_params
 			dist_wgtrend = 0.
 			dist_wgtrend_iter(iter) = 0.
 			
-			call sim(vfs, pfs, hst,shk,.false.)
+			call reg_wgtrend(coef_est,vfs,pfs,hst,shk)
 			
 			call comp_ustats(hst,shk,urt,Efrt,Esrt)
 			if(verbose>2) print*,  'urt ', urt   !if(verbose>2) 
@@ -4579,90 +4689,88 @@ module find_params
 			dist_urt(iter) = (urt - avg_unrt)/avg_unrt
 			dist_udur(iter)= (Efrt - avg_frt)/avg_frt
 			
-			ii = 0
-			do i=1,Nsim
-				do it=1,Tsim
-					if(  (shk%age_hist(i,it) > 0) .and. (hst%status_hist(i,it)==1)) then
-						ii = 1+ii
-						ij = shk%j_i(i) !this guy's occupation
-						yy(ii) = log(hst%wage_hist(i,it))
-						ri=1
-						do ip=1,(NpolyT+1)
-							do ik=1,(Nskill+1)
-								if(ik == 1 .and. ip == 1) then
-									XX(ii,ri) = 1._dp
-								elseif( ik==1 .and. ip>1) then
-									XX(ii,ri) = (it/tlen)**(ip-1)
-								else
-									XX(ii,ri) = occ_onet(ij,ik-1)*(it/tlen)**(ip-1)
-								endif
-								ri = ri+1
-							enddo !ik, skill
-						enddo !ip, poly degree
-						XX(ii,ri) = agegrid( shk%age_hist(i,it) )
-						ri=ri+1
-						XX(ii,ri) = agegrid( shk%age_hist(i,it) ) ** 2
-						
-					endif ! participating
-				enddo !it
-			enddo ! i
-			
-			allocate(XX_ii(ii,ri))
-			allocate(yy_ii(ii))
-			do i=1,ii
-				XX_ii(i,:) = XX(i,:)
-				yy_ii(i) = yy(i)
-			enddo
-			
-			call OLS(XX_ii,yy_ii,coef_est,cov_coef, hatsig2, status)
-			
-			if( print_lev .ge. 2) then 
-				call mat2csv(XX_ii, "XX_ii.csv")
-				call vec2csv(yy_ii, "yy_ii.csv") 
-				call vec2csv(coef_est, "coef_est.csv")
-			endif
-			
-			deallocate(XX_ii,yy_ii)
 			
 			!compute distance in coefficient space
 			dist_wgtrend = 0.
-			ri=1
-			do ip=1,(NpolyT+1)
-				do ik=1,(Nskill+1)
-					if(ik > 1 .or. ip > 1) then
-						if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
-							!distance
-							dist_wgtrend = (dabs(coef_est(ri) - occwg_coefs(ik,ip)))/(dabs(occwg_coefs(ik,ip))+1._dp) + dist_wgtrend
-							!update
-							wage_coef(ri) = -upd_wgtrnd*(coef_est(ri) - occwg_coefs(ik,ip)) + wage_coef(ri)
+			
+			if( NpolyT >= 2 ) then
+				ri=1
+				do ip=1,(NpolyT+1)
+					do ik=1,(Nskill+1)
+						if(ik > 1 .or. ip > 1) then
+							if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
+								!distance
+								dist_wgtrend = (dabs(coef_est(ri) - occwg_coefs(ik,ip)))/(dabs(occwg_coefs(ik,ip))+1._dp) + dist_wgtrend
+								!update
+								wage_coef(ri) = -upd_wgtrnd*(coef_est(ri) - occwg_coefs(ik,ip)) + wage_coef(ri)
+							endif
 						endif
+						ri = ri+1
+					enddo !ik, skill
+				enddo !ip, poly degree
+				do ij=1,nj
+					do it=1,Tsim
+						wage_trend_hr = 0._dp
+						do ip =1,(NpolyT+1)
+							if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
+								if(ip .gt. 1) &
+								&	wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
+								do ik=2,(Nskill+1)
+									wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
+								enddo
+							endif
+						enddo
+						wage_trend(it,ij) = wage_trend_hr !upd_wgtrnd*wage_trend_hr + (1._dp - upd_wgtrnd)*wage_trend(it,ij)					
+					enddo
+				enddo
+				do i=1,nj
+					if( wglev_0 .eqv. .false.) wage_lev(i) = wage_trend(1,i)
+					wage_trend(:,i) = wage_trend(:,i) - wage_trend(1,i)
+				enddo
+			! LINEAR in time for ONET skills
+			else
+				do ik=1,(Ncoef-3)
+					if((wglev_0 .eqv. .true.) .or. ( (ik .le. 3) .or. (ik .ge. Nskill+4) )) then
+						dist_wgtrend = (dabs(coef_est(ik) - occwg_datcoef(ik)))/(dabs(occwg_datcoef(ik))+1._dp) + dist_wgtrend
+						coef_dist_der_hist(iter,ik) = coef_est(ik) - occwg_datcoef(ik)
+						!step size
+!~ 						if(iter >1 ) then
+!~ 							if( dabs(wage_coef(ik) - wage_coef_last(ik)) > 1e-6_dp )then 
+!~ 								if(iter>2) then
+!~ 									coef_dist_der_hist(iter,Ncoef + ik) = 0.5_dp*(coef_dist_der_hist(iter,ik) - coef_dist_der_hist(iter-1,ik))/(wage_coef(ik) - wage_coef_last(ik)) + &
+!~ 										& 0.5_dp*coef_dist_der_hist(iter-1,Ncoef + ik)
+!~ 								else 
+!~ 										coef_dist_der_hist(iter,Ncoef + ik) = (coef_dist_der_hist(iter,ik) - coef_dist_der_hist(iter-1,ik))/(wage_coef(ik) - wage_coef_last(ik))
+!~ 								endif
+!~ 							else 
+								coef_dist_der_hist(iter,Ncoef + ik) = 0._dp
+!~ 							endif
+!~ 						else 
+!~ 							coef_dist_der_hist(iter,Ncoef + ik) = coef_dist_der_hist(iter,ik)
+!~ 						endif
+						
+						!update
+						wage_coef_last(ik) = wage_coef(ik)
+						wage_coef(ik) = - upd_wgtrnd*coef_dist_der_hist(iter,Ncoef+ik) + wage_coef(ik)  !update using gradient descent (constant size)
+
 					endif
-					ri = ri+1
-				enddo !ik, skill
-			enddo !ip, poly degree
-			dist_wgtrend_iter(iter) = dist_wgtrend
-			
-			
-			do ij=1,nj
+				enddo
+				do ij=1,nj
 				do it=1,Tsim
 					wage_trend_hr = 0._dp
-					do ip =1,(NpolyT+1)
-						if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
-							if(ip .gt. 1) &
-							&	wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
-							do ik=2,(Nskill+1)
-								wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
-							enddo
-						endif
+					do ip =1,3
+						wage_trend_hr = (dble(it)/tlen)**ip*wage_coef(ip) + wage_trend_hr
 					enddo
-					
-					wage_trend(it,ij) = wage_trend_hr !upd_wgtrnd*wage_trend_hr + (1._dp - upd_wgtrnd)*wage_trend(it,ij)					
+					do ik=1,Nskill
+						wage_trend_hr = dble(it)/tlen*wage_coef(ik+3+ Nskill)*occ_onet(ij,ik) &
+						& + wage_coef(ik+3)*occ_onet(ij,ik) + wage_trend_hr
+					enddo
+					wage_trend(it,ij) = wage_trend_hr
 				enddo
-			enddo
-			do i=1,nj
-				if( wglev_0 .eqv. .false.) wage_lev(i) = wage_trend(1,i)
-				wage_trend(:,i) = wage_trend(:,i) - wage_trend(1,i)
-			enddo
+				enddo
+			endif
+			dist_wgtrend_iter(iter) = dist_wgtrend
+			
 
 			do ij=1,nj
 			do it=1,Tsim
@@ -4673,18 +4781,13 @@ module find_params
 				if(wage_trend(it,ij) >= maxval(trgrid)) then
 					wage_trend(it,ij) = maxval(trgrid)
 				endif
-
 			enddo
 			enddo
 				
-				
-
 			if(iter>50) avg_convergence = dabs( sum(dist_wgtrend_iter(iter-50:iter))/100. - dist_wgtrend_iter(iter)) !in case not making progress
 			if((dist_wgtrend_iter(iter)<simtol .and. iter>miniter) .or. avg_convergence<simtol*100._dp) then !cannot get too close because also relies on sim converging
 				exit
 			endif
-
-
 			!take a step in fndrate, seprisk space
 			fndrt_mul1 = fndrt_mul0 - 0.01_dp*(Efrt-avg_frt)/avg_frt
 			if( (fndrt_mul1>10) .or.  (fndrt_mul1 <0.) .or. isnan(fndrt_mul1)  ) fndrt_mul1 =1. !bring it back to the center
@@ -4695,12 +4798,12 @@ module find_params
 			!separation rate search: gradient search. Step size is arbitrary.
 			seprt_mul1 = seprt_mul0 - 0.01_dp*(urt - avg_unrt)/avg_unrt
 			if( (seprt_mul1>10) .or.  (seprt_mul1 <0.) .or. isnan(seprt_mul1)  ) seprt_mul1 =1. !bring it back to the center
-			!seprisk = seprisk/seprt_mul0*seprt_mul1
-			!fndrate = fndrate/fndrt_mul0*fndrt_mul1
 			
-!!!!!			!don't update'
-			sepgrid = sepgrid/seprt_mul0*seprt_mul1
-			fndgrid = fndgrid/fndrt_mul0*fndrt_mul1
+			
+			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			! NOT UPDATING RIGHT NOW
+!~ 			sepgrid = sepgrid/seprt_mul0*seprt_mul1
+!~ 			fndgrid = fndgrid/fndrt_mul0*fndrt_mul1
 			
 			
 			seprt_mul0 = seprt_mul1
@@ -4708,9 +4811,16 @@ module find_params
 			sep_fnd_mul(iter,:) = (/ seprt_mul1, fndrt_mul1/)
 			
 			if(verbose .ge. 3) &
-				print*, "iter ", iter, "dist ", dist_wgtrend, "seprt1", seprt_mul1
-			if(vO .ge. 2 .and. mod(iter,100)==0) then
-				print*, "iter ", iter, "dist ", dist_wgtrend
+			&	print*, "iter ", iter, "dist ", dist_wgtrend, "seprt1", seprt_mul1
+			if(vO .ge. 2 .and. mod(iter,100)==0) &
+			&	print*, "iter ", iter, "dist ", dist_wgtrend
+!			if(print_lev .ge. 2 .and. iter .gt. 1) then
+			if(iter .gt. 1) then
+				call vec2csv(dist_wgtrend_iter(1:(iter-1)), "dist_wgtrend_iter.csv")
+				call mat2csv(coef_dist_der_hist(1:(iter-1),:), "coef_dist_der_hist.csv")
+				call vec2csv(dist_urt(1:(iter-1)), "dist_urt.csv")
+				call vec2csv(dist_udur(1:(iter-1)), "dist_udur.csv")
+				call mat2csv(sep_fnd_mul(1:(iter-1),:), "sep_fnd_mul.csv")
 			endif
 	
 		enddo !iter
@@ -4730,11 +4840,11 @@ module find_params
 		endif
 		
 		
-		deallocate(jwages,med_wage_jt,dist_wgtrend_jt)
-		
-		deallocate(XX,yy,coef_est,cov_coef)
-		
-		!compute median wage trends in each occupation using hst%wage_hist
+		deallocate(dist_wgtrend_jt)
+
+		deallocate(coef_est)
+		deallocate(wage_coef,wage_coef_last)
+		deallocate(coef_dist_der_hist)
 	
 	end subroutine iter_wgtrend
 
@@ -5045,8 +5155,11 @@ program V0main
 		call mat2csv(occpr_trend,"occpr_trend.csv")
 		call mat2csv(occwg_trend,"occwg_trend.csv")
 		call vec2csv(occwg_lev,"occwg_lev.csv")
-		call mat2csv(occwg_coefs,"occwg_coefs.csv")
-
+		if(NpolyT >=2) then
+			call mat2csv(occwg_coefs,"occwg_coefs.csv")
+		else 
+			call vec2csv(occwg_datcoef,"occwg_coefs.csv")
+		endif
 
 		open(1, file="wage_dist.csv")
 		itr = tri0

@@ -22,7 +22,7 @@ integer           :: fcallog = 7
 integer, parameter:: dp=kind(0.d0) ! double precision
 
 
-logical :: dbg_skip = .true. !skip stuff for a minimal debug
+logical :: dbg_skip = .false. !skip stuff for a minimal debug
 
 !**Environmental Parameters**********************************************************************!
 real(8), parameter ::	youngD = 15., &	!Length of initial young period
@@ -36,7 +36,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		avg_undur = 3.,&	! average months of unemployment
 		avg_frt   = 0.4,&	! average rate of long-term unemployment
 		upd_zscl = 0.1,&		! rate at which to update zshift
-		upd_wgtrnd = 0.05		! rate at which update wage_trend
+		upd_wgtrnd = 0.01		! rate at which update wage_trend
 
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
@@ -44,19 +44,19 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 3,  &!5		!Number of individual alpha types 
-			ntr = 3, &!5	        !Number of occupation trend points
+integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types 
+			ntr = 5, &!5	        !Number of occupation trend points
 			ndi = 2,  &		    	!Number of individual disability risk types
 			nl	= 2,  &				!Number of finding/separation rates
 			nd  = 3,  &		        !Number of disability extents
-			ne  = 3, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
 			na  = 30, &!50	        !Points on assets grid
 			nz  = 2,  &		        !Number of aggregate shock states
 			nj  = 16, &!16			!Number of occupations
 			Nskill = 3,&			!number of skills that define occupations. First is always physical 
-			NpolyT = 2,&			!polynomial order or time trend for occupation
-			maxiter = 20, &		!Tolerance parameter	
-			Nsim = 300,&!5000*nj	!how many agents to draw
+			NpolyT = 1,&			!polynomial order or time trend for occupation
+			maxiter = 2000, &		!Tolerance parameter	
+			Nsim = 20000,&!5000*nj	!how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
 			init_yrs = 3,&			!how many years for calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
@@ -137,7 +137,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
 		occ_onet(nj,Nskill),&!physical and 3 KSA
 		occwg_coefs(Nskill+1,NpolyT+1),& !coefficients for wage regression. also includes 0-order and time-only
-		occwg_coefvec(Nskill*2+3),& !!coefficients for wage regression. First is cubic in time, then linear in skill dimension
+		occwg_datcoef(Nskill*2+3),& !!coefficients for wage regression. First is cubic in time, then linear in skill dimension
 		occwg_trend(Tsim,nj),& !trend in occupation wage
 		occwg_lev(nj),&		!level of occupation wage
 !
@@ -224,7 +224,7 @@ integer :: print_lev, verbose
 logical :: simp_concav = .false.
 
 real(8) ::  Vtol = 5e-6 	!Tolerance on V-dist
-real(8) ::  simtol = 5.e-6_dp !tolerance on simulations
+real(8) ::  simtol =1e-6_dp !tolerance on simulations
 
 contains
 subroutine setparams()
@@ -473,37 +473,52 @@ subroutine setparams()
 					if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read(t)
 					t = t+1
 				else
-					occwg_coefs(k,j) = 0._dp 
-				!	if(NpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read( (NpolyT+1)*(Nskill+1) +5 )
-				!	if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read( (NpolyT+1)*(Nskill+1) +5 )
+					if(NpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read( (NpolyT+1)*(Nskill+1) +5 )
+					if(NpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read( (NpolyT+1)*(Nskill+1) +5 )
 				endif
 			enddo
 		enddo
 	else
 		t= 14
 		do j=1,3 !read the cubic in time
-			occwg_coefvec(j) = wage_coef_O1_read(t)
+			occwg_datcoef(j) = wage_coef_O1_read(t)
 			t=t+1
 		enddo
 		do k=1,(2*Nskill) !level and then trend for each skill
-			occwg_coefvec(k+3) = wage_coef_O1_read(t)
+			occwg_datcoef(k+3) = wage_coef_O1_read(t)
 			t=t+1
 		enddo
 	endif
 
 
 	!use the coefficients:
-	do i=1,nj
-		do t=1,Tsim
-			occwg_trend(t,i) = 0._dp
-			do j =1,(NpolyT+1)
-				occwg_trend(t,i) =     (dble(t)/tlen)**(j-1)*occwg_coefs(1,j)                 + occwg_trend(t,i)
-				do k=1,Nskill
-					occwg_trend(t,i) = (dble(t)/tlen)**(j-1)*occwg_coefs(k+1,j)*occ_onet(i,k) + occwg_trend(t,i)
+	if(NpolyT>=2) then
+		do i=1,nj
+			do t=1,Tsim
+				occwg_trend(t,i) = 0._dp
+				do j =1,(NpolyT+1)
+					occwg_trend(t,i) =     (dble(t)/tlen)**(j-1)*occwg_coefs(1,j)                 + occwg_trend(t,i)
+					do k=1,Nskill
+						occwg_trend(t,i) = (dble(t)/tlen)**(j-1)*occwg_coefs(k+1,j)*occ_onet(i,k) + occwg_trend(t,i)
+					enddo
 				enddo
 			enddo
 		enddo
-	enddo
+	else 
+		do i=1,nj
+			do t=1,Tsim
+				occwg_trend(t,i) = 0._dp
+				do j =1,3
+					occwg_trend(t,i) = (dble(t)/tlen)**j*occwg_datcoef(j) + occwg_trend(t,i)
+				enddo
+				do k=1,Nskill
+					occwg_trend(t,i) = (dble(t)/tlen)*occwg_datcoef(k+3+ Nskill)*occ_onet(i,k) &
+					& + occwg_datcoef(k+3)*occ_onet(i,k) + occwg_trend(t,i)
+				enddo
+			enddo
+		enddo
+	endif
+	
 	!initialize the input to the observed
 	do i=1,nj
 		occwg_lev(i) = occwg_trend(1,i)
