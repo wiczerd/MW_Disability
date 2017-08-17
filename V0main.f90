@@ -4320,6 +4320,7 @@ module find_params
 	type(hist_struct), pointer :: mod_hst
 	type(shocks_struct), pointer :: mod_shk
 	type(shocks_struct) :: glb_shk
+	integer :: dfbols_nuxi_zproc = 1 !indicator for whether dfovec should solve for nuxi or for the zprocess
 	real(dp) :: mod_prob_target
 	
 
@@ -4622,6 +4623,94 @@ module find_params
 	
 	end subroutine reg_wgtrend
 	
+	subroutine dist_wgcoefs(dif_coef, reldist_coef,coef_est)
+	
+		real(dp), intent(out) :: reldist_coef(:),dif_coef(:)
+		real(dp), intent(in)  :: coef_est(:)
+		integer :: ri, ip,ik,Ncoef
+		
+		Ncoef = size(coef_est)
+		reldist_coef = 0._dp
+		dif_coef = 0._dp
+		
+		if( NpolyT >= 2 ) then
+			ri=1
+			do ip=1,(NpolyT+1)
+				do ik=1,(Nskill+1)
+					if(ik > 1 .or. ip > 1) then
+						if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
+							!distance
+							reldist_coef(ri) = dabs(coef_est(ri) - occwg_coefs(ik,ip))/(dabs(occwg_coefs(ik,ip))+1._dp) 
+							dif_coef(ri) = coef_est(ri) - occwg_coefs(ik,ip)
+						endif
+					endif
+					ri = ri+1
+				enddo !ik, skill
+			enddo !ip, poly degree
+		! LINEAR in time for ONET skills
+		else
+			do ik=1,(Ncoef-3)
+				if((wglev_0 .eqv. .true.) .or. ( (ik .le. 3) .or. (ik .ge. Nskill+4) )) then
+					reldist_coef(ik) = dabs(coef_est(ik) - occwg_datcoef(ik))/(dabs(occwg_datcoef(ik))+1._dp)
+					dif_coef(ik) = coef_est(ik) - occwg_datcoef(ik)
+				endif
+			enddo
+		endif
+
+	end subroutine dist_wgcoefs
+
+	subroutine gen_new_wgtrend(new_wgtrend, wage_coef)
+	
+		real(dp), intent(in)  :: wage_coef(:)
+		real(dp), intent(out) :: new_wgtrend(:,:)
+		integer :: ij, it, ip,i,ik
+		real(dp) :: wage_trend_hr
+		
+		
+		if( NpolyT >= 2 ) then
+			do ij=1,nj
+				do it=1,Tsim
+					wage_trend_hr = 0._dp
+					do ip =1,(NpolyT+1)
+						if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
+							if(ip .gt. 1) &
+							&	wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
+							do ik=2,(Nskill+1)
+								wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
+							enddo
+						endif
+					enddo
+					new_wgtrend(it,ij) = wage_trend_hr !upd_wgtrnd*wage_trend_hr + (1._dp - upd_wgtrnd)*wage_trend(it,ij)					
+				enddo
+			enddo
+			do i=1,nj
+				if( wglev_0 .eqv. .false.) wage_lev(i) = new_wgtrend(1,i)
+				new_wgtrend(:,i) = new_wgtrend(:,i) - new_wgtrend(1,i)
+			enddo
+		! LINEAR in time for ONET skills
+		else
+			do ij=1,nj
+			do it=1,Tsim
+				wage_trend_hr = 0._dp
+				do ip =1,3
+					wage_trend_hr = (dble(it)/tlen)**ip*wage_coef(ip) + wage_trend_hr
+				enddo
+				do ik=1,Nskill
+					wage_trend_hr = dble(it)/tlen*wage_coef(ik+3+ Nskill)*occ_onet(ij,ik) &
+					& + wage_coef(ik+3)*occ_onet(ij,ik) + wage_trend_hr
+				enddo
+				wage_trend(it,ij) = wage_trend_hr
+			enddo
+			enddo
+			do i=1,nj
+				if( wglev_0 .eqv. .false.) wage_lev(i) = new_wgtrend(1,i)
+				new_wgtrend(:,i) = new_wgtrend(:,i) - new_wgtrend(1,i)
+			enddo
+		endif
+
+	end subroutine gen_new_wgtrend
+	
+	
 	subroutine iter_wgtrend(vfs, pfs, hst,shk )
 
 		type(shocks_struct) :: shk
@@ -4639,8 +4728,7 @@ module find_params
 		integer  :: miniter = 3, status, Ncoef
 		
 		!for running/matching the wage regression:
-		real(dp), allocatable :: coef_est(:), wage_coef(:),wage_coef_last(:)
-		
+		real(dp), allocatable :: coef_est(:), wage_coef(:),wage_coef_last(:),dif_coef(:), reldist_coef(:)
 		real(dp), allocatable :: coef_dist_der_hist(:,:)
 		
 		if( NpolyT>=2 ) then
@@ -4652,6 +4740,9 @@ module find_params
 		allocate(coef_est(Ncoef))
 		allocate(wage_coef(Ncoef))
 		allocate(wage_coef_last(Ncoef))
+		allocate(dif_coef(Ncoef))
+		allocate(reldist_coef(Ncoef))
+		
 		allocate(coef_dist_der_hist(maxiter,Ncoef*2)) !distance and derivative
 		
 		coef_dist_der_hist = 1._dp !initialize
@@ -4698,82 +4789,26 @@ module find_params
 			!compute distance in coefficient space
 			dist_wgtrend = 0.
 			
-			if( NpolyT >= 2 ) then
-				ri=1
-				do ip=1,(NpolyT+1)
-					do ik=1,(Nskill+1)
-						if(ik > 1 .or. ip > 1) then
-							if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
-								!distance
-								dist_wgtrend = (dabs(coef_est(ri) - occwg_coefs(ik,ip)))/(dabs(occwg_coefs(ik,ip))+1._dp) + dist_wgtrend
-								!update
-								wage_coef(ri) = -upd_wgtrnd*(coef_est(ri) - occwg_coefs(ik,ip)) + wage_coef(ri)
-							endif
-						endif
-						ri = ri+1
-					enddo !ik, skill
-				enddo !ip, poly degree
-				do ij=1,nj
-					do it=1,Tsim
-						wage_trend_hr = 0._dp
-						do ip =1,(NpolyT+1)
-							if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
-								if(ip .gt. 1) &
-								&	wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
-								do ik=2,(Nskill+1)
-									wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
-								enddo
-							endif
-						enddo
-						wage_trend(it,ij) = wage_trend_hr !upd_wgtrnd*wage_trend_hr + (1._dp - upd_wgtrnd)*wage_trend(it,ij)					
-					enddo
-				enddo
-				do i=1,nj
-					if( wglev_0 .eqv. .false.) wage_lev(i) = wage_trend(1,i)
-					wage_trend(:,i) = wage_trend(:,i) - wage_trend(1,i)
-				enddo
-			! LINEAR in time for ONET skills
-			else
-				do ik=1,(Ncoef-3)
-					if((wglev_0 .eqv. .true.) .or. ( (ik .le. 3) .or. (ik .ge. Nskill+4) )) then
-						dist_wgtrend = (dabs(coef_est(ik) - occwg_datcoef(ik)))/(dabs(occwg_datcoef(ik))+1._dp) + dist_wgtrend
-						coef_dist_der_hist(iter,ik) = coef_est(ik) - occwg_datcoef(ik)
-						!step size
-!~ 						if(iter >1 ) then
-!~ 							if( dabs(wage_coef(ik) - wage_coef_last(ik)) > 1e-6_dp )then 
-!~ 								if(iter>2) then
-!~ 									coef_dist_der_hist(iter,Ncoef + ik) = 0.5_dp*(coef_dist_der_hist(iter,ik) - coef_dist_der_hist(iter-1,ik))/(wage_coef(ik) - wage_coef_last(ik)) + &
-!~ 										& 0.5_dp*coef_dist_der_hist(iter-1,Ncoef + ik)
-!~ 								else 
-!~ 										coef_dist_der_hist(iter,Ncoef + ik) = (coef_dist_der_hist(iter,ik) - coef_dist_der_hist(iter-1,ik))/(wage_coef(ik) - wage_coef_last(ik))
-!~ 								endif
-!~ 							else 
-								coef_dist_der_hist(iter,Ncoef + ik) = 0._dp
-!~ 							endif
-!~ 						else 
-!~ 							coef_dist_der_hist(iter,Ncoef + ik) = coef_dist_der_hist(iter,ik)
-!~ 						endif
-						
-						!update
-						wage_coef_last(ik) = wage_coef(ik)
-						wage_coef(ik) = - upd_wgtrnd*coef_dist_der_hist(iter,Ncoef+ik) + wage_coef(ik)  !update using gradient descent (constant size)
-
+			call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
+			dist_wgtrend = sum(reldist_coef)
+			coef_dist_der_hist(iter,1:Ncoef) = dif_coef
+			if(iter>1) then
+				do ik=1,Ncoef
+					if( dabs(wage_coef(ik) - wage_coef_last(ik)) .ge. 1e-6) then
+						coef_dist_der_hist(iter,ik+Ncoef) = (coef_dist_der_hist(iter,ik) - coef_dist_der_hist(iter-1,ik))/(wage_coef(ik) - wage_coef_last(ik))
+					else 
+						coef_dist_der_hist(iter,ik+Ncoef) = 0._dp
 					endif
 				enddo
-				do ij=1,nj
-				do it=1,Tsim
-					wage_trend_hr = 0._dp
-					do ip =1,3
-						wage_trend_hr = (dble(it)/tlen)**ip*wage_coef(ip) + wage_trend_hr
-					enddo
-					do ik=1,Nskill
-						wage_trend_hr = dble(it)/tlen*wage_coef(ik+3+ Nskill)*occ_onet(ij,ik) &
-						& + wage_coef(ik+3)*occ_onet(ij,ik) + wage_trend_hr
-					enddo
-					wage_trend(it,ij) = wage_trend_hr
-				enddo
-				enddo
+			else 
+				coef_dist_der_hist(iter,1+Ncoef:2*Ncoef) = coef_dist_der_hist(iter,1:Ncoef)
 			endif
+			!can update the wage coefs here:
+			wage_coef_last = wage_coef
+			wage_coef = - upd_wgtrnd*coef_dist_der_hist(iter,Ncoef+1:2*Ncoef) + wage_coef
+			
+			call gen_new_wgtrend(wage_trend, wage_coef)
+
 			dist_wgtrend_iter(iter) = dist_wgtrend
 			
 
@@ -4850,6 +4885,8 @@ module find_params
 		deallocate(coef_est)
 		deallocate(wage_coef,wage_coef_last)
 		deallocate(coef_dist_der_hist)
+		deallocate(dif_coef)
+		deallocate(reldist_coef)
 	
 	end subroutine iter_wgtrend
 
@@ -5030,15 +5067,46 @@ module find_params
 
 	end subroutine cal_dist_nloptwrap
 
-
-!	subroutine  dfovec(Nin,Nout,paramvec,errvec)
-!		integer :: Nin, Nout
-!		real(dp) :: paramvec(:), errvec(:)
-
-		! need to get shk into here
-		!call cal_dist(paramvec,errvec, shk)
+	subroutine cal_mlsl( fval, xopt, nopt, xl, xu, shk)
+	
+		real(dp), intent(out) :: fval 
+		real(dp), intent(out) :: xopt(:)
+		real(dp), intent(in)  :: xl(:),xu(:)
+		integer , intent(in)  :: nopt
+		type(shocks_struct) :: shk
 		
-!	end subroutine dfovec
+		integer  :: ndraw, ninterppt,d,dd
+		real(dp) :: draw(nopt)
+		real(dp) :: x0(nopt), x0hist(nopt,1000),xopt_hist(nopt,1000)
+		real(dp) :: rhobeg, rhoend, EW,err0
+		real(dp), allocatable :: wspace(:)
+	
+		external dfovec 
+		
+		ndraw = size(x0hist,2)
+		ninterppt = 2*nopt+1
+		
+		allocate(wspace((ninterppt+5)*(ninterppt+nopt)+3*nopt*(nopt+5)/2))
+		
+		fval = 0._dp
+		xopt = 0._dp
+		
+		do d = 1,ndraw
+			call I4_SOBOL( nopt, draw )
+			!x0hist(:,d) = draw
+			do dd=1,nopt
+				x0hist(dd,d) = xl(dd)+draw(dd)*(xu(dd)-xl(dd))
+			enddo
+		enddo
+	
+		if( print_lev .ge. 1) then
+			call mat2csv(x0hist,"x0hist.csv")
+		endif
+		!loop (or distribute) stating points for random restarts
+	
+		deallocate(wspace)
+	end subroutine cal_mlsl
+
 
 end module find_params
 
