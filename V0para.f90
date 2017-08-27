@@ -137,12 +137,12 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
 		occ_onet(nj,Nskill),&!physical and 3 KSA
 		occwg_coefs(Nskill+1,NKpolyT+1),& !coefficients for wage regression. also includes 0-order and time-only
-		occwg_datcoef(Nskill*2+3),& !!coefficients for wage regression. First is cubic in time, then linear in skill dimension
+		occwg_datcoef(Nskill*2+NTpolyT+5),& !!coefficients for wage regression. First is cubic in time, then linear in skill dimension. Then 2 for age profile, 2 for health dummies, 1 const
 		occwg_trend(Tsim,nj),& !trend in occupation wage
 		occwg_lev(nj),&		!level of occupation wage
 
-		step_derwgcoef(Nskill*2+NKpolyT+3),&	! the step size for derivatives in wage coefficients. Will set this optimally later.
-
+		step_derwgcoef(Nskill*2+NTpolyT+5),&	! the step size for derivatives in wage coefficients. Will set this optimally later.
+		noise_coef( Nskill*2+NTpolyT+5 ),&	!the noise associated with 
 !
 		occsz0(nj),&		!Fraction in each occupation
 		occpr_trend(Tsim,nj)!trend in occupation choice
@@ -196,7 +196,8 @@ integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
 			Tblock_sim = struc_brk,&		!The actual time before structural change (years). For z_regime
 			ialUn	= 1 ,&		! the index of alpha that signifies an exogenously displaced worker
 			ialL	= 2 ,&
-			tri0	= ntr/2	! the index of the trgrid that is 0
+			tri0	= ntr/2,&	! the index of the trgrid that is 0
+			Nnuisance = 3+(nd-1)	!addl parameters in the regression that we never target: constant, age quadratic, health dummies
 
 logical  :: cal_on_iter_wgtrend = .true.
 integer  :: cal_niter = 0
@@ -319,7 +320,7 @@ subroutine setparams()
 	close(fread)		
 
 	open(unit= fread, file = "OLSWageTrend_O1.csv")
-	do j=1,23
+	do j=1,22
 		read(fread,*) wage_coef_O1_read(j)
 	enddo
 	close(fread)	
@@ -466,7 +467,8 @@ subroutine setparams()
 		enddo
 	enddo
 
-
+	occwg_datcoef = 0._dp
+	occwg_coefs   = 0._dp
 	if(NKpolyT >= 2) then
 		t=6
 		do j=1,(NKpolyT+1)
@@ -491,6 +493,7 @@ subroutine setparams()
 			occwg_datcoef(k+NTpolyT) = wage_coef_O1_read(t)
 			t=t+1
 		enddo
+		occwg_datcoef(1+NTpolyT+2*Nskill) = wage_coef_O1_read(t) !just to get the constant
 	endif
 
 
@@ -536,9 +539,9 @@ subroutine setparams()
 
 
 	!Wage-trend grid-setup
-	trgrid(1) = minval(occwg_trend)*1.1_dp
+	trgrid(1) = minval(occwg_trend)-.1_dp*minval(occwg_trend)
 	if(ntr>1) then
-		trgrid(ntr) = maxval(occwg_trend)*1.1_dp
+		trgrid(ntr) = maxval(occwg_trend) + .1_dp*maxval(occwg_trend)
 		do tri=2,(ntr-1)
 			trgrid(tri) = dble(tri-1)*(trgrid(ntr)-trgrid(1))/dble(ntr-1) + trgrid(1)
 		enddo
