@@ -4329,7 +4329,7 @@ module find_params
 
 	save 
 
-	integer :: mod_ij_obj, mod_it
+	integer :: mod_ij_obj, mod_it,mod_solcoefiter
 	type(val_struct), pointer :: mod_vfs
 	type(pol_struct), pointer :: mod_pfs
 	type(hist_struct), pointer :: mod_hst
@@ -4613,7 +4613,11 @@ module find_params
 					!add in health dummies
 					do ip=2,nd
 						ri = ri+1
-						if( hst%d_hist(i,it) == ip ) XX(ii,ri) = 1._dp
+						if( hst%d_hist(i,it) == ip ) then 
+							XX(ii,ri) = 1._dp
+						else 
+							XX(ii,ri) = 0._dp
+						endif
 					enddo
 				endif ! participating
 			enddo !it
@@ -4631,11 +4635,11 @@ module find_params
 		do i=1,Ncoef
 			coefs(i) = coef_est(i)
 		enddo
-!		if( print_lev .ge. 2) then 
+		if( print_lev .ge. 2) then 
 			call mat2csv(XX_ii, "XX_ii.csv")
 			call vec2csv(yy_ii, "yy_ii.csv") 
 			call vec2csv(coef_est, "coef_est.csv")
-!		endif
+		endif
 		
 		deallocate(XX_ii,yy_ii)
 		deallocate(XX,yy,coef_est,cov_coef)
@@ -4678,9 +4682,9 @@ module find_params
 
 	end subroutine dist_wgcoefs
 
-	subroutine gen_new_wgtrend(new_wgtrend, wage_coef)
+	subroutine gen_new_wgtrend(new_wgtrend, wage_coef_in)
 	
-		real(dp), intent(in)  :: wage_coef(:)
+		real(dp), intent(in)  :: wage_coef_in(:)
 		real(dp), intent(out) :: new_wgtrend(:,:)
 		integer :: ij, it, ip,i,ik
 		real(dp) :: wage_trend_hr
@@ -4693,14 +4697,14 @@ module find_params
 					do ip =1,(NKpolyT+1)
 						if((wglev_0 .eqv. .true.) .or. (ip .gt. 1)) then
 							if(ip .gt. 1) &
-							&	wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
+							&	wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
 							do ik=2,(Nskill+1)
-								wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
+								wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
 							enddo
 						endif
 					enddo
-					if(wage_trend_hr .gt. maxval(trgrid)) wage_trend_hr = maxval(trgrid)
-					if(wage_trend_hr .lt. minval(trgrid)) wage_trend_hr = minval(trgrid)
+					if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
+					if(wage_trend_hr .lt. trgrid(1)  ) wage_trend_hr = trgrid(1)
 					
 					new_wgtrend(it,ij) = wage_trend_hr !upd_wgtrnd*wage_trend_hr + (1._dp - upd_wgtrnd)*wage_trend(it,ij)					
 				enddo
@@ -4715,20 +4719,20 @@ module find_params
 			do it=1,Tsim
 				wage_trend_hr = 0._dp
 				do ip =1,NTpolyT
-					wage_trend_hr = (dble(it)/tlen)**ip*wage_coef(ip) + wage_trend_hr
+					wage_trend_hr = (dble(it)/tlen)**ip*wage_coef_in(ip) + wage_trend_hr
 				enddo
 				do ik=1,Nskill
-					wage_trend_hr = dble(it)/tlen*wage_coef(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
-					& + wage_coef(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
+					wage_trend_hr = dble(it)/tlen*wage_coef_in(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
+					& + wage_coef_in(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
 				enddo
-				if(wage_trend_hr .gt. maxval(trgrid)) wage_trend_hr = maxval(trgrid)
-				if(wage_trend_hr .lt. minval(trgrid)) wage_trend_hr = minval(trgrid)
+!				if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
+!				if(wage_trend_hr .lt. trgrid(1)  ) wage_trend_hr = trgrid(1)
 				new_wgtrend(it,ij) = wage_trend_hr
 			enddo
 			enddo
-			do i=1,nj
-				if( wglev_0 .eqv. .false.) wage_lev(i) = new_wgtrend(1,i)
-				new_wgtrend(:,i) = new_wgtrend(:,i) - new_wgtrend(1,i)
+			do ij=1,nj
+				if( wglev_0 .eqv. .false.) wage_lev(ij) = new_wgtrend(1,ij)
+				new_wgtrend(:,ij) = new_wgtrend(:,ij) - new_wgtrend(1,ij)
 			enddo
 		endif
 
@@ -4835,18 +4839,17 @@ module find_params
 			call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
 			coef_dist_der_hist(iter,1:Ncoef) = dif_coef
 		enddo
-		ii = 0
-		do ik=1,Ncoef
-		
-			if((wglev_0 .eqv. .true.) .or.  (ik .le. NTpolyT) .or. ((ik .ge. Nskill+1+NTpolyT).and.(ik .le. Ncoef-Nnuisance))   ) then
+!~		ii = 0
+!~		do ik=1,Ncoef
+!~			if((wglev_0 .eqv. .true.) .or.  (ik .le. NTpolyT) .or. ((ik .ge. Nskill+1+NTpolyT).and.(ik .le. Ncoef-Nnuisance))   ) then
 			!only do the coefficients we care about
-				wc0(ii) = wage_coef0(ik)
-				ii = ii+1
-				call stdev_v( noise_coef(ik), coef_dist_der_hist(1:sd_estpts,ik))
+!~				wc0(ii) = wage_coef0(ik)
+!~				ii = ii+1
+!~				call stdev_v( noise_coef(ik), coef_dist_der_hist(1:sd_estpts,ik))
 				!estimate 2nd deriv with 2 more fun evals
-				coM = sum(coef_dist_der_hist(1:sd_estpts,ik))/dble(sd_estpts)
+!~				coM = sum(coef_dist_der_hist(1:sd_estpts,ik))/dble(sd_estpts)
 !~ 				stepa = noise_coef(ik)**0.25_dp
-				step_derwgcoef(ik) = min( dabs(wage_coef(ik))*1e-2_dp, noise_coef(ik)**0.5_dp) !min( dabs(wage_coef(ik))*1e-2, 3._dp*noise_coef(ik))
+!~				step_derwgcoef(ik) = min( dabs(wage_coef(ik))*1e-2_dp, noise_coef(ik)**0.5_dp) !min( dabs(wage_coef(ik))*1e-2, 3._dp*noise_coef(ik))
 !~ 				step_derwgcoef(ik) = dabs(wage_coef(ik))*1e-2
 !~ 				do iter =1,2
 !~ 					if(mod(iter,2) == 1) then
@@ -4895,41 +4898,51 @@ module find_params
 !~ 				enddo
 !~ 				d2_coef(ik) = d2_coef(ik)/(step_derwgcoef(ik)**2)
 !~ 				step_derwgcoef(ik) = min(8._dp**(0.25_dp)*(noise_coef(ik)/d2_coef(ik))**0.5_dp, .1_dp*dabs(wage_coef(ik)))
-			else 
+!~			else 
 !~ 				d2_coef(ik) = 0._dp
-				step_derwgcoef(ik) = 0._dp
-			endif
-		enddo
-		call mat2csv(wage_trend,"wage_trend_jt0.csv")
-		call vec2csv(noise_coef,"noise_coef.csv")
-		call vec2csv(step_derwgcoef, "step_derwgcoef.csv")
-		call vec2csv(wage_coef0, "wage_coef0.csv")
+!~				step_derwgcoef(ik) = 0._dp
+!~			endif
+!~		enddo
+		! call mat2csv(wage_trend,"wage_trend_jt0.csv")
+		! call vec2csv(noise_coef,"noise_coef.csv")
+		! call vec2csv(step_derwgcoef, "step_derwgcoef.csv")
+		! call vec2csv(wage_coef0, "wage_coef0.csv")
 		
 		
-		call wgcoef_hybrjobj(Ncoef_active, wc0, fval, jac, Ncoef_active,1)
-		call wgcoef_hybrjobj(Ncoef_active, wc0, fval, jac, Ncoef_active,2)
+		! call wgcoef_hybrjobj(Ncoef_active, wc0, fval, jac, Ncoef_active,1)
+		! call wgcoef_hybrjobj(Ncoef_active, wc0, fval, jac, Ncoef_active,2)
 				
-		call vec2csv(fval,"fval0_wage_coef.csv")
-		call mat2csv(jac,"jac0_wage_coef.csv")
+		! call vec2csv(fval,"fval0_wage_coef.csv")
+		! call mat2csv(jac,"jac0_wage_coef.csv")
 		
 		dfbols_nuxi_trproc = 2
-
-		
-		!( fcn, n, x, fvec, fjac, ldfjac, tol, info )
-! 		call hybrj1(wgcoef_hybrjobj,Ncoef_active,wage_coef0,fval,jac,Ncoef_active ,5e-3_dp, status)!,&
-		!	& 1e-2,status,wa_coef, (Ncoef_active*(Ncoef_active+13)+2)/2 )
-
 		Nobj_estpts = Ncoef_active*2+1
-		! just initialize with some values, will set it to keep w/in trgrid
-		ii=1
-		do i=1,(Ncoef-Nnuisance)
-			if( (wglev_0 .eqv. .true.) .or. ( (i .le. NTpolyT) .or. (i .gt. NTpolyT+Nskill)) ) then
-				wcU(ii) = wage_coef0(ii) + wage_coef0(ii)*1.1_dp
-				wcL(ii) = wage_coef0(ii) - wage_coef0(ii)*1.1_dp
-				wc0(ii) = wage_coef0(ii)
-				ii = ii+1
-			endif
-		enddo
+		!just initialize with some values, will set it to keep w/in trgrid
+		! ii=1
+		! do i=1,(Ncoef-Nnuisance)
+		! 	if( (wglev_0 .eqv. .true.) .or. ( (i .le. NTpolyT) .or. (i .gt. NTpolyT+Nskill)) ) then
+		! 		wcU(ii) = wage_coef0(ii) + wage_coef0(ii)*1.1_dp
+		! 		wcL(ii) = wage_coef0(ii) - wage_coef0(ii)*1.1_dp
+		! 		wc0(ii) = wage_coef0(ii)
+		! 		ii = ii+1
+		! 	endif
+		! enddo
+		
+		call mat2csv(wage_trend,"wage_trend_0_0.csv")
+		
+		call gen_new_wgtrend(wage_trend, wage_coef0)
+	
+		call reg_wgtrend(coef_est,mod_vfs,mod_pfs,mod_hst,mod_shk)
+		call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
+		
+		call mat2csv(wage_trend,"wage_trend_1_0.csv")
+	
+
+
+		wc0 = 1._dp
+		wcL = 0._dp 
+		wcU = 2._dp 
+		mod_solcoefiter = 0
 		call dfovec(Ncoef_active,Ncoef_active, wc0,fval)
 		call vec2csv(fval,"fdfbols0_wage_coef.csv")
 
@@ -4937,63 +4950,6 @@ module find_params
 		call vec2csv(fval,"fdfbolsU_wage_coef.csv")
 		call dfovec(Ncoef_active,Ncoef_active, wcL,fval)
 		call vec2csv(fval,"fdfbolsL_wage_coef.csv")
-
-
-		call dgemv('N',nj,Nskill,1._dp, occ_onet,nj,wage_coef0(NTpolyT+Nskill+1:NTpolyT+Nskill*2),1,0._dp,ret_onet,1)
-		do ik=1,Nskill
-			maxskill(ik) = 0._dp
-			minskill(ik) = 0._dp
-			do ip=1,NTpolyT
-				maxskill(ik) = Tsim**ip *wage_coef0(ip)+maxskill(ik)
-				minskill(ik) = Tsim**ip *wage_coef0(ip)+minskill(ik)
-			enddo
-			maxskill(ik) = maxval( ret_onet )+maxskill(ik)
-			rhobeg = occ_onet(1,ik) * wage_coef0(NTpolyT+ik) !this only works if there's wglev_0 .eqv. .false.
-			do ij=2,nj
-				if( occ_onet(ij,ik) * wage_coef0(NTpolyT+ik) >rhobeg ) then
-					rhobeg = occ_onet(ij,ik) * wage_coef0(NTpolyT+ik) !storing the max value of return, minus the *Tsim
-				endif
-			enddo
-			if(wglev_0 .eqv. .false.) wcU(ik+NTpolyT) = (maxval(trgrid)- (maxskill(ik)-rhobeg) )/( dble(Tsim)*occ_onet(ij,ik) )
-
-			rhobeg = occ_onet(1,ik) * wage_coef0(NTpolyT+ik) !this only works if there's wglev_0 .eqv. .false.
-			do ij=2,nj
-				if( occ_onet(ij,ik) * wage_coef0(NTpolyT+ik) < rhobeg ) then
-					rhobeg = occ_onet(ij,ik) * wage_coef0(NTpolyT+ik)
-				endif
-			enddo
-			if(wglev_0 .eqv. .false.) wcL(ik+NTpolyT) = (maxval(trgrid)- (minskill(ik)-rhobeg) )/( dble(Tsim)*occ_onet(ij,ik) )
-
-		enddo
-		
-		do ip=1,NTpolyT
-			wcU(ip) = maxval(trgrid) - maxval(maxskill)
-			wcL(ip) = minval(trgrid) - minval(minskill)
-			do ii=1,NTpolyT
-				if( ii .ne. ip) then 
-					wcU(ip) = wcU(ip) - wage_coef0(ii)*Tsim**ii
-					wcL(ip) = wcL(ip) - wage_coef0(ii)*Tsim**ii
-				endif
-				wcU(ip) = wcU(ip)/(Tsim*ii)
-				wcL(ip) = wcL(ip)/(Tsim*ii)
-			enddo
-		enddo
-		print *, "before cleaning upper bounds: ", wcU
-		print *, "before cleaning lower bounds: ", wcL
-
-		do ii=1,Ncoef_active
-			if( wcU(ii)<wcL(ii) ) then
-				rhobeg = wcU(ii) !temp storage
-				wcU(ii) = wcL(ii)
-				wcL(ii) = rhobeg
-				if(wcU(ii) <  wage_coef0(ii) + wage_coef0(ii)*1.1_dp ) wcU(ii) = wage_coef0(ii) + wage_coef0(ii)*1.1_dp
-				if(wcL(ii) >  wage_coef0(ii) - wage_coef0(ii)*1.1_dp ) wcL(ii) = wage_coef0(ii) - wage_coef0(ii)*1.1_dp
-
-			endif
-		enddo
-
-		print *, "after cleaning upper bounds: ", wcU
-		print *, "after cleaning lower bounds: ", wcL
 		
 
 !		Maximizing on scale vector on wc
@@ -5004,12 +4960,8 @@ module find_params
 		rhobeg = minval( wcU - wcL)/2.1_dp	!loosen this up after it seems to work
 		rhoend = rhobeg/10._dp
 		print *, "orig rho: ", rhobeg
+		status = 3 !set this to printlev (plO)
 		call bobyqa_h(Ncoef_active,Nobj_estpts,wc0,wcL,wcU,rhobeg,rhoend,status,maxiter,wksp_dfbols,Ncoef_active)
-
-		print *, status 
-
-		call vec2csv(fval,"fval_wage_coef.csv")
-		call mat2csv(jac,"jac_wage_coef.csv")
 				
 		print_lev = plO
 		verbose = vO
@@ -5294,9 +5246,11 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 	real(dp), allocatable :: coef_est(:),dif_coef(:),reldist_coef(:),wthr(:)
 	real(dp), allocatable :: coef_here(:)
 	integer :: Ncoef,i,j,ri,ci,ii
-	real(dp):: avwt
+	real(dp):: avwt,avonet(Nskill)
+	character(len=10) :: char_solcoefiter
 	
 	if( dfbols_nuxi_trproc == 2 )then
+		mod_solcoefiter = mod_solcoefiter+1
 		ncoef_active = ntheta
 		ntarget = mv
 		coef_loc = theta0  !coef loc are multipliers for the coefficients
@@ -5319,16 +5273,13 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 			avwt = wthr(i) + avwt
 		enddo
 		do i=1,Nskill
-			wthr(i+Nskill+NTpolyT) = wthr(i+NTpolyT)*(dble(Tsim)/2._dp)
+			avonet(i) = sum(occ_onet(:,i)*occsz0)
+			wthr(i+NTpolyT) = avonet(i)
+			wthr(i+Nskill+NTpolyT) = avonet(i)*(dble(Tsim)/2._dp)
 			avwt = wthr(i+Nskill+NTpolyT)+avwt
-			if(wglev_0 .eqv. .true.) then 
-				wthr(i+NTpolyT) = 1._dp
-				avwt = wthr(i+NTpolyT)+avwt
-			endif
+			avwt = wthr(i+NTpolyT)+avwt
 		enddo
-		! do i=1,(Ncoef - Nnuisance)
-		! 	wthr(i) = wthr(i)/avwt 
-		! enddo
+		
 		call vec2csv(wthr, "wthr_coef.csv" )
 		coef_here = occwg_datcoef !taking constant, age profile and non-targeted from the data
 		ii = 1
@@ -5338,11 +5289,15 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 				ii = ii+1
 			endif
 		enddo
-
+		write(char_solcoefiter, "(i10)") mod_solcoefiter
+		call mat2csv(wage_trend,  trim("wage_trend_0_")//trim(char_solcoefiter)//".csv")
+		
 		call gen_new_wgtrend(wage_trend, coef_here)
 		call reg_wgtrend(coef_est,mod_vfs,mod_pfs,mod_hst,mod_shk)
 		call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
 		
+		call mat2csv(wage_trend,  trim("wage_trend_1_")//trim(char_solcoefiter)//".csv")
+
 		fval = 0._dp
 		ri=1
 		do i=1,Ncoef-Nnuisance
@@ -5354,6 +5309,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		print *, "F-evaluation in DFBOLS"
 		call vec2csv(fval, "fdfbolsi_wage_coef.csv")
 		call vec2csv(coef_here, "wdfbolsi_wage_coef.csv")
+		call vec2csv(coef_loc, "ldfbolsi_wage_coef.csv")
 
 		v_err = fval
 
@@ -5543,7 +5499,6 @@ program V0main
 		type(moments_struct):: moments_sim
 
 		type(val_pol_shocks_struct) :: vfs_pfs_shk
-		
 	! Timers
 		integer :: c1=1,c2=1,cr=1,cm=1
 		real(dp) :: t1=1.,t2=1.
