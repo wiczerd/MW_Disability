@@ -32,9 +32,6 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.834,&	!Fraction young who are eligable
 		R =1.,&!dexp(.02/tlen),&	!People can save in the backyard
-		avg_unrt = 0.055,&	!average rate of unemployment over the period.
-		avg_undur = 3.,&	! average months of unemployment
-		avg_frt   = 0.4,&	! average rate of long-term unemployment
 		upd_zscl = 0.1,&		! rate at which to update zshift
 		upd_wgtrnd = 0.01		! rate at which update wage_trend
 		
@@ -45,7 +42,7 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types 
-			ntr = 5, &!5	        !Number of occupation trend points
+			ntr = 7, &!7	        !Number of occupation trend points
 			ndi = 2,  &		    	!Number of individual disability risk types
 			nl	= 2,  &				!Number of finding/separation rates
 			nd  = 3,  &		        !Number of disability extents
@@ -207,13 +204,14 @@ logical  :: cal_on_grad = .false.
 
 
 !**** calibration targets
-real(8) :: emp_persist = 0.98 ,&
-		emp_std = 0.01 ,&
-		apprt_target = .01,&	!target for application rates (to be filled below)
+real(8) :: apprt_target = .01,&	!target for application rates (to be filled below)
 		dirt_target = 0.018,&	!target for di rates
 		diaward_target = 0.0038,& !target for new award rate
 		voc_accept = 0.25,&		!fraction of admissions from vocational criteria, target 1985
-		hlth_accept = 0.75		!fraction taken based on health criteria, target 1985
+		hlth_accept = 0.75,&		!fraction taken based on health criteria, target 1985
+		avg_unrt = 0.055,&	!average rate of unemployment over the period.
+		avg_undur = 3.,&	! average months of unemployment
+		avg_frt   = 0.4	! average rate of long-term unemployment
 		
 
 
@@ -539,9 +537,9 @@ subroutine setparams()
 
 
 	!Wage-trend grid-setup
-	trgrid(1) = minval(occwg_trend)-.1_dp*minval(occwg_trend)
+	trgrid(1) = minval(occwg_trend)-.2_dp*abs(minval(occwg_trend))
 	if(ntr>1) then
-		trgrid(ntr) = maxval(occwg_trend) + .1_dp*maxval(occwg_trend)
+		trgrid(ntr) = maxval(occwg_trend) + .2_dp*maxval(occwg_trend)
 		do tri=2,(ntr-1)
 			trgrid(tri) = dble(tri-1)*(trgrid(ntr)-trgrid(1))/dble(ntr-1) + trgrid(1)
 		enddo

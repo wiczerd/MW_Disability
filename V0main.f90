@@ -4494,7 +4494,7 @@ module find_params
 
 		deallocate(j_val_ij)
 		
-	end subroutine
+	end subroutine jshift_sol
 
 	
 	subroutine comp_ustats(hst,shk,urt,Efrt,Esrt)
@@ -4532,10 +4532,14 @@ module find_params
 			enddo
 		enddo
 		urt  = Nunemp/Nlf
-		ltu  = 1. - ltu/Nunemp
 		Esrt = Nsep/(Nlf-Nunemp)
-		Efrt = Nfnd/Nunemp
-	
+		if(Nunemp > 0._dp) then
+			ltu  = 1. - ltu/Nunemp
+			Efrt = Nfnd/Nunemp
+		else
+			ltu  = 0._dp
+			Efrt = 0._dp
+		endif
 	end subroutine comp_ustats
 	
 	
@@ -4618,6 +4622,7 @@ module find_params
 						else 
 							XX(ii,ri) = 0._dp
 						endif
+						!call random_normal( XX(ii,ri) )
 					enddo
 				endif ! participating
 			enddo !it
@@ -4725,14 +4730,17 @@ module find_params
 					wage_trend_hr = dble(it)/tlen*wage_coef_in(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
 					& + wage_coef_in(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
 				enddo
-!				if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
-!				if(wage_trend_hr .lt. trgrid(1)  ) wage_trend_hr = trgrid(1)
 				new_wgtrend(it,ij) = wage_trend_hr
 			enddo
 			enddo
 			do ij=1,nj
 				if( wglev_0 .eqv. .false.) wage_lev(ij) = new_wgtrend(1,ij)
 				new_wgtrend(:,ij) = new_wgtrend(:,ij) - new_wgtrend(1,ij)
+				do it=1,Tsim
+					if(new_wgtrend(it,ij) .gt. trgrid(ntr)) new_wgtrend(it,ij) = trgrid(ntr)
+					if(new_wgtrend(it,ij) .lt. trgrid(1)  ) new_wgtrend(it,ij) = trgrid(1)
+
+				enddo
 			enddo
 		endif
 
@@ -4746,15 +4754,14 @@ module find_params
 		type(pol_struct), target :: pfs
 		type(hist_struct), target:: hst
 		
-		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter),dist_urt(maxiter),dist_udur(maxiter), sep_fnd_mul(maxiter,2)
+		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter), sep_fnd_mul(maxiter,2)
 		real(dp), allocatable :: dist_wgtrend_jt(:,:)
 		real(dp) :: wage_trend_hr
 		integer  :: i,ii,ij,it, iter,iout,plO,vO, ik, ip,ri
-		real(dp) :: urt,Efrt,Esrt
 		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt_mul0,seprt_mul1
 		real(dp) :: coH, coL,coM, stepa,der2a,stepb,der2b
 		real(dp) :: avg_convergence, sep_implied
-		integer  :: miniter = 3, status, Ncoef,Ncoef_active,sd_estpts=8,Nobj_estpts
+		integer  :: miniter = 3, status, Ncoef,Ncoef_active,sd_estpts=8,Nobj_estpts,Nobj
 		
 		!for running/matching the wage regression:
 		real(dp), allocatable :: coef_est(:), wage_coef(:),wage_coef0(:),dif_coef(:), reldist_coef(:),wcU(:),wcL(:),wc0(:)
@@ -4779,22 +4786,23 @@ module find_params
 				Ncoef_active = Nskill*2 +NTpolyT
 			endif
 		endif
-		sd_estpts = 8
-		Nobj_estpts = Ncoef_active*2+1
+		Nobj = Ncoef_active+2
+		
+		Nobj_estpts = (Nobj)*2+1
 		allocate(coef_est(Ncoef))
 		allocate(wage_coef(Ncoef))
 		allocate(wage_coef0(Ncoef))
 		allocate(dif_coef(Ncoef))
 		allocate(reldist_coef(Ncoef))
 		allocate(d2_coef(Ncoef))
-		allocate(wcU(Ncoef_active))
-		allocate(wcL(Ncoef_active))
-		allocate(wc0(Ncoef_active))
-		allocate(wksp_dfbols( (Nobj_estpts+5)*(Nobj_estpts+ Ncoef_active)+3*Ncoef_active*(Ncoef_active+5)/2 ))
+		allocate(wcU(Nobj))
+		allocate(wcL(Nobj))
+		allocate(wc0(Nobj))
+		allocate(wksp_dfbols( (Nobj_estpts+5)*(Nobj_estpts+ Nobj)+3*Nobj*(Nobj+5)/2 ))
 		
-		allocate(fval(Ncoef_active))
+		allocate(fval(Nobj))
 		allocate(jac(Ncoef_active,Ncoef_active))
-		allocate(wa_coef((Ncoef_active*(Ncoef_active+13)+2)/2))
+		allocate(wa_coef((Nobj*(Nobj+13)+2)/2))
 		
 		step_derwgcoef = 1e-4
 		noise_coef = 0._dp
@@ -4834,134 +4842,38 @@ module find_params
 		fndrt_mul0 = 1. 
 		seprt_mul0 = 1.
 		
-		do iter = 1,sd_estpts  !This is to estimate the noise standard error to get the optimal step size
-			call reg_wgtrend(coef_est,vfs,pfs,hst,shk)
-			call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
-			coef_dist_der_hist(iter,1:Ncoef) = dif_coef
-		enddo
-!~		ii = 0
-!~		do ik=1,Ncoef
-!~			if((wglev_0 .eqv. .true.) .or.  (ik .le. NTpolyT) .or. ((ik .ge. Nskill+1+NTpolyT).and.(ik .le. Ncoef-Nnuisance))   ) then
-			!only do the coefficients we care about
-!~				wc0(ii) = wage_coef0(ik)
-!~				ii = ii+1
-!~				call stdev_v( noise_coef(ik), coef_dist_der_hist(1:sd_estpts,ik))
-				!estimate 2nd deriv with 2 more fun evals
-!~				coM = sum(coef_dist_der_hist(1:sd_estpts,ik))/dble(sd_estpts)
-!~ 				stepa = noise_coef(ik)**0.25_dp
-!~				step_derwgcoef(ik) = min( dabs(wage_coef(ik))*1e-2_dp, noise_coef(ik)**0.5_dp) !min( dabs(wage_coef(ik))*1e-2, 3._dp*noise_coef(ik))
-!~ 				step_derwgcoef(ik) = dabs(wage_coef(ik))*1e-2
-!~ 				do iter =1,2
-!~ 					if(mod(iter,2) == 1) then
-!~ 						step_derwgcoef(ik) = stepa
-!~ 					elseif(mod(iter,2) == 0) then
-!~ 						step_derwgcoef(ik) = (noise_coef(ik)/der2a)**0.25_dp
-!~ 					else 
-!~ 						step_derwgcoef(ik) =step_derwgcoef(ik)*5._dp
-!~ 					endif
-!~ 					wage_coef(ik) = wage_coef(ik) + step_derwgcoef(ik)
-!~ 					call gen_new_wgtrend(wage_trend,wage_coef)
-!~ 					call reg_wgtrend(coef_est,vfs,pfs,hst,shk)
-!~ 					call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
-!~ 					coH = dif_coef(ik)
-!~ 					wage_coef(ik) = wage_coef(ik) - 2*step_derwgcoef(ik)
-!~ 					call gen_new_wgtrend(wage_trend,wage_coef)
-!~ 					call reg_wgtrend(coef_est,vfs,pfs,hst,shk)
-!~ 					call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
-!~ 					coL = dif_coef(ik)
-!~ 					d2_coef(ik) = dabs(coH + coL - 2*coM)
-!~ 					if(isnan(coH) .eqv. .true. ) then
-!~ 						print *, "coH is nan. coef, coef+h", wage_coef(ik) + step_derwgcoef(ik),wage_coef(ik) + 2*step_derwgcoef(ik)
-!~ 					elseif(isnan(coL) .eqv. .true. ) then
-!~ 						print *, "coL is nan. coef, coef-h", wage_coef(ik) + step_derwgcoef(ik),wage_coef(ik) + step_derwgcoef(ik)
-!~ 					endif
-					
-!~ 					wage_coef(ik) = wage_coef(ik) + step_derwgcoef(ik)
-!~ 					call gen_new_wgtrend(wage_trend,wage_coef)
-!~ 					if(iter==1) &
-!~ 					&	der2a = d2_coef(ik)/(stepa**2)
-!~ 					if( d2_coef(ik) .ge. 100._dp*noise_coef(ik) .and. &
-!~ 						( dabs(coL-coM) .le. 0.1*max(dabs(coM),dabs(coL)) .or. &
-!~ 						dabs(coH-coM) .le. 0.1* max(dabs(coM),dabs(coH))) ) then 
-!~ 						print *, "satisfies (17)"
-!~ 						exit
-!~ 					elseif(iter>1 .and. d2_coef(ik)/dabs(coH-coM) .le. 1e-4 ) then !in the case that it's really flat
-!~ 						print *, "2nd der to 1st der is", d2_coef(ik)/dabs(coH-coM)
-!~ 						exit
-!~ 					elseif( step_derwgcoef(ik) .ge. dabs(wage_coef(ik)) ) then
-!~ 						print *, "step was really big compared to the coef"
-!~ 						exit
-!~ 					else
-!~ 						print *, "step, d2_coef, 100* noise", step_derwgcoef(ik), d2_coef(ik), 100._dp *noise_coef(ik)
-!~ 						step_derwgcoef(ik) = step_derwgcoef(ik)*5._dp
-!~ 					endif
-!~ 				enddo
-!~ 				d2_coef(ik) = d2_coef(ik)/(step_derwgcoef(ik)**2)
-!~ 				step_derwgcoef(ik) = min(8._dp**(0.25_dp)*(noise_coef(ik)/d2_coef(ik))**0.5_dp, .1_dp*dabs(wage_coef(ik)))
-!~			else 
-!~ 				d2_coef(ik) = 0._dp
-!~				step_derwgcoef(ik) = 0._dp
-!~			endif
-!~		enddo
-		! call mat2csv(wage_trend,"wage_trend_jt0.csv")
-		! call vec2csv(noise_coef,"noise_coef.csv")
-		! call vec2csv(step_derwgcoef, "step_derwgcoef.csv")
-		! call vec2csv(wage_coef0, "wage_coef0.csv")
-		
-		
-		! call wgcoef_hybrjobj(Ncoef_active, wc0, fval, jac, Ncoef_active,1)
-		! call wgcoef_hybrjobj(Ncoef_active, wc0, fval, jac, Ncoef_active,2)
-				
-		! call vec2csv(fval,"fval0_wage_coef.csv")
-		! call mat2csv(jac,"jac0_wage_coef.csv")
-		
-		dfbols_nuxi_trproc = 2
-		Nobj_estpts = Ncoef_active*2+1
-		!just initialize with some values, will set it to keep w/in trgrid
-		! ii=1
-		! do i=1,(Ncoef-Nnuisance)
-		! 	if( (wglev_0 .eqv. .true.) .or. ( (i .le. NTpolyT) .or. (i .gt. NTpolyT+Nskill)) ) then
-		! 		wcU(ii) = wage_coef0(ii) + wage_coef0(ii)*1.1_dp
-		! 		wcL(ii) = wage_coef0(ii) - wage_coef0(ii)*1.1_dp
-		! 		wc0(ii) = wage_coef0(ii)
-		! 		ii = ii+1
-		! 	endif
+		! do iter = 1,sd_estpts  !This is to estimate the noise standard error to get the optimal step size
+		! 	call reg_wgtrend(coef_est,vfs,pfs,hst,shk)
+		! 	call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
+		! 	coef_dist_der_hist(iter,1:Ncoef) = dif_coef
 		! enddo
-		
-		call mat2csv(wage_trend,"wage_trend_0_0.csv")
-		
-		call gen_new_wgtrend(wage_trend, wage_coef0)
-	
-		call reg_wgtrend(coef_est,mod_vfs,mod_pfs,mod_hst,mod_shk)
-		call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
-		
-		call mat2csv(wage_trend,"wage_trend_1_0.csv")
-	
 
 
-		wc0 = 1._dp
-		wcL = 0._dp 
-		wcU = 2._dp 
+		dfbols_nuxi_trproc = 2
+		Nobj_estpts = Nobj*2+1
+
 		mod_solcoefiter = 0
-		call dfovec(Ncoef_active,Ncoef_active, wc0,fval)
-		call vec2csv(fval,"fdfbols0_wage_coef.csv")
-
-		call dfovec(Ncoef_active,Ncoef_active, wcU,fval)
-		call vec2csv(fval,"fdfbolsU_wage_coef.csv")
-		call dfovec(Ncoef_active,Ncoef_active, wcL,fval)
-		call vec2csv(fval,"fdfbolsL_wage_coef.csv")
-		
 
 !		Maximizing on scale vector on wc
-		wc0 = 1._dp
-		wcL = 0._dp 
-		wcU = 2._dp 
+		wc0 =  1.0_dp
+		wcL = -0.5_dp 
+		wcL(Ncoef_active+1) = 0.1_dp
+		wcL(Ncoef_active+2) = 0.1_dp
+		wcU =  2.0_dp 
+		
+		call dfovec(Nobj,Nobj, wc0,fval)
+		call vec2csv(fval,"fdfbols0_wage_coef.csv")
 
-		rhobeg = minval( wcU - wcL)/2.1_dp	!loosen this up after it seems to work
-		rhoend = rhobeg/10._dp
+		call dfovec(Nobj,Nobj, wcU,fval)
+		call vec2csv(fval,"fdfbolsU_wage_coef.csv")
+		call dfovec(Nobj,Nobj, wcL,fval)
+		call vec2csv(fval,"fdfbolsL_wage_coef.csv")
+		
+		rhobeg = minval( wcU - wcL)/10._dp	!loosen this up after it seems to work
+		rhoend = rhobeg/1000._dp
 		print *, "orig rho: ", rhobeg
 		status = 3 !set this to printlev (plO)
-		call bobyqa_h(Ncoef_active,Nobj_estpts,wc0,wcL,wcU,rhobeg,rhoend,status,maxiter,wksp_dfbols,Ncoef_active)
+		call bobyqa_h(Nobj,Nobj_estpts,wc0,wcL,wcU,rhobeg,rhoend,status,maxiter,wksp_dfbols,Nobj)
 				
 		print_lev = plO
 		verbose = vO
@@ -5246,14 +5158,20 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 	real(dp), allocatable :: coef_est(:),dif_coef(:),reldist_coef(:),wthr(:)
 	real(dp), allocatable :: coef_here(:)
 	integer :: Ncoef,i,j,ri,ci,ii
-	real(dp):: avwt,avonet(Nskill)
+	real(dp):: avwt,avonet(Nskill),urt,Efrt,Esrt,seprt_mul,fndrt_mul
 	character(len=10) :: char_solcoefiter
 	
 	if( dfbols_nuxi_trproc == 2 )then
 		mod_solcoefiter = mod_solcoefiter+1
-		ncoef_active = ntheta
-		ntarget = mv
-		coef_loc = theta0  !coef loc are multipliers for the coefficients
+		ncoef_active = ntheta-2
+		ntarget = mv-2
+		coef_loc = theta0(1:ncoef_active)  !coef loc are multipliers for the coefficients
+		fndrt_mul = theta0(1+ncoef_active)
+		seprt_mul = theta0(2+ncoef_active)
+		
+		fndgrid = fndgrid*fndrt_mul
+		sepgrid = sepgrid*seprt_mul
+
 		if(wglev_0 .eqv. .true.) then
 			Ncoef = ncoef_active+Nnuisance
 		else 
@@ -5289,14 +5207,14 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 				ii = ii+1
 			endif
 		enddo
-		write(char_solcoefiter, "(i10)") mod_solcoefiter
-		call mat2csv(wage_trend,  trim("wage_trend_0_")//trim(char_solcoefiter)//".csv")
+		! write(char_solcoefiter, "(i10)") mod_solcoefiter
+		! call mat2csv(wage_trend,  trim("wage_trend_0_")//trim(char_solcoefiter)//".csv")
 		
 		call gen_new_wgtrend(wage_trend, coef_here)
 		call reg_wgtrend(coef_est,mod_vfs,mod_pfs,mod_hst,mod_shk)
 		call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
 		
-		call mat2csv(wage_trend,  trim("wage_trend_1_")//trim(char_solcoefiter)//".csv")
+		! call mat2csv(wage_trend,  trim("wage_trend_1_")//trim(char_solcoefiter)//".csv")
 
 		fval = 0._dp
 		ri=1
@@ -5306,12 +5224,25 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 				ri = ri+1
 			endif
 		enddo
-		print *, "F-evaluation in DFBOLS"
-		call vec2csv(fval, "fdfbolsi_wage_coef.csv")
-		call vec2csv(coef_here, "wdfbolsi_wage_coef.csv")
-		call vec2csv(coef_loc, "ldfbolsi_wage_coef.csv")
+		!unemployment stats
+		call comp_ustats(mod_hst,mod_shk,urt,Efrt,Esrt)
+		dist_urt = (urt - avg_unrt)/avg_unrt
+		dist_frt = (Efrt - avg_frt)/avg_frt
 
-		v_err = fval
+		fndgrid = fndgrid/fndrt_mul
+		sepgrid = sepgrid/seprt_mul
+
+		v_err(1:ncoef_active) = fval
+		v_err(1+ncoef_active) = dist_urt
+		v_err(2+ncoef_active) = dist_frt
+
+		if(verbose  >= 2) print *, "F-evaluation in DFBOLS"
+		if(print_lev>=2) then
+			call vec2csv(fval, "fdfbolsi_wage_coef.csv")
+			call vec2csv(coef_here, "wdfbolsi_wage_coef.csv")
+			call vec2csv(coef_loc, "ldfbolsi_wage_coef.csv")
+		endif
+
 
 		deallocate(coef_est,dif_coef,reldist_coef,coef_here,wthr)
 	else 
