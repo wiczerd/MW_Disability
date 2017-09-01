@@ -4324,6 +4324,7 @@ module find_params
 	use sol_val
 	use sim_hists
 	use model_data
+	use mpi 
 
 	implicit none
 
@@ -4871,6 +4872,7 @@ module find_params
 		
 		rhobeg = minval( wcU - wcL)/10._dp	!loosen this up after it seems to work
 		rhoend = rhobeg/1000._dp
+		trcalxtol = rhoend
 		print *, "orig rho: ", rhobeg
 		status = 3 !set this to printlev (plO)
 		call bobyqa_h(Nobj,Nobj_estpts,wc0,wcL,wcU,rhobeg,rhoend,status,maxiter,wksp_dfbols,Nobj)
@@ -4889,6 +4891,7 @@ module find_params
 		endif
 		
 		
+		dfbols_nuxi_trproc = 1
 		deallocate(dist_wgtrend_jt)
 
 		deallocate(coef_est)
@@ -5079,26 +5082,41 @@ module find_params
 	end subroutine cal_dist_nloptwrap
 
 	subroutine cal_mlsl( fval, xopt, nopt, xl, xu, shk)
-	
+
 		real(dp), intent(out) :: fval 
 		real(dp), intent(out) :: xopt(:)
 		real(dp), intent(in)  :: xl(:),xu(:)
 		integer , intent(in)  :: nopt
 		type(shocks_struct) :: shk
 		
-		integer  :: ndraw, ninterppt,d,dd
+		integer  :: ndraw, nstartpn, ninterppt,d,dd,i,j
+		integer :: ierr, iprint, rank, nnode, nstarts
 		real(dp) :: draw(nopt)
-		real(dp) :: x0(nopt), x0hist(nopt,1000),xopt_hist(nopt,1000)
-		real(dp) :: rhobeg, rhoend, EW,err0
+		real(dp) :: x0(nopt), x0hist(nopt,500),xopt_hist(nopt,500),fopt_hist(500),v_err(nopt)
+		real(dp),allocatable :: node_fopts(:),node_xopts(:),all_fopts(:), all_xopts(:)
+		real(dp) :: rhobeg, rhoend, EW,W,err0,fdist,xdist
 		real(dp), allocatable :: wspace(:)
 	
 		external dfovec 
 		
 		ndraw = size(x0hist,2)
 		ninterppt = 2*nopt+1
+		nstartpn = 1 !if it takes lots of starts, probably can speed things up by statically allocating more starts per node
+
+		call mpi_init(ierr)
+		call mpi_comm_size(mpi_comm_world,nnode,ierr)
+		call mpi_comm_rank(mpi_comm_world,rank,ierr)
 		
+
 		allocate(wspace((ninterppt+5)*(ninterppt+nopt)+3*nopt*(nopt+5)/2))
-		
+		allocate(node_fopts(nstartpn))
+		allocate(node_xopts(nopt*nstartpn))
+		allocate(all_fopts(nnode*nstartpn))
+		allocate(all_xopts(nopt*nnode*nstartpn))
+	
+		rhobeg = minval( xu - xl )/nnode
+		rhoend = rhobeg/100._dp
+
 		fval = 0._dp
 		xopt = 0._dp
 		
@@ -5113,24 +5131,60 @@ module find_params
 		if( print_lev .ge. 1) then
 			call mat2csv(x0hist,"x0hist.csv")
 		endif
-		!loop (or distribute) stating points for random restarts
-	
-!~ 		d = 1
-!~ 		do while (d<ndraw .and. (EW>=W+0.5 .or. d<=2 ))
-!~ 			d = 1 + d ! Why can't Fortran have ++d?  That would have saved me a key stroke (which I lost on this rant)
-!~ 			call bobyqa_h(dim,ninterppt,theta_starts(:,d),theta_bounds(:,1),theta_bounds(:,2),rhobeg,rhoend,iprint,maxeval,wspace,dim)
-!~ 			! I evaluate the function again because I don't know how the scoping works here to get that value out of bobyqa_h
-!~ 			call dfovec(dim,objs,theta_starts(:,d),v_err)
-!~ 			err0 = dot_product(v_err,v_err) ! not using any weighting matrix in the objective
-!~ 			if (err0<bestlocs(W)) then
-!~ 				W = W+1 
-!~ 				bestlocs(W) = err0
-!~ 				EW = dble(W*(d-1))/dble((d - W - 2))
-!~ 			endif
-!~ 		enddo
-	
-	
-		deallocate(wspace)
+		!loop/distribute stating points for random restarts
+
+
+		do d =1,(ndraw/nnode/nstartpn)
+			do dd= 1,nstartpn
+				x0 = x0hist( :, (d-1)*(nnode*nstartpn) + (rank-1)*nstartpn + dd )
+				!if x0 in a basin of attraction, cycle
+				
+				iprint = 1
+				call bobyqa_h(nopt,ninterppt,x0,xl,xu, &
+				&	rhobeg,rhoend,iprint,200,wspace,nopt)
+
+				!xopt_hist(:, (d-1)*(nnode*nstartpn) + (rank-1)*nstartpn + dd ) = x0
+				call dfovec(nopt,nopt,x0,v_err)
+				err0 = sum( v_err**2 )
+				node_fopts(dd) = err0
+				node_xopts(((dd-1)*nopt+1):(dd*nopt)) = x0
+			enddo
+			
+			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, all_fopts,&
+			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
+
+			call mpi_allgather( node_xopts, nopt*nstartpn, MPI_DOUBLE, all_xopts,&
+			&		nopt*nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
+			!this is inefficient to have a block here. It might be uneccesary
+			call mpi_barrier(mpi_comm_world,ierr)
+			nstarts = (d-1)*(nnode*nstartpn)
+			fopt_hist(nstarts + 1:nstarts + nnode*nstartpn) = all_fopts
+			do i =1,nopt
+				do j =1,(nnode*nstartpn)
+					xopt_hist(i,nstarts + j) = all_xopts((j-1)*nstartpn*nnode + i)
+				enddo
+			enddo
+			!inspect the optima to see if we should keep searching
+			!use Bayesian stopping criteria: EW < W+0.5, where W is # local mins, N is # of searches and E[W] = W(N-1)/(N-W-2)
+			W= 0._dp 
+			nstarts = nstarts+nnode*nstartpn !<-number of starts so far
+			do i=1,nstarts 
+				do j=(i+1),nstarts 
+				!compute distance to count unique ones
+					xdist = sum( dabs(xopt_hist(:,j)- xopt_hist(:,i)) )
+					fdist = dabs( fopt_hist(i)-fopt_hist(j) ) 
+					if( fdist .ge. 2*simtol .or. xdist .ge. trcalxtol*nopt ) then
+						W = W + 1._dp 
+					endif
+				enddo
+			enddo
+			EW = W*dble(nstarts-1)/( dble(nstarts) - W-2 )
+			if( EW < W+0.5_dp ) exit 
+		enddo
+
+		call mpi_finalize(ierr)
+
+		deallocate(wspace,node_fopts,node_xopts,all_fopts,all_xopts)
 	end subroutine cal_mlsl
 
 
@@ -5152,13 +5206,15 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 	real(dp), dimension(mv)	:: v_err
 	real(dp), dimension(ntheta) :: theta0
 	
-	real(dp)  :: coef_loc(ntheta)
-	real(dp) :: fval(mv)
+	real(dp)  :: coef_loc(ntheta),paramvec(ntheta)
+	real(dp) :: fval(mv), errvec(mv)
 	integer :: lev_der,ncoef_active,ntarget
 	real(dp), allocatable :: coef_est(:),dif_coef(:),reldist_coef(:),wthr(:)
 	real(dp), allocatable :: coef_here(:)
 	integer :: Ncoef,i,j,ri,ci,ii
+	integer :: print_lev_old,verbose_old
 	real(dp):: avwt,avonet(Nskill),urt,Efrt,Esrt,seprt_mul,fndrt_mul
+	real(dp):: paramwt(mv)
 	character(len=10) :: char_solcoefiter
 	
 	if( dfbols_nuxi_trproc == 2 )then
@@ -5246,8 +5302,39 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 
 		deallocate(coef_est,dif_coef,reldist_coef,coef_here,wthr)
 	else 
+		print_lev_old = print_lev 
+		verbose_old = verbose
+		print_lev = 0
+		verbose = 1
 
-		v_err = 0._dp
+		!nu = theta0(1)
+		!xizcoef = theta0(1)
+		paramvec = theta0
+		!if(smth_dicont .le. 20._dp) smth_dicont = smth_dicont*1.05_dp
+		
+		if(verbose_old >=1) print *, "test parameter vector ", paramvec
+		if(print_lev_old >=1) then
+			open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
+			write(fcallog,*) "test parameter vector ", paramvec
+		endif
+		
+		call cal_dist(paramvec, errvec,mod_shk)
+
+		if(verbose_old >=1) print *, "         error vector ", errvec
+		if(print_lev_old >=1) then
+			write(fcallog,*)  "         error vector ", errvec
+			close(unit=fcallog)
+		endif
+
+		
+		paramwt(1) = 1.0_dp
+		paramwt(2) = 1.0_dp
+		do i=1,ntheta 
+			v_err(i) = errvec(i)*paramwt(i)
+		enddo
+
+		print_lev = print_lev_old
+		verbose = verobse_old
 
 	endif
 
@@ -5407,7 +5494,6 @@ program V0main
 	use find_params !, only: cal_dist,iter_wgtrend,iter_zproc,jshift_sol,vscale_set
 
 	implicit none
-
 
 		
 	!************************************************************************************************!

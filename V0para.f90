@@ -227,6 +227,7 @@ logical :: simp_concav = .false.
 
 real(8) ::  Vtol = 5e-6 	!Tolerance on V-dist
 real(8) ::  simtol =1e-6_dp !tolerance on simulations
+real(8) :: trcalxtol = 1e-5_dp
 
 contains
 subroutine setparams()
