@@ -149,7 +149,7 @@ real(8)	::	agegrid(TT)		! the mid points of the ages
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 1.2, &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 1., &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income process
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -175,7 +175,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 !
 		proc_time1 =   2.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
 		proc_time2 = 14.12,&!The average time to decision	(could be 28.05 for appeal that continues)
-		xizcoef = 0.2, &	!change in acceptance rate with z deterioration
+		xizcoef = 0.1, &	!change in acceptance rate with z deterioration
 		xiagecoef = 0.,&	!increase in vocational acceptance due to age
 		voc_age	= 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1

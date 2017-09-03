@@ -996,7 +996,7 @@ module model_data
 		else
 			moments_sim%init_hlth_acc= 1._dp
 		endif
-		print *, "init_di, actual and 'smooth' ", init_diaward_discr,moments_sim%init_diaward
+		if(verbose >2) print *, "init_di, actual and 'smooth' ", init_diaward_discr,moments_sim%init_diaward
 		if(print_lev >= 2) then
 			call veci2csv(totst,"pop_st.csv")
 			call vec2csv(a_age,"a_age"//trim(caselabel)//".csv")
@@ -3265,7 +3265,7 @@ module sim_hists
 		! Allocate things
 		!************************************************************************************************!
 
-		iter_draws = min(maxiter,50) !globally set variable
+		iter_draws = min(maxiter,5) !globally set variable
 		
 		allocate(a_it_int(Nsim,Tsim))		
 		allocate(e_it(Nsim,Tsim))
@@ -4159,19 +4159,19 @@ module sim_hists
 			slice_len = iter
 			simiter_dist(iter) = sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter)/5 )/TT
 			simiter_status_dist(iter) = sum(dabs(s_mean - s_mean_liter))
-			if( (sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter  )/5 )/TT < simtol) ) then
-				converged = .true.
-			else 
-				converged = .false.
-			endif
-			if( iter> 20 ) then
-				if( dabs(sum(simiter_dist(iter-10:iter)) - sum(simiter_dist(iter-20:iter-10)) ) < 1e-3 .and. sum(simiter_dist(iter-5:iter))/5._dp<simtol*100 ) then
-					converged = .true.
-					print *, "simulations did not actually converge" !need a better error here 
-				endif
-			endif
-			if( (  (converged .eqv. .true.) .and. (iter .ge. 5) ) .or. &
-			&  (iter .ge. iter_draws-1)  ) then
+			! if( (sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter  )/5 )/TT < simtol) ) then
+			! 	converged = .true.
+			! else 
+			! 	converged = .false.
+			! endif
+			! if( iter> 20 ) then
+			! 	if( dabs(sum(simiter_dist(iter-10:iter)) - sum(simiter_dist(iter-20:iter-10)) ) < 1e-3 .and. sum(simiter_dist(iter-5:iter))/5._dp<simtol*100 ) then
+			! 		converged = .true.
+			! 		print *, "simulations did not actually converge" !need a better error here 
+			! 	endif
+			! endif
+			! if( (  (converged .eqv. .true.) .and. (iter .ge. 5) ) .or. &
+			if (iter .ge. iter_draws-1) then
 				if(verbose >=2 ) then
 					print *, "done simulating on iteration ", iter, " of ", iter_draws
 					print *, "dif a mean, log a var ",  sum(dabs(a_mean - a_mean_liter)), sum(dabs(a_var - a_var_liter))
@@ -4823,8 +4823,10 @@ module find_params
 		mod_vfs => vfs
 		mod_pfs => pfs
 		mod_hst => hst
-		mod_shk => shk
-		
+		if( ASSOCIATED(mod_shk,shk) .eqv. .false. ) then
+			mod_shk => shk
+		endif
+
 		!iniitialize wage_coef
 		ri=1
 		if(NKpolyT>=2) then
@@ -4873,8 +4875,7 @@ module find_params
 		rhobeg = minval( wcU - wcL)/10._dp	!loosen this up after it seems to work
 		rhoend = rhobeg/1000._dp
 		trcalxtol = rhoend
-		print *, "orig rho: ", rhobeg
-		status = 3 !set this to printlev (plO)
+		status = 0 !set this to printlev (plO)
 		call bobyqa_h(Nobj,Nobj_estpts,wc0,wcL,wcU,rhobeg,rhoend,status,maxiter,wksp_dfbols,Nobj)
 				
 		print_lev = plO
@@ -4978,7 +4979,7 @@ module find_params
 		call sim(vfs, pfs, hst,shk)
 		if(verbose >2) print *, "Computing moments"
 		call moments_compute(hst,moments_sim,shk)
-		if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+		if(verbose >1) print *, "DI rate" , moments_sim%avg_di
 		
 		
 		
@@ -5087,26 +5088,27 @@ module find_params
 		real(dp), intent(out) :: xopt(:)
 		real(dp), intent(in)  :: xl(:),xu(:)
 		integer , intent(in)  :: nopt
-		type(shocks_struct) :: shk
+		type(shocks_struct), target :: shk
 		
 		integer  :: ndraw, nstartpn, ninterppt,d,dd,i,j
 		integer :: ierr, iprint, rank, nnode, nstarts
 		real(dp) :: draw(nopt)
 		real(dp) :: x0(nopt), x0hist(nopt,500),xopt_hist(nopt,500),fopt_hist(500),v_err(nopt)
-		real(dp),allocatable :: node_fopts(:),node_xopts(:),all_fopts(:), all_xopts(:)
 		real(dp) :: rhobeg, rhoend, EW,W,err0,fdist,xdist
 		real(dp), allocatable :: wspace(:)
-	
+		real(dp), allocatable :: node_fopts(:),node_xopts(:),all_fopts(:), all_xopts(:)
+		
 		external dfovec 
 		
 		ndraw = size(x0hist,2)
 		ninterppt = 2*nopt+1
 		nstartpn = 1 !if it takes lots of starts, probably can speed things up by statically allocating more starts per node
+		
+		mod_shk => shk
 
 		call mpi_init(ierr)
 		call mpi_comm_size(mpi_comm_world,nnode,ierr)
 		call mpi_comm_rank(mpi_comm_world,rank,ierr)
-		
 
 		allocate(wspace((ninterppt+5)*(ninterppt+nopt)+3*nopt*(nopt+5)/2))
 		allocate(node_fopts(nstartpn))
@@ -5114,12 +5116,14 @@ module find_params
 		allocate(all_fopts(nnode*nstartpn))
 		allocate(all_xopts(nopt*nnode*nstartpn))
 	
+		dfbols_nuxi_trproc = 1
+		
 		rhobeg = minval( xu - xl )/nnode
 		rhoend = rhobeg/100._dp
 
 		fval = 0._dp
 		xopt = 0._dp
-		
+		call insobl ( nopt, ndraw )
 		do d = 1,ndraw
 			call I4_SOBOL( nopt, draw )
 			!x0hist(:,d) = draw
@@ -5127,18 +5131,18 @@ module find_params
 				x0hist(dd,d) = xl(dd)+draw(dd)*(xu(dd)-xl(dd))
 			enddo
 		enddo
-	
-		if( print_lev .ge. 1) then
+  	 	verbose=1
+  	 	print_lev =0
+
+		if( rank .eq. 0 ) then
 			call mat2csv(x0hist,"x0hist.csv")
 		endif
 		!loop/distribute stating points for random restarts
-
-
 		do d =1,(ndraw/nnode/nstartpn)
 			do dd= 1,nstartpn
 				x0 = x0hist( :, (d-1)*(nnode*nstartpn) + (rank-1)*nstartpn + dd )
 				!if x0 in a basin of attraction, cycle
-				
+				print *, "Computing from: ",  x0(1), x0(2)," on node: ", rank
 				iprint = 1
 				call bobyqa_h(nopt,ninterppt,x0,xl,xu, &
 				&	rhobeg,rhoend,iprint,200,wspace,nopt)
@@ -5148,8 +5152,8 @@ module find_params
 				err0 = sum( v_err**2 )
 				node_fopts(dd) = err0
 				node_xopts(((dd-1)*nopt+1):(dd*nopt)) = x0
+				print *, "Found min ", err0, "at ", x0," on node: ", rank
 			enddo
-			
 			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, all_fopts,&
 			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
 
@@ -5159,15 +5163,27 @@ module find_params
 			call mpi_barrier(mpi_comm_world,ierr)
 			nstarts = (d-1)*(nnode*nstartpn)
 			fopt_hist(nstarts + 1:nstarts + nnode*nstartpn) = all_fopts
-			do i =1,nopt
-				do j =1,(nnode*nstartpn)
-					xopt_hist(i,nstarts + j) = all_xopts((j-1)*nstartpn*nnode + i)
+			do j =1,(nnode*nstartpn)
+				do i =1,nopt
+					xopt_hist(i,nstarts + j) = all_xopts((j-1)*nopt + i)
 				enddo
 			enddo
+			if( rank .eq. 0) then
+				open(unit=fcallog, file = "cal_mlsl.csv" ,ACCESS='APPEND', POSITION='APPEND')
+				do i=1,(nstartpn*nnode)
+					write(fcallog, "(G20.12)", advance='no')  all_xopts((i-1)*2+1)
+					write(fcallog, "(G20.12)", advance='no')  all_xopts(i*2)
+					write(fcallog, "(G20.12)", advance='yes') all_fopts(i)
+					print *, all_xopts((i-1)*2+1), all_xopts(i*2), all_fopts(i)
+				enddo
+				close(unit=fcallog)	
+			endif
+
 			!inspect the optima to see if we should keep searching
 			!use Bayesian stopping criteria: EW < W+0.5, where W is # local mins, N is # of searches and E[W] = W(N-1)/(N-W-2)
 			W= 0._dp 
 			nstarts = nstarts+nnode*nstartpn !<-number of starts so far
+			fval = fopt_hist(1)
 			do i=1,nstarts 
 				do j=(i+1),nstarts 
 				!compute distance to count unique ones
@@ -5177,9 +5193,15 @@ module find_params
 						W = W + 1._dp 
 					endif
 				enddo
+				if( fopt_hist(i) .lt. fval ) then
+					fval = fopt_hist(i)
+					xopt = xopt_hist(:,i)
+				endif
 			enddo
 			EW = W*dble(nstarts-1)/( dble(nstarts) - W-2 )
-			if( EW < W+0.5_dp ) exit 
+			if( EW < W + 0.5_dp ) then 
+				exit 
+			endif
 		enddo
 
 		call mpi_finalize(ierr)
@@ -5312,16 +5334,16 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		paramvec = theta0
 		!if(smth_dicont .le. 20._dp) smth_dicont = smth_dicont*1.05_dp
 		
-		if(verbose_old >=1) print *, "test parameter vector ", paramvec
-		if(print_lev_old >=1) then
-			open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
-			write(fcallog,*) "test parameter vector ", paramvec
-		endif
+		
 		
 		call cal_dist(paramvec, errvec,mod_shk)
 
-		if(verbose_old >=1) print *, "         error vector ", errvec
+		if(verbose_old >=1) then 
+			print *, "test parameter vector ", paramvec
+			print *, "         error vector ", errvec
+		endif
 		if(print_lev_old >=1) then
+			open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
 			write(fcallog,*)  "         error vector ", errvec
 			close(unit=fcallog)
 		endif
@@ -5738,7 +5760,7 @@ program V0main
 		call sim(vfs, pfs, hst,shk)
 		if(verbose >=1) print *, "Computing moments"
 		call moments_compute(hst,moments_sim,shk)
-		if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+		if(verbose >=1) print *, "DI rate" , moments_sim%avg_di
 !	set mean wage:
 		wmean = 0._dp
 		junk = 0._dp
@@ -5811,52 +5833,9 @@ program V0main
 !~  	enddo
 !~  	enddo
 	
-	
-!~ 	if( dbg_skip .eqv. .false.) then
-		
-!~ 	!	call nlo_create(calopt,NLOPT_LN_BOBYQA,2)
-!~ 	!	call nlo_create(calopt,NLOPT_LD_LBFGS,2) !try it with derivatives
-!~ 		call nlo_create(calopt, NLOPT_G_MLSL_LDS,2) !global search
-!~ 		call nlo_create(calopt_loc,NLOPT_LD_LBFGS,2) !local optimizer with derivatives
-		
-		
-!~ 		call nlo_set_lower_bounds(ires,calopt,lb)
-!~ 		call nlo_set_upper_bounds(ires,calopt,ub)
-!~ 		call nlo_set_xtol_rel(ires, calopt, 0.001_dp) 
-!~ 		call nlo_set_ftol_abs(ires,calopt, 0.005_dp)
-!~ 		call nlo_set_maxeval(ires,calopt,500_dp)
-		
-!~ 		call nlo_set_lower_bounds(ires_loc,calopt_loc,lb)
-!~ 		call nlo_set_upper_bounds(ires_loc,calopt_loc,ub)
-!~ 		call nlo_set_xtol_rel(ires_loc, calopt_loc, 0.0005_dp) 
-!~ 		call nlo_set_ftol_abs(ires_loc,calopt_loc, 0.005_dp)
-!~ 		call nlo_set_maxeval(ires_loc,calopt_loc,500_dp)
-		
-!~ 		call nlo_set_local_optimizer(ires, calopt, calopt_loc)
-		
-!~ 		cal_niter = 0
-!~ 		call nlo_set_min_objective(ires, calopt, cal_dist_nloptwrap, shk)
-
-!~ 		parvec(1) = nu
-!~ 		parvec(2) = xizcoef
-
-!~ 		open(unit=fcallog, file=callog)
-!~ 		write(fcallog,*) " "
-!~ 		close(unit=fcallog)
-!~ 		call nlo_optimize(ires, calopt, parvec, erval)
-!~ 		if(verbose >0 ) then 
-!~ 			print *, "completed calibration after ", cal_niter
-!~ 			if( ires>0 .or. ires==-4 ) print *, " successful termination, code ", ires
-!~ 			if( ires<0 .and. ires .ne. -4 ) print *, " unsuccessful termination, code ", ires
-!~ 		endif
-
-!~ 		nu = parvec(1) ! new optimum
-!~ 		xizcoef = parvec(2)
-
-!~ 		call cal_dist(parvec,ervec,shk)
-		
-!~ 		print *, ervec
-!~ 	endif
+if( dbg_skip .eqv. .false.) then
+	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
+endif
 
 !~ !****************************************************************************
 !~ !   Now run some experiments:
