@@ -124,11 +124,13 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
 		wage_trend(Tsim,nj),&!trend in wages
 		wage_lev(nj),&		!occupation-specific differences in wage-level
+		wage_coef(Nskill*2+NTpolyT+5),& !occupation-specific differences in wage-level
 		sepgrid(nl,nz),&		!grid for separation rates
 		fndgrid(nl,nz),&		!grid for finding rates
 		sepwt(nl,nj,nz),&		!grid for separation rates
 		fndwt(nl,nj,nz),&		!grid for finding rates
-		
+		seprt_mul,fndrt_mul,&   !multipliers for separation and finding rates
+
 !		targets for occupations
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates

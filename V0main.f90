@@ -81,7 +81,7 @@ module helper_funs
 		real(dp) :: di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
 		integer :: alloced
 		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+1,nj+1)
-		real(dp) :: s2, avg_hlth_acc,avg_di,init_hlth_acc,init_di,init_diaward
+		real(dp) :: s2, avg_hlth_acc,avg_di,init_hlth_acc,init_di,init_diaward,init_diaward_discr
 		real(dp) :: hlth_acc_rt(TT-1)
 
 	end type 
@@ -986,6 +986,7 @@ module model_data
 			moments_sim%init_di= 0._dp
 			init_diaward_discr = 0._dp
 		endif
+		moments_sim%init_diaward_discr = init_diaward_discr
 		!if( cal_on_grad .eqv. .false. .and. (dabs(moments_sim%init_diaward - init_diaward_discr)/diaward_target > 1e-3 .or.  cal_obj > 1e-2)  ) then
 		!	moments_sim%init_diaward = init_diaward_discr
 		!endif
@@ -4759,13 +4760,12 @@ module find_params
 		real(dp), allocatable :: dist_wgtrend_jt(:,:)
 		real(dp) :: wage_trend_hr
 		integer  :: i,ii,ij,it, iter,iout,plO,vO, ik, ip,ri
-		real(dp) :: fndrt_mul0,fndrt_mul1,dur_dist0,seprt_mul0,seprt_mul1
 		real(dp) :: coH, coL,coM, stepa,der2a,stepb,der2b
 		real(dp) :: avg_convergence, sep_implied
 		integer  :: miniter = 3, status, Ncoef,Ncoef_active,sd_estpts=8,Nobj_estpts,Nobj
 		
 		!for running/matching the wage regression:
-		real(dp), allocatable :: coef_est(:), wage_coef(:),wage_coef0(:),dif_coef(:), reldist_coef(:),wcU(:),wcL(:),wc0(:)
+		real(dp), allocatable :: coef_est(:), wage_coef0(:),dif_coef(:), reldist_coef(:),wcU(:),wcL(:),wc0(:)
 		real(dp), allocatable :: dif_h(:), d2_coef(:)  ! for estimating "mu" from More and Wild
 		real(dp), allocatable :: coef_dist_der_hist(:,:),fval(:),jac(:,:), wa_coef(:),wksp_dfbols(:)
 		real(dp) :: maxskill(Nskill),minskill(Nskill),ret_onet(nj),rhobeg,rhoend
@@ -4791,7 +4791,6 @@ module find_params
 		
 		Nobj_estpts = (Nobj)*2+1
 		allocate(coef_est(Ncoef))
-		allocate(wage_coef(Ncoef))
 		allocate(wage_coef0(Ncoef))
 		allocate(dif_coef(Ncoef))
 		allocate(reldist_coef(Ncoef))
@@ -4841,16 +4840,11 @@ module find_params
 		endif
 		wage_coef0 = wage_coef
 
-		!initialize fmul stuff
-		fndrt_mul0 = 1. 
-		seprt_mul0 = 1.
-		
 		! do iter = 1,sd_estpts  !This is to estimate the noise standard error to get the optimal step size
 		! 	call reg_wgtrend(coef_est,vfs,pfs,hst,shk)
 		! 	call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
 		! 	coef_dist_der_hist(iter,1:Ncoef) = dif_coef
 		! enddo
-
 
 		dfbols_nuxi_trproc = 2
 		Nobj_estpts = Nobj*2+1
@@ -4860,8 +4854,8 @@ module find_params
 !		Maximizing on scale vector on wc
 		wc0 =  1.0_dp
 		wcL = -0.5_dp 
-		wcL(Ncoef_active+1) = 0.1_dp
-		wcL(Ncoef_active+2) = 0.1_dp
+		wcL(Ncoef_active+1) = 0.1_dp !for fndrt_mul
+		wcL(Ncoef_active+2) = 0.1_dp !for seprt_mul
 		wcU =  2.0_dp 
 		
 		call dfovec(Nobj,Nobj, wc0,fval)
@@ -4896,7 +4890,7 @@ module find_params
 		deallocate(dist_wgtrend_jt)
 
 		deallocate(coef_est)
-		deallocate(wage_coef,wage_coef0)
+		deallocate(wage_coef0)
 		deallocate(coef_dist_der_hist)
 		deallocate(dif_coef,reldist_coef)
 		deallocate(d2_coef)
@@ -4925,6 +4919,8 @@ module find_params
 		real(dp) :: jshift_hr(nj)
 		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app,napp_t,nu1,nu0
 		integer :: ij=1,t0tT(2),it,i
+		integer :: rank_hr,ierr,fcal_eval
+		character(2) :: rank_str
 
 		
 		nu   = paramvec(1)
@@ -5005,6 +5001,21 @@ module find_params
 		if(size(errvec)>1) &
 		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_accept)/hlth_accept
 		
+		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
+		write(rank_str, '(I2.2)') rank_hr 
+		open(unit=fcal_eval, file = "cal_dist_"//trim(rank_str)//".csv" ,ACCESS='APPEND', POSITION='APPEND')
+		write(fcal_eval, "(G20.12)", advance='no')  paramvec(1)
+		write(fcal_eval, "(G20.12)", advance='no')  paramvec(2)
+		write(fcal_eval, "(G20.12)", advance='no')  moments_sim%avg_di
+		if( moments_sim%init_diaward_discr >0._dp ) then
+			write(fcal_eval, "(G20.12)", advance='no')  moments_sim%init_diaward/moments_sim%init_diaward_discr
+		else 
+			write(fcal_eval, "(G20.12)", advance='no')  0._dp
+		endif
+		write(fcal_eval, "(G20.12)", advance='no') errvec(1)
+		write(fcal_eval, "(G20.12)", advance='yes') errvec(2)
+		close(unit=fcal_eval)	
+
 		call dealloc_econ(vfs,pfs,hst)
 
 	end subroutine cal_dist
@@ -5090,20 +5101,25 @@ module find_params
 		integer , intent(in)  :: nopt
 		type(shocks_struct), target :: shk
 		
-		integer  :: ndraw, nstartpn, ninterppt,d,dd,i,j
+		integer  :: ndraw, nstartpn, ninterppt,ninternalopt,d,dd,i,j
 		integer :: ierr, iprint, rank, nnode, nstarts
 		real(dp) :: draw(nopt)
-		real(dp) :: x0(nopt), x0hist(nopt,500),xopt_hist(nopt,500),fopt_hist(500),v_err(nopt)
+		real(dp) :: x0(nopt), x0hist(nopt,500),xopt_hist(nopt,500),fopt_hist(500),internalopt_hist(size(wage_coef)+2,500),v_err(nopt)
 		real(dp) :: rhobeg, rhoend, EW,W,err0,fdist,xdist
 		real(dp), allocatable :: wspace(:)
-		real(dp), allocatable :: node_fopts(:),node_xopts(:),all_fopts(:), all_xopts(:)
-		
+		real(dp), allocatable :: node_fopts(:),node_xopts(:),world_fopts(:), world_xopts(:)
+		real(dp), allocatable :: world_internalopt(:),node_internalopt(:)
+		character(len=2) :: rank_str
+		integer :: fcal_eval
+
 		external dfovec 
 		
 		ndraw = size(x0hist,2)
 		ninterppt = 2*nopt+1
+		ninternalopt = size(wage_coef) + 2 !wage coefficients, fmul smul
 		nstartpn = 1 !if it takes lots of starts, probably can speed things up by statically allocating more starts per node
 		
+
 		mod_shk => shk
 
 		call mpi_init(ierr)
@@ -5111,11 +5127,13 @@ module find_params
 		call mpi_comm_rank(mpi_comm_world,rank,ierr)
 
 		allocate(wspace((ninterppt+5)*(ninterppt+nopt)+3*nopt*(nopt+5)/2))
-		allocate(node_fopts(nstartpn))
-		allocate(node_xopts(nopt*nstartpn))
-		allocate(all_fopts(nnode*nstartpn))
-		allocate(all_xopts(nopt*nnode*nstartpn))
-	
+		allocate(node_fopts(               nstartpn))
+		allocate(node_xopts(               nstartpn*nopt))
+		allocate(node_internalopt(         nstartpn*ninternalopt))
+		
+		allocate(world_fopts(        nnode*nstartpn))
+		allocate(world_xopts(        nnode*nstartpn*nopt))
+		allocate(world_internalopt(  nnode*nstartpn*ninternalopt))
 		dfbols_nuxi_trproc = 1
 		
 		rhobeg = minval( xu - xl )/nnode
@@ -5136,7 +5154,16 @@ module find_params
 
 		if( rank .eq. 0 ) then
 			call mat2csv(x0hist,"x0hist.csv")
+			open(unit=fcallog, file = "cal_mlsl.csv")
+			write( fcallog,* ) " "
+			close(fcallog)
 		endif
+		write( rank_str,"(I2.1)" ) rank
+		open(unit=fcal_eval, file = "cal_dist_"//trim(rank_str)//".csv" )
+		write(fcal_eval, *) " "
+		close( fcal_eval )
+	
+
 		!loop/distribute stating points for random restarts
 		do d =1,(ndraw/nnode/nstartpn)
 			do dd= 1,nstartpn
@@ -5152,29 +5179,38 @@ module find_params
 				err0 = sum( v_err**2 )
 				node_fopts(dd) = err0
 				node_xopts(((dd-1)*nopt+1):(dd*nopt)) = x0
+				node_internalopt( ((dd - 1)*ninternalopt+1):(dd - 1)*ninternalopt + size(wage_coef) ) = wage_coef
+				node_internalopt( ((dd - 1)*ninternalopt+1+ size(wage_coef)):dd*ninternalopt ) = (/ fndrt_mul, seprt_mul /) !are these available globally?
 				print *, "Found min ", err0, "at ", x0," on node: ", rank
-			enddo
-			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, all_fopts,&
-			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
 
-			call mpi_allgather( node_xopts, nopt*nstartpn, MPI_DOUBLE, all_xopts,&
+			enddo
+			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, world_fopts,&
+			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
+			call mpi_allgather( node_xopts, nopt*nstartpn, MPI_DOUBLE, world_xopts,&
 			&		nopt*nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
+			call mpi_allgather( node_internalopt, ninternalopt*nstartpn, MPI_DOUBLE, world_internalopt,&
+			&		ninternalopt*nstartpn, MPI_DOUBLE,mpi_comm_world, ierr )
 			!this is inefficient to have a block here. It might be uneccesary
 			call mpi_barrier(mpi_comm_world,ierr)
 			nstarts = (d-1)*(nnode*nstartpn)
-			fopt_hist(nstarts + 1:nstarts + nnode*nstartpn) = all_fopts
+			fopt_hist(nstarts + 1:nstarts + nnode*nstartpn) = world_fopts
 			do j =1,(nnode*nstartpn)
 				do i =1,nopt
-					xopt_hist(i,nstarts + j) = all_xopts((j-1)*nopt + i)
+					xopt_hist(i,nstarts + j) = world_xopts((j-1)*nopt + i)
+				enddo
+				do i=1,ninternalopt
+					internalopt_hist(i,nstarts+j) = world_internalopt( (j-1)*ninternalopt + i )
 				enddo
 			enddo
 			if( rank .eq. 0) then
 				open(unit=fcallog, file = "cal_mlsl.csv" ,ACCESS='APPEND', POSITION='APPEND')
 				do i=1,(nstartpn*nnode)
-					write(fcallog, "(G20.12)", advance='no')  all_xopts((i-1)*2+1)
-					write(fcallog, "(G20.12)", advance='no')  all_xopts(i*2)
-					write(fcallog, "(G20.12)", advance='yes') all_fopts(i)
-					print *, all_xopts((i-1)*2+1), all_xopts(i*2), all_fopts(i)
+					write(fcallog, "(I4.2)", advance='no')    i/nstartpn
+					write(fcallog, "(G20.12)", advance='no')  world_xopts((i-1)*2+1)
+					write(fcallog, "(G20.12)", advance='no')  world_xopts(i*2)
+					write(fcallog, "(G20.12)", advance='yes') world_fopts(i)
+					print *, world_xopts((i-1)*2+1), world_xopts(i*2), world_fopts(i)
+
 				enddo
 				close(unit=fcallog)	
 			endif
@@ -5185,17 +5221,14 @@ module find_params
 			nstarts = nstarts+nnode*nstartpn !<-number of starts so far
 			fval = fopt_hist(1)
 			do i=1,nstarts 
-				do j=(i+1),nstarts 
-				!compute distance to count unique ones
-					xdist = sum( dabs(xopt_hist(:,j)- xopt_hist(:,i)) )
-					fdist = dabs( fopt_hist(i)-fopt_hist(j) ) 
-					if( fdist .ge. 2*simtol .or. xdist .ge. trcalxtol*nopt ) then
-						W = W + 1._dp 
-					endif
-				enddo
-				if( fopt_hist(i) .lt. fval ) then
+				fdist = dabs( fopt_hist(i)-fval ) 
+				if( (fdist .ge. 2*simtol) .and. (fopt_hist(i) .lt. fval) ) then
+					W = W + 1._dp 
 					fval = fopt_hist(i)
 					xopt = xopt_hist(:,i)
+					wage_coef = internalopt_hist(1:size(wage_coef),i)
+					fndrt_mul = internalopt_hist(1+size(wage_coef),i)
+					seprt_mul = internalopt_hist(2+size(wage_coef),i)
 				endif
 			enddo
 			EW = W*dble(nstarts-1)/( dble(nstarts) - W-2 )
@@ -5203,10 +5236,15 @@ module find_params
 				exit 
 			endif
 		enddo
-
 		call mpi_finalize(ierr)
 
-		deallocate(wspace,node_fopts,node_xopts,all_fopts,all_xopts)
+		!set global wage_trend to that in optimal
+		call gen_new_wgtrend(wage_trend, wage_coef)
+		fndgrid = fndgrid*fndrt_mul
+		sepgrid = sepgrid*seprt_mul
+
+		deallocate(wspace,node_fopts,node_xopts,world_fopts,world_xopts)
+		deallocate(world_internalopt,node_internalopt)
 	end subroutine cal_mlsl
 
 
@@ -5235,7 +5273,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 	real(dp), allocatable :: coef_here(:)
 	integer :: Ncoef,i,j,ri,ci,ii
 	integer :: print_lev_old,verbose_old
-	real(dp):: avwt,avonet(Nskill),urt,Efrt,Esrt,seprt_mul,fndrt_mul
+	real(dp):: avwt,avonet(Nskill),urt,Efrt,Esrt
 	real(dp):: paramwt(mv)
 	character(len=10) :: char_solcoefiter
 	
@@ -5323,6 +5361,8 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 
 
 		deallocate(coef_est,dif_coef,reldist_coef,coef_here,wthr)
+	!!!!!!!!!
+	! Calibrate nu, xicoef
 	else 
 		print_lev_old = print_lev 
 		verbose_old = verbose
@@ -5334,13 +5374,12 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		paramvec = theta0
 		!if(smth_dicont .le. 20._dp) smth_dicont = smth_dicont*1.05_dp
 		
-		
-		
 		call cal_dist(paramvec, errvec,mod_shk)
 
 		if(verbose_old >=1) then 
 			print *, "test parameter vector ", paramvec
 			print *, "         error vector ", errvec
+			print *, "       Disability rate"
 		endif
 		if(print_lev_old >=1) then
 			open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
