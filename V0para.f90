@@ -200,7 +200,8 @@ integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
 
 logical  :: cal_on_iter_wgtrend = .true.
 integer  :: cal_niter = 0
-real(8)  :: cal_obj = 1.
+real(8)  :: cal_obj = 1., wc_guess_nolev(NTpolyT+Nskill+2)=0.,&
+		&	wc_guess_lev(NTpolyT+Nskill*2+2)=0.
 logical  :: cal_on_grad = .false.
 
 
@@ -229,7 +230,6 @@ logical :: simp_concav = .false.
 
 real(8) ::  Vtol = 5e-6 	!Tolerance on V-dist
 real(8) ::  simtol =1e-6_dp !tolerance on simulations
-real(8) :: trcalxtol = 1e-5_dp
 
 contains
 subroutine setparams()
