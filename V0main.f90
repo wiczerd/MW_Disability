@@ -5109,6 +5109,7 @@ module find_params
 		
 		integer  :: ndraw, nstartpn, ninterppt,ninternalopt,d,dd,i,j
 		integer :: ierr, iprint, rank, nnode, nstarts
+		integer, allocatable :: seedhr(:)
 		real(dp) :: draw(nopt)
 		real(dp) :: x0(nopt), x0hist(nopt,500),xopt_hist(nopt,500),fopt_hist(500),internalopt_hist(size(wage_coef)+2,500),v_err(nopt)
 		real(dp) :: rhobeg, rhoend, EW,W,err0,fdist,xdist
@@ -5119,7 +5120,8 @@ module find_params
 		integer :: fcal_eval
 
 		external dfovec 
-		
+		call random_seed(size = iprint)
+		allocate( seedhr(iprint) )
 		ndraw = size(x0hist,2)
 		ninterppt = 2*nopt+1
 		ninternalopt = size(wage_coef) + 2 !wage coefficients, fmul smul
@@ -5129,7 +5131,6 @@ module find_params
 
 		mod_shk => shk
 
-		call mpi_init(ierr)
 		call mpi_comm_size(mpi_comm_world,nnode,ierr)
 		call mpi_comm_rank(mpi_comm_world,rank,ierr)
 
@@ -5171,8 +5172,10 @@ module find_params
 		write(fcal_eval, *) " "
 		close( fcal_eval )
 	
-
+		seedhr = rank+671984
+		call random_seed(put = seedhr)
 		!loop/distribute stating points for random restarts
+
 		do d =1,(ndraw/nnode/nstartpn)
 			do dd= 1,nstartpn
 				x0 = x0hist( :, (d-1)*(nnode*nstartpn) + rank*nstartpn + dd ) !note this indexing looks weird (normally it's rank-1) but rank is base 0
@@ -5183,12 +5186,9 @@ module find_params
 					call dfovec(nopt,nopt,x0,v_err)
 					if( (abs(v_err(1)) > 4._dp) .or. (abs(v_err(2))>0.99_dp) ) then
 						do i=1,nopt
-							x0(i) = (x0(i)-xl(i))/( xu(i)-xl(i) ) !convert to a ratio
-							if( x0(i) .eq. 0.5_dp ) x0(i) = x0(i)+0.1_dp
-							x0(i) = 4._dp*x0(1)*(1._dp-x0(1)) !chaotic cycle (logit map)
+							call random_number(x0(i))
 							x0(i) = x0(i)*( xu(i)-xl(i) ) + xl(i)
 						enddo
-
 					else 
 						! only do BOBYQA if the starting point is good
 						print *, "Computing from: ",  x0(1), x0(2)," on node: ", rank
@@ -5283,6 +5283,7 @@ module find_params
 
 		deallocate(wspace,node_fopts,node_xopts,world_fopts,world_xopts)
 		deallocate(world_internalopt,node_internalopt)
+		deallocate(seedhr) 
 	end subroutine cal_mlsl
 
 
@@ -5442,6 +5443,7 @@ program V0main
 	use sim_hists
 	use model_data
 	use find_params !, only: cal_dist,iter_wgtrend,iter_zproc,jshift_sol,vscale_set
+	use mpi
 
 	implicit none
 
@@ -5477,9 +5479,11 @@ program V0main
 !		external :: cal_dist_nloptwrap
 
 		
-		include 'nlopt.f'
+	include 'nlopt.f'
 
 	moments_sim%alloced = 0
+
+	call mpi_init(ierr)
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
 		
 	call setparams()
@@ -5762,7 +5766,7 @@ program V0main
 !~  	enddo
 	
 if( dbg_skip .eqv. .false.) then
-	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
+ 	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
 endif
 
 !****************************************************************************
