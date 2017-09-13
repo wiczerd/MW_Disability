@@ -4863,24 +4863,35 @@ module find_params
 			call vec2csv(fval,"fdfbolsL_wage_coef.csv")
 		endif
 
-		rhobeg = minval( wcU - wcL)/10._dp	!loosen this up?
+		rhobeg = minval( wcU - wcL)/4._dp	!loosen this up?
 		if( cal_niter < 2*(2*2+1)) then !2 is Nopt in the outer calibration cycle. This is a bit sloppy
-			rhoend = rhobeg/100._dp
+			rhoend = rhobeg/1000._dp
 			maxiter_hr = 100
 		else
 			rhoend = rhobeg/1000._dp
-			maxiter_hr = 150
+			maxiter_hr = 200
 		endif
 		
-		status = 0 !set this to printlev (plO)
+		status = 3 !set this to printlev (plO)
 		call bobyqa_h(Nobj,Nobj_estpts,wc0,wcL,wcU,rhobeg,rhoend,status,maxiter_hr,wksp_dfbols,Nobj)
-				
+		
+		ii=0
+		do i = 1,(Ncoef-Nnuisance)
+			if( (wglev_0 .eqv. .true.) .or. ( (i .le. NTpolyT).or.(i .gt. NTpolyT+Nskill)  ) ) then
+				ii=ii+1
+				wage_coef(i) = wc0(ii)
+			endif
+		enddo
+		fndrt_mul = wc0(ii+1)
+		seprt_mul = wc0(ii+2)
+
 		print_lev = plO
 		verbose = vO
 		
 		if(print_lev .ge. 2) then 
 			call mat2csv(wage_trend,"wage_trend_jt.csv")
 			call vec2csv(wage_lev,"wage_lev_j.csv")
+			call vec2csv(wage_coef,"wage_coef.csv")
 !~ 			call vec2csv(dist_wgtrend_iter(1:(iter-1)), "dist_wgtrend_iter.csv")
 !~ 			call vec2csv(dist_urt(1:(iter-1)), "dist_urt.csv")
 !~ 			call vec2csv(dist_udur(1:(iter-1)), "dist_udur.csv")
@@ -5118,6 +5129,8 @@ module find_params
 		real(dp), allocatable :: world_internalopt(:),node_internalopt(:)
 		character(len=2) :: rank_str
 		integer :: fcal_eval
+		integer :: c1=1,c2=1,cr=1,cm=1
+		real(dp) :: t1=1.,t2=1.
 
 		external dfovec 
 		call random_seed(size = iprint)
@@ -5178,9 +5191,16 @@ module find_params
 
 		do d =1,(ndraw/nnode/nstartpn)
 			do dd= 1,nstartpn
+				call system_clock(count_rate=cr)
+				call system_clock(count_max=cm)
+				call CPU_TIME(t1)
+				call SYSTEM_CLOCK(c1)
+
 				x0 = x0hist( :, (d-1)*(nnode*nstartpn) + rank*nstartpn + dd ) !note this indexing looks weird (normally it's rank-1) but rank is base 0
+			
 				!if x0 in a basin of attraction, cycle
 				do j=1,5
+			
 					cal_niter = 0
 					!test it for being too far away:
 					call dfovec(nopt,nopt,x0,v_err)
@@ -5207,6 +5227,12 @@ module find_params
 				node_internalopt( ((dd - 1)*ninternalopt+1):(dd - 1)*ninternalopt + size(wage_coef) ) = wage_coef
 				node_internalopt( ((dd - 1)*ninternalopt+1+ size(wage_coef)):dd*ninternalopt ) = (/ fndrt_mul, seprt_mul /) !are these available globally?
 				print *, "Found min ", err0, "at ", x0," on node: ", rank
+
+				call CPU_TIME(t2)
+				call SYSTEM_CLOCK(c2)
+				print *, "System Time on calibration for rank ", rank, ": ", dble(c2-c1)/dble(cr)
+				print *, "   CPU Time for rank ", rank_str, ": ", (t2-t1)
+
 			enddo
 			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, world_fopts,&
 			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
@@ -5393,13 +5419,12 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		v_err(2+ncoef_active) = dist_frt
 
 		if(verbose  >= 2) print *, "F-evaluation in DFBOLS"
-		if(print_lev>=2) then
-			call vec2csv(fval, "fdfbolsi_wage_coef.csv")
+	!	if(print_lev>=2) then
+			call vec2csv(v_err, "fdfbolsi_wage_coef.csv")
 			call vec2csv(coef_here, "wdfbolsi_wage_coef.csv")
 			call vec2csv(coef_loc, "ldfbolsi_wage_coef.csv")
-		endif
-
-
+	!	endif
+	
 		deallocate(coef_est,dif_coef,reldist_coef,coef_here,wthr)
 	!!!!!!!!!
 	! Calibrate nu, xicoef
@@ -5442,7 +5467,7 @@ program V0main
 	use sol_val
 	use sim_hists
 	use model_data
-	use find_params !, only: cal_dist,iter_wgtrend,iter_zproc,jshift_sol,vscale_set
+	use find_params 
 	use mpi
 
 	implicit none
@@ -5626,12 +5651,6 @@ program V0main
 	!util_const = - junk - util_const
 	
 
-	if(verbose >2) then
-		call system_clock(count_rate=cr)
-		call system_clock(count_max=cm)
-		call CPU_TIME(t1)
-		call SYSTEM_CLOCK(c1)
-	endif
 	call alloc_shocks(shk)
 	call draw_shocks(shk)
 	
@@ -5639,6 +5658,12 @@ program V0main
 	!solve it once
 	!************************************************************************************************!
 	if (sol_once .eqv. .true.) then
+		if(verbose >=1) then
+			call system_clock(count_rate=cr)
+			call system_clock(count_max=cm)
+			call CPU_TIME(t1)
+			call SYSTEM_CLOCK(c1)
+		endif
 
 		call alloc_econ(vfs,pfs,hst)
 		Vtol = 5e-5
@@ -5699,7 +5724,11 @@ program V0main
 			wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
 			wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
 		endif
-		
+		if(print_lev>1) then
+			call vec2csv(wc_guess_lev,"wc_guess_lev.csv")
+			call vec2csv(wc_guess_nolev,"wc_guess_nolev.csv")
+		endif
+
 		if(verbose >=1) print *, "Simulating the model"	
 		call sim(vfs, pfs, hst,shk)
 		if(verbose >=1) print *, "Computing moments"
@@ -5725,11 +5754,11 @@ program V0main
 		
 		call dealloc_econ(vfs,pfs,hst)
 
-		if(verbose > 2) then
+		if(verbose >=1) then
 			call CPU_TIME(t2)
 			call SYSTEM_CLOCK(c2)
-			print *, "System Time", dble(c2-c1)/dble(cr)
-			print *, "   CPU Time", (t2-t1)
+			if(nodei ==0)  print *, "Sol Once, System Time", dble(c2-c1)/dble(cr)
+			if(nodei ==0)  print *, "Sol Once, CPU Time   ", (t2-t1)
 		endif
 	endif !sol_once
 
@@ -5765,13 +5794,13 @@ program V0main
 !~  	enddo
 !~  	enddo
 	
-if( dbg_skip .eqv. .false.) then
- 	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
-endif
+! if( dbg_skip .eqv. .false.) then
+!  	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
+! endif
 
 !****************************************************************************
 !   Now run some experiments:
-if(nodei == 0) then
+if(nodei == 15) then
 	! without wage trend
  	caselabel = "wchng0"
  	print *, caselabel, " ---------------------------------------------------"
