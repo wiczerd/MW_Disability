@@ -42,15 +42,15 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 
 !**Programming Parameters***********************!
 integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types 
-			ntr = 7, &!7	        !Number of occupation trend points
-			ndi = 2,  &		    	!Number of individual disability risk types
-			nl	= 2,  &				!Number of finding/separation rates
-			nd  = 3,  &		        !Number of disability extents
-			ne  = 5, &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 30, &!50	        !Points on assets grid
-			nz  = 2,  &		        !Number of aggregate shock states
-			nj  = 16, &!16			!Number of occupations
-			Nskill = 3,&			!number of skills that define occupations. First is always physical 
+			ntr = 7,    &!7	        !Number of occupation trend points
+			ndi = 2,    &		    !Number of individual disability risk types
+			nl	= 2,    &			!Number of finding/separation rates
+			nd  = 3,    &		    !Number of disability extents
+			ne  = 5,    &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			na  = 30,   &!50	    !Points on assets grid
+			nz  = 2,    &		    !Number of aggregate shock states
+			nj  = 16,   &!16		!Number of occupations
+			Nskill  = 3,&			!number of skills that define occupations. First is always physical 
 			NKpolyT = 1,&			!polynomial order for time trend for occupation
 			NTpolyT = 2,& 			!polynomial order for time trend overall
 			maxiter = 2000, &		!Tolerance parameter	
@@ -63,13 +63,13 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 
 
 ! thse relate to how we compute it. Mostly for debugging purposes
-logical            :: al_contin  = .true.,&	!make alpha draws continuous or stay on the grid
-					  z_flowrts	 = .true.,&	!make zj just control flow rates and not productivity (makes the next irrelevant)
-					  zj_contin	 = .false.,&!make zj draws continous
-					  z_regimes	 = .false.,&!different z regimes?
-					  ineligNoNu = .false.,&!do young ineligable also pay the nu cost when they are ineligable?
-					  dieyoung   = .true.,&	!do the young die (rate associated with health state)
-					  wglev_0	 = .false.  !should the initial wage level be 0 for all occupations
+logical            :: al_contin  = .true.,&		!make alpha draws continuous or stay on the grid
+					  z_flowrts	 = .true.,&		!make zj just control flow rates and not productivity (makes the next irrelevant)
+					  zj_contin	 = .false.,&	!make zj draws continous
+					  z_regimes	 = .false.,&	!different z regimes?
+					  ineligNoNu = .false.,&	!do young ineligable also pay the nu cost when they are ineligable?
+					  dieyoung   = .true.,&		!do the young die (rate associated with health state)
+					  wglev_0	 = .false.  	!should the initial wage level be 0 for all occupations
 					  
 					  
 ! these relate to what's changing over the simulation/across occupation
@@ -80,7 +80,8 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  demog_dat	 = .true.,& !do the demographics follow 
 					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
 					  RAS_pid    = .true.   !balance the health transition matrix
-					  
+
+logical			  ::  run_experiments = .false.
 
 
 real(8), parameter ::  amax 	 = 10.0,   &	!Max on Asset Grid
@@ -129,7 +130,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		fndgrid(nl,nz),&		!grid for finding rates
 		sepwt(nl,nj,nz),&		!grid for separation rates
 		fndwt(nl,nj,nz),&		!grid for finding rates
-		seprt_mul,fndrt_mul,&   !multipliers for separation and finding rates
+		seprt_mul=1.,fndrt_mul=1.,&   !multipliers for separation and finding rates
 
 !		targets for occupations
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
