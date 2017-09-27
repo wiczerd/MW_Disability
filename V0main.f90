@@ -589,17 +589,17 @@ module helper_funs
 	end subroutine alloc_hist
 
 	subroutine clean_hist(hst)
-
+!cleans everything except z_jt_panel,z_jt_macroint
 		type(hist_struct) :: hst
 
 		hst%wage_hist = 0.
 		hst%work_dif_hist = 0.
 		hst%app_dif_hist = 0.
 		hst%di_prob_hist  = 0.
-		hst%hlth_voc_hist  = 0.
+		hst%hlth_voc_hist  = 0
 		hst%hlthprob_hist  = 0.
-		hst%status_hist  = 0.
-		hst%d_hist  = 0.
+		hst%status_hist  = 0
+		hst%d_hist  = 0
 		hst%a_hist  = 0.
 		hst%occgrow_jt  = 0.
 		hst%occshrink_jt  = 0.
@@ -3278,6 +3278,8 @@ module sim_hists
 			occaggs_hr = .true.
 		endif
 
+		!be sure we're running with a clean history
+		call clean_hist(hst)
 
 		!************************************************************************************************!
 		! Allocate things
@@ -3659,8 +3661,9 @@ module sim_hists
 						ali_hr	= 1
 					endif
 					if( w_strchng .eqv. .true.) then
+						wtr_it(i,it) = wage_trend(it,j_hr)
 						do tri_hr = ntr,1,-1
-							if( trgrid(tri_hr)<wage_trend(it,j_hr) ) exit
+							if( trgrid(tri_hr)<wtr_it(i,it) ) exit
 						enddo
 						tri_hr = min( max(tri_hr, 1), ntr )
 						triH = min(tri_hr+1,ntr)
@@ -3669,11 +3672,10 @@ module sim_hists
 						else
 							triwt = 1._dp
 						endif
-
-						wtr_it(i,it) = wage_trend(it,j_hr)
 					else
 						tri_hr = tri0
 						triwt = 1._dp
+						wtr_it(i,it) = 0._dp
 					endif
 
 					!figure out where to evaluate alpha
@@ -3695,7 +3697,7 @@ module sim_hists
 					ewt_it(i,it) = ewt
 
 					junk = 0._dp
-					if(w_strchng .eqv. .true.) junk = wage_trend(it,j_hr)
+					if(w_strchng .eqv. .true.) junk = wtr_it(i,it)
 					if(junk == 1000._dp) print *, "big wage trend!"
 					wage_hr	= wage(wage_lev(j_hr)+junk,al_hr,d_hr,z_hr,age_hr)
 					if(invol_un ==1) then
@@ -3752,7 +3754,7 @@ module sim_hists
 									al_last_invol = al_hr
 									wage_hr	= wage(wage_lev(j_hr),al_last_invol,d_hr,z_hr,age_hr)
 									if(w_strchng .eqv. .true.) &
-										& wage_hr	= wage(wage_lev(j_hr) + wage_trend(it,j_hr),al_last_invol,d_hr,z_hr,age_hr)
+										& wage_hr	= wage(wage_lev(j_hr) + wtr_it(i,it),al_last_invol,d_hr,z_hr,age_hr)
 
 									if(status_it_innov(i,it) < sepi) then !separated involunarily
 										ali_hr = 1
@@ -3887,10 +3889,10 @@ module sim_hists
 								endif
 								!record probabilities
 								if( age_hr .eq. 1 .and. ineligNoNu .eqv. .true. ) then
-									di_prob_it(i,it) = xifun(d_hr,wage_trend(it,j_hr),age_hr,hlthprob)*eligY
+									di_prob_it(i,it) = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)*eligY
 									hst%hlthprob_hist(i,it) = hlthprob*eligY
 								else
-									di_prob_it(i,it) = xifun(d_hr,wage_trend(it,j_hr),age_hr,hlthprob)
+									di_prob_it(i,it) = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)
 									hst%hlthprob_hist(i,it) = hlthprob
 								endif
 							end select
@@ -3923,9 +3925,9 @@ module sim_hists
 								app_dif_it(i,it) = app_dif_hr
 								!store the disability probability for the first group
 								if( (age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))) then
-									di_prob_it(i,it) = xifun(d_hr,wage_trend(it,j_hr),age_hr,hlthprob)
+									di_prob_it(i,it) = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)
 								elseif( age_hr ==1)  then
-									di_prob_it(i,it) = xifun(d_hr,wage_trend(it,j_hr),age_hr,hlthprob)*eligY
+									di_prob_it(i,it) = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)*eligY
 								endif
 
 							endif
@@ -3948,13 +3950,10 @@ module sim_hists
 							api_hr = aR(2,d_hr,ei_hr,ai_hr)
 							apc_hr = agrid(api_hr)
 						else
-
 							do interp_i = 1,2
-
 								if( interp_i ==2) then
 									ei_hr = min(ei_hr+1,ne)
 								endif
-
 								!INTERPOLATE!!!!!
 								if((al_contin .eqv. .true.)  .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
 									if(status_hr .eq. 1) then
@@ -4018,7 +4017,7 @@ module sim_hists
 									apc_hr = ewt*junk+(1.-ewt)*junk
 									if (ewt > 0. .and. ewt <1. .and. ei_hr > 1) ei_hr = ei_hr-1
 								endif
-							enddo
+							enddo !do interp_i
 							api_hr=1
 							do ii=2,na
 								if( dabs(agrid(ii)-apc_hr) <  dabs(agrid(ii)-agrid(api_hr))) api_hr = ii
@@ -4846,12 +4845,17 @@ module find_params
 		endif
 
 		! do iter = 1,sd_estpts  !This is to estimate the noise standard error to get the optimal step size
+		! 	call clean_hist(hst)
 		! 	call reg_wgtrend(coef_est,vfs,pfs,hst,shk)
 		! 	call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
 		! 	coef_dist_der_hist(iter,1:Ncoef) = dif_coef
 		! enddo
+		! do ri=1,Ncoef
+		! 	call stdev_v( d2_coef(ri) ,coef_dist_der_hist(1:sd_estpts,ri))
+		! enddo
+		! if(print_lev .ge. 2) call vec2csv(d2_coef,"sd_coef.csv")
 
-		dfbols_nuxi_trproc = 2
+		dfbols_nuxi_trproc = 2 !sets which problem dfovec will solve
 		Nobj_estpts = Nobj*2+1
 
 		mod_solcoefiter = 0
@@ -4869,7 +4873,7 @@ module find_params
 		wcL(Ncoef_active+2) = 0.1_dp !for seprt_mul
 		wcU =  2.0_dp
 
-!		if(print_lev .ge. 2) then
+		if(print_lev .ge. 2) then
 			call dfovec(Nobj,Nobj, wc0,fval)
 			call vec2csv(fval,"fdfbols0_wage_coef.csv")
 
@@ -4877,7 +4881,7 @@ module find_params
 			call vec2csv(fval,"fdfbolsU_wage_coef.csv")
 			call dfovec(Nobj,Nobj, wcL,fval)
 			call vec2csv(fval,"fdfbolsL_wage_coef.csv")
-!		endif
+		endif
 
 		rhobeg = minval( wcU - wcL)/4._dp	!loosen this up?
 		if( verbose >=2) print *, "rhobeg in interwg: ", rhobeg
@@ -5300,11 +5304,12 @@ module find_params
 
 			!inspect the optima to see if we should keep searching
 			!use Bayesian stopping criteria: EW < W+0.5, where W is # local mins, N is # of searches and E[W] = W(N-1)/(N-W-2)
-			W= 0._dp
+			W= 1._dp
 			nstarts = nstarts+nnode*nstartpn !<-number of starts so far
 			fval = fopt_hist(1)
+			xopt = xopt_hist(:,1)
 			do i=1,nstarts
-				fdist = dabs( fopt_hist(i)-fval )
+				fdist = dabs( fopt_hist(i)-fval )/dabs(fval)
 				if( (fdist .ge. 2*simtol) .and. (fopt_hist(i) .lt. fval) ) then
 					W = W + 1._dp
 					fval = fopt_hist(i)
@@ -5327,8 +5332,8 @@ module find_params
 			call vec2csv(wage_coef, "wage_coef_opt.csv")
 			call mat2csv(fndgrid*fndrt_mul, "fndgrid_opt.csv")
 			call mat2csv(sepgrid*seprt_mul, "sepgrid_opt.csv")
+			call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt.csv")
 		enddo
-		call mpi_finalize(ierr)
 
 		!set global wage_trend to that in optimal
 		call gen_new_wgtrend(wage_trend, wage_coef)
@@ -5339,6 +5344,7 @@ module find_params
 		call vec2csv(wage_coef, "wage_coef_opt.csv")
 		call mat2csv(fndgrid, "fndgrid_opt.csv")
 		call mat2csv(sepgrid, "sepgrid_opt.csv")
+		call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt.csv")
 
 		deallocate(wspace,node_fopts,node_xopts,world_fopts,world_xopts)
 		deallocate(world_internalopt,node_internalopt)
@@ -5366,7 +5372,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 
 	real(dp)  :: coef_loc(ntheta),paramvec(ntheta)
 	real(dp) :: fval(mv), errvec(mv)
-	integer :: lev_der,ncoef_active,ntarget
+	integer :: lev_der,ncoef_active
 	real(dp), allocatable :: coef_est(:),dif_coef(:),reldist_coef(:),wthr(:)
 	real(dp), allocatable :: coef_here(:)
 	integer :: Ncoef,i,j,ri,ci,ii
@@ -5378,7 +5384,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 	if( dfbols_nuxi_trproc == 2 )then
 		mod_solcoefiter = mod_solcoefiter+1
 		ncoef_active = ntheta-2
-		ntarget = mv-2
+
 		coef_loc = theta0(1:ncoef_active)  !coef loc are multipliers for the coefficients
 		fndrt_mul = theta0(1+ncoef_active)
 		seprt_mul = theta0(2+ncoef_active)
@@ -5423,8 +5429,8 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		enddo
 		! write(char_solcoefiter, "(i10)") mod_solcoefiter
 		! call mat2csv(wage_trend,  trim("wage_trend_0_")//trim(char_solcoefiter)//".csv")
-
 		call gen_new_wgtrend(wage_trend, coef_here)
+		call clean_hist(mod_hst)
 		call reg_wgtrend(coef_est,mod_vfs,mod_pfs,mod_hst,mod_shk)
 		call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
 
@@ -5755,8 +5761,11 @@ program V0main
 			endif
 			if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 		endif
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		call sim(vfs, pfs, hst,shk,.false.)
 
-		if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) .and. (run_experiments .eqv. .false.)) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
 			if(verbose>1) print *, "iterating to find wage trend"
 			call iter_wgtrend(vfs, pfs, hst,shk)
 			ii = 1
@@ -5849,9 +5858,9 @@ program V0main
 !~  	enddo
 !~  	enddo
 
-! if( dbg_skip .eqv. .false.) then
-! 	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
-! endif
+if( dbg_skip .eqv. .false.) then
+	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
+endif
 
 
 !****************************************************************************
@@ -5887,6 +5896,7 @@ if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
 	!read in xi, nu
 	open(unit= fread, file="nuxiw_opt.csv")
 		read(fread,*) nu
+
 		read(fread,*) xizcoef
 		read(fread,*) wmean
 	close(fread)
@@ -5920,50 +5930,50 @@ if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
 	print *, "---------------------------------------------------"
 
  	! without the correlation between delta and occupation
-	! call clean_hist(hst)
- 	! del_by_occ = .false.
- 	! w_strchng = .true.
- 	! demog_dat = .true.
- 	! caselabel = "deloc0"
- 	! print *, caselabel, " ---------------------------------------------------"
- 	! call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
- 	! call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
- 	! if(verbose >2) print *, "Simulating the model"
- 	! call sim(vfs, pfs, hst,shk)
- 	! if(verbose >2) print *, "Computing moments"
- 	! call moments_compute(hst,moments_sim,shk)
- 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
- 	! print *, "---------------------------------------------------"
+	call clean_hist(hst)
+ 	del_by_occ = .false.
+ 	w_strchng = .true.
+ 	demog_dat = .true.
+ 	caselabel = "deloc0"
+ 	print *, caselabel, " ---------------------------------------------------"
+ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+ 	if(verbose >2) print *, "Simulating the model"
+ 	call sim(vfs, pfs, hst,shk)
+ 	if(verbose >2) print *, "Computing moments"
+ 	call moments_compute(hst,moments_sim,shk)
+ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+ 	print *, "---------------------------------------------------"
 
-	! call clean_hist(hst)
- 	! del_by_occ = .true.
- 	! w_strchng = .true.
- 	! demog_dat = .false.
- 	! caselabel = "demog0"
- 	! print *, caselabel, " ---------------------------------------------------"
- 	! call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
- 	! call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
- 	! if(verbose >2) print *, "Simulating the model"
- 	! call sim(vfs, pfs, hst,shk)
- 	! if(verbose >2) print *, "Computing moments"
- 	! call moments_compute(hst,moments_sim,shk)
- 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
- 	! print *, "---------------------------------------------------"
+	call clean_hist(hst)
+ 	del_by_occ = .true.
+ 	w_strchng = .true.
+ 	demog_dat = .false.
+ 	caselabel = "demog0"
+ 	print *, caselabel, " ---------------------------------------------------"
+ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+ 	if(verbose >2) print *, "Simulating the model"
+ 	call sim(vfs, pfs, hst,shk)
+ 	if(verbose >2) print *, "Computing moments"
+ 	call moments_compute(hst,moments_sim,shk)
+ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+ 	print *, "---------------------------------------------------"
 
- 	! ! without either the correlation between delta and occupation or wage trend
- 	! del_by_occ = .false.
- 	! w_strchng = .false.
- 	! demog_dat = .true.
- 	! caselabel = "wchng0deloc0"
- 	! print *, caselabel, " ---------------------------------------------------"
- 	! call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
- 	! call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
- 	! if(verbose >2) print *, "Simulating the model"
- 	! call sim(vfs, pfs, hst,shk)
- 	! if(verbose >2) print *, "Computing moments"
- 	! call moments_compute(hst,moments_sim,shk)
- 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
- 	! print *, "---------------------------------------------------"
+ 	! without either the correlation between delta and occupation or wage trend
+ 	del_by_occ = .false.
+ 	w_strchng = .false.
+ 	demog_dat = .true.
+ 	caselabel = "wchng0deloc0"
+ 	print *, caselabel, " ---------------------------------------------------"
+ 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+ 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+ 	if(verbose >2) print *, "Simulating the model"
+ 	call sim(vfs, pfs, hst,shk)
+ 	if(verbose >2) print *, "Computing moments"
+ 	call moments_compute(hst,moments_sim,shk)
+ 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+ 	print *, "---------------------------------------------------"
 
  	! del_by_occ = .true.
  	! w_strchng = .false.
@@ -6014,6 +6024,8 @@ endif
 
 !~ 	call nlo_destroy(calopt)
 	call dealloc_shocks(shk)
+
+	call mpi_finalize(ierr)
 
 !~ 	call dealloc_econ(vfs,pfs,hst)
 

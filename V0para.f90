@@ -27,21 +27,21 @@ logical :: dbg_skip = .false. !skip stuff for a minimal debug
 !**Environmental Parameters**********************************************************************!
 real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		oldD = 5., &		!Length of each old period
-		tlen =12., &		!Number of periods per year (monthly)	
-		Longev = 82.- 30.,&	!Median longevity	
+		tlen =12., &		!Number of periods per year (monthly)
+		Longev = 82.- 30.,&	!Median longevity
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.834,&	!Fraction young who are eligable
 		R =1.,&!dexp(.02/tlen),&	!People can save in the backyard
 		upd_zscl = 0.1,&		! rate at which to update zshift
 		upd_wgtrnd = 0.01		! rate at which update wage_trend
-		
+
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
 		itlen = 12		! just an integer version of tlen so I don't have to keep casting
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types 
+integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			ntr = 7,    &!7	        !Number of occupation trend points
 			ndi = 2,    &		    !Number of individual disability risk types
 			nl	= 2,    &			!Number of finding/separation rates
@@ -50,10 +50,10 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			na  = 30,   &!50	    !Points on assets grid
 			nz  = 2,    &		    !Number of aggregate shock states
 			nj  = 16,   &!16		!Number of occupations
-			Nskill  = 3,&			!number of skills that define occupations. First is always physical 
+			Nskill  = 3,&			!number of skills that define occupations. First is always physical
 			NKpolyT = 1,&			!polynomial order for time trend for occupation
 			NTpolyT = 2,& 			!polynomial order for time trend overall
-			maxiter = 2000, &		!Tolerance parameter	
+			maxiter = 2000, &		!Tolerance parameter
 			Nsim = 20000,&!5000*nj	!how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
 			init_yrs = 3,&			!how many years for calibration to initial state of things
@@ -70,14 +70,14 @@ logical            :: al_contin  = .true.,&		!make alpha draws continuous or sta
 					  ineligNoNu = .false.,&	!do young ineligable also pay the nu cost when they are ineligable?
 					  dieyoung   = .true.,&		!do the young die (rate associated with health state)
 					  wglev_0	 = .false.  	!should the initial wage level be 0 for all occupations
-					  
-					  
+
+
 ! these relate to what's changing over the simulation/across occupation
 logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
-					  demog_dat	 = .true.,& !do the demographics follow 
+					  demog_dat	 = .true.,& !do the demographics follow
 					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
 					  RAS_pid    = .true.   !balance the health transition matrix
 
@@ -99,8 +99,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		delwt(ndi,nj),&		!The occupation-specific probability of getting a particular delta
 		delcumwt(ndi+1,nj),&!cumulative dist
 		occdel(nj),&		!The occupation,specific mean delta
-		zshift(nj),&		!shifts occupation TFP in second period.  
-		zscale(nj),&		!scales occupation TFP relative to the aggregate shock.  
+		zshift(nj),&		!shifts occupation TFP in second period.
+		zscale(nj),&		!scales occupation TFP relative to the aggregate shock.
 		zgrid(nz,nj), &		!TFP shock grid
 !		xi(nd,TT-1), &		!DI acceptance probability
 		xi_d(nd),&			!1st round DI acceptance probability
@@ -117,7 +117,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		hazborn_t(Tsim), &	!hazard of being born at each point t
 		prborn_constpop(Tsim),&	!probability of being born at each point t if population structure stays constant
 		hazborn_constpop(Tsim), &	!hazard of being born at each point t if population structure stays constant
-		
+
 		PrDage(nd,TT), &	!Fraction of each D at each age
 		PrDageDel(nd,TT,ndi), &	!Ergodic distribution of each D at each Age and Delta (implied by pid)
 		PrDeath(nd,TT),&	!Probability of death during work-life
@@ -142,11 +142,11 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		occwg_lev(nj),&		!level of occupation wage
 
 		step_derwgcoef(Nskill*2+NTpolyT+5),&	! the step size for derivatives in wage coefficients. Will set this optimally later.
-		noise_coef( Nskill*2+NTpolyT+5 ),&	!the noise associated with 
+		noise_coef( Nskill*2+NTpolyT+5 ),&	!the noise associated with
 !
 		occsz0(nj),&		!Fraction in each occupation
 		occpr_trend(Tsim,nj)!trend in occupation choice
-		
+
 integer :: 	dgrid(nd)	! just enumerate the d states
 real(8)	::	agegrid(TT)		! the mid points of the ages
 
@@ -163,7 +163,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
 		xsep = 0.015, &		!Separation probability into unemployment
-				
+
 !	Agregate income risk
 		zrho	= 0.95,	&	!Persistence of the AR process
 		zmu		= 0.,	&	!Drift of the AR process, should always be 0
@@ -172,9 +172,9 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		dRiskL	= 0.95,&	!Lower bound on occupation-related extra disability risk (multiplicative)
 		dRiskH	= 1.05,&		!Upper bound on occupation-related extra disability risk
 		wmean	= 1.,&		! to set the average wage on which disability stuff is set
-!		
+!
 		amenityscale = 1.,&	!scale parameter of gumbel distribution for occ choice
-		vscale		 = 1.,&	!will adjust to scale the discrete choice.  
+		vscale		 = 1.,&	!will adjust to scale the discrete choice.
 !
 		proc_time1 =   2.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
 		proc_time2 = 14.12,&!The average time to decision	(could be 28.05 for appeal that continues)
@@ -188,11 +188,11 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		DItest2 = 1.5, &	!Earnings Index threshold 2
 		DItest3 = 2.0, & 	!Earnings Index threshold 3
 		smth_dicont = 1.	!Smoothing for the di application value
-!		
-		
-		
+!
+
+
 ! some handy programming terms
-integer :: 		Tblock_exp	= 2e4,	&	!Expected time before structural change (years)
+integer :: 		Tblock_exp	= 2000,	&	!Expected time before structural change (years)
 			Tblock_sim = struc_brk,&		!The actual time before structural change (years). For z_regime
 			ialUn	= 1 ,&		! the index of alpha that signifies an exogenously displaced worker
 			ialL	= 2 ,&
@@ -216,7 +216,7 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		avg_unrt = 0.055,&	!average rate of unemployment over the period.
 		avg_undur = 3.,&	! average months of unemployment
 		avg_frt   = 0.4	! average rate of long-term unemployment
-		
+
 
 
 !Preferences----------------------------------------------------------------!
@@ -224,7 +224,7 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 
 real(8) :: 	gam	= 1.5, &	!IES
 		eta 	= -0.197, &	!Util cost of participation
-		theta 	= -0.224		!Util cost of disability	
+		theta 	= -0.224		!Util cost of disability
 
 integer :: print_lev, verbose
 logical :: simp_concav = .false.
@@ -235,46 +235,46 @@ real(8) ::  simtol =1e-6_dp !tolerance on simulations
 contains
 subroutine setparams()
 
-	logical, parameter :: lower= .FALSE. 
+	logical, parameter :: lower= .FALSE.
 	integer:: i, j, k, t,tri,iter
 	real(8):: summy, emin, emax, step, &
 		   alfcondsig,alfcondsigt,alfrhot,alfsigt, &
 		  mean_uloss,sd_uloss
-		  
+
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
 	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(31,TT), maxADL_read(16),avgADL, &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
 		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(31), &
 		& wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(22)
-	
+
 	real(8) :: pid1(nd,nd),r1(nd),s1(nd),PrDage_tp1(nd,TT-1)
-		
+
 	real(8) :: Hdist_read(5,nd+1),Hmat_read(7,9)
-		
-	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3 
+
+	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3
 	real(8) :: pNy,pNm,Ny,Nm,dy,dm, Nbar,totborn,prH,prL, bN(Tsim)
-	
+
 	real(8) :: wr(nd),wi(nd),vl(nd,nd),vr(nd,nd),abnrm,rcondv(nd),scl(nd),sdec(nd,nd),rconde(nd),wrk(nd*(nd+6))
 	integer :: ilo,ihi,iwrk(nd*2-2),lwrk,status
-	
-	
-	
+
+
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	verbose = 1
 	print_lev = 2
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!	
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	! Read things in:
-	
+
 	!Read in the occupation size among the young.
 	open(unit=fread, file="hpShareO.csv")
 	do t=1,Tsim
 		read(fread,*) occbody_trend_read(t,:)
 	enddo
 	close(fread)
-	
+
 	!Read in the occupation finding and separation rates.
 	open(unit=fread, file="UE_occ.csv")
 	do t=1,nz
@@ -286,7 +286,7 @@ subroutine setparams()
 		read(fread,*) EU_occ_read(t,:)
 	enddo
 	close(fread)
-	
+
 
 	!read initial distributions of age X occ
 	open(unit= fread, file = "initial_AGE_OCC.csv")
@@ -294,7 +294,7 @@ subroutine setparams()
 		read(fread,*) age_occ_read(i,:)
 	enddo
 	close(fread)
-	!read initial distribution of age 
+	!read initial distribution of age
 	open(unit= fread, file = "PrAge.csv")
 	do i=1,31
 		read(fread,*) age_read(i,:)
@@ -319,15 +319,15 @@ subroutine setparams()
 	do j=1,21
 		read(fread,*) wage_coef_O3_read(j)
 	enddo
-	close(fread)		
+	close(fread)
 
 	open(unit= fread, file = "OLSWageTrend_O1.csv")
 	do j=1,22
 		read(fread,*) wage_coef_O1_read(j)
 	enddo
-	close(fread)	
-	
-	
+	close(fread)
+
+
 	!Read in the disability means by occuaption
 	open(unit= fread, file="maxADL.csv")
 	do j=1,nj
@@ -345,7 +345,7 @@ subroutine setparams()
 		read(fread, *,iostat=k) ONET_read(j,:) !first column is label, then Phys, then non-phys
 	enddo
 	close(fread)
-	
+
 	open(unit= fread, file="Hdist.csv")
 	do j=1,size(Hdist_read,1)
 		read(fread, *,iostat=k) Hdist_read(j,:) !first column is label, then Phys, then non-phys
@@ -357,8 +357,8 @@ subroutine setparams()
 	!age>45 & age<56
 	!age>55 & age<61
 	!age>60 & age<66
-	
-	
+
+
 	open(unit= fread, file="HmatIn.csv")
 	do j=1,size(Hmat_read,1)
 		read(fread, *,iostat=k) Hmat_read(j,:) !first column is label, then Phys, then non-phys
@@ -378,24 +378,24 @@ subroutine setparams()
 	open(unit=fread, file="PrDDp_Age.csv")
 	do j=1,15
 		read(fread, *,iostat=k) PrDDp_Age_read(j,:)
-	enddo	
+	enddo
 	close(fread)
-	
+
 
 	!read in the disability rates by age
 	open(unit=fread, file="PrD_Age.csv")
-	do j=1,6 
+	do j=1,6
 		read(fread, *,iostat=k) PrD_Age_read(j,:)
-	enddo	
+	enddo
 	close(fread)
-	
+
 	!read in the death rates by age X disability
 	open(unit=fread, file="PrDeath_in.csv")
 	do j=1,15
 		read(fread, *,iostat=k) PrDeath_in_read(j)
 	enddo
 	close(fread)
-	
+
 	!read in the health transition rates by age --- computed in matlab to match ss rates
 	open(unit=fread, file="pid_in.csv")
 	do j=1,6
@@ -409,9 +409,9 @@ subroutine setparams()
 		read(fread, *,iostat=k) apprt_read(t,:)
 	enddo
 	close(fread)
-	
-	
-	
+
+
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!Earnings
 
@@ -446,10 +446,10 @@ subroutine setparams()
 
 	! the probabilities associated with going into the alpha term that is unemployment go to zero.
 	pialf(1,1) = 0.
-	mean_uloss = -0.154996  
+	mean_uloss = -0.154996
 	!this comes from the SIPP, code in CVW: DTall[ lfstat_wave==1 & seam==T, mean(wavewage,na.rm = T)] - DTall[ lfstat_wave==1 & seam==T & shift(EU_wave,type="lag")==T, mean(wavewage,na.rm = T)]
 	sd_uloss   = (0.5888828)**0.5
-	
+
 	pialf(1,2) = alnorm( ((alfgrid(1)+alfgrid(2))/2.-mean_uloss) /sd_uloss,.false.)
 	if( nal > 3) then
 		do i= 3,(nal-1)
@@ -512,7 +512,7 @@ subroutine setparams()
 				enddo
 			enddo
 		enddo
-	else 
+	else
 		do i=1,nj
 			do t=1,Tsim
 				occwg_trend(t,i) = 0._dp
@@ -526,7 +526,7 @@ subroutine setparams()
 			enddo
 		enddo
 	endif
-	
+
 	!initialize the input to the observed
 	do i=1,nj
 		occwg_lev(i) = occwg_trend(1,i)
@@ -568,21 +568,21 @@ subroutine setparams()
 
 	do i=1,nz
 		do j=1,nl
-		
+
 			fndgrid(j,i) = (maxval(fndrate(i,:))-minval(fndrate(i,:))) *dble( j-1 )/dble(nl-1) + minval(fndrate(i,:))
 			sepgrid(j,i) = (maxval(seprisk(i,:))-minval(seprisk(i,:))) *dble( j-1 )/dble(nl-1) + minval(seprisk(i,:))
-		
+
 		enddo
 	enddo
-	
+
 	! TFP
 	zshift = 0._dp
 	zscale = 1._dp
 
 	call settfp()
 
-	
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!	
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!Demographics
 
 	! age grid building
@@ -600,7 +600,7 @@ subroutine setparams()
 	wtau(3) = -0.032/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(3)-agegrid(1))
 	wtau(4) = -0.12
 	wtau(5) = -0.174
-	
+
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
 	ptau(1) = 1-(tlen*youngD)**(-1)
@@ -610,7 +610,7 @@ subroutine setparams()
 	enddo
 	! rate exit retirement (only one way to go.... down)
 	ptau(TT) = 1-((Longev-(youngD+oldN*oldD))*tlen)**(-1)
-	
+
 	! prob of death by health, age
 	PrDeath(:,1) = Hmat_read(7,7:9)
 	do t=1,TT
@@ -620,12 +620,12 @@ subroutine setparams()
 		PrDeath(:,t) = 1.d0 - (1.d0 - PrDeath(:,t))**(1.d0/tlen)  !PrDeath_in_read(1+(t-1)*3:3+(t-1)*3)
 	enddo
 
-	
+
 	!Health structure by age
 	do t=1,TT
-		if(t >2) then 
+		if(t >2) then
 			k = t
-		else 
+		else
 			k =t+1
 		endif
 		if(t==TT) k = t-1
@@ -660,10 +660,10 @@ subroutine setparams()
 	do i=1,TT-1
 		call spline( age_read(:,1),age_read(:,i+1),age_read_wkr)
 		do t=1,Tsim
-			prob_age(i,t) = splint(age_read(:,1),age_read(:,i+1),age_read_wkr, dble(t-1)/tlen ) 
+			prob_age(i,t) = splint(age_read(:,1),age_read(:,i+1),age_read_wkr, dble(t-1)/tlen )
 		enddo
 	enddo
-	
+
 	pop_size(1) = sum(prob_age(:,1))
 	!evolution of age-structure!!!!!!!!!!!!!!!!!!!!!!
 
@@ -674,16 +674,16 @@ subroutine setparams()
 		do t=3,TT-1
 			dm =  (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t)) *(1._dp-dm) +dm !die
 		enddo
-	else 
+	else
 		dm = 0.
 	endif
 	dm = dm + ((tlen*oldN*oldD)**(-1))*(1.d0-dm)  ! This was .0038
 	!dm = 0.009
-	
+
 	!now bisection on Nbar 0
 	prH = 0.2d0
 	prL = 0.d0
-	do i =1,maxiter	
+	do i =1,maxiter
 		!prob of getting born
 		t=1
 		hazborn_t(t) = 0.5d0*(prH + prL)
@@ -704,29 +704,29 @@ subroutine setparams()
 			else
 				bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
 			endif
-			
+
 			Nm = pNm
 			Ny = pNm + bN(t)
 		enddo
 		junk = hazborn_t(1)
 		hazborn_t(1) =  (dble(Nsim) - (totborn - hazborn_t(1)*Nsim ))/dble(Nsim) ! need to have some positive mass alive when the survey starts
-		
+
 		if(hazborn_t(1)<0) hazborn_t(1) = 0.d0
-		!if(dabs(junk - hazborn_t(1))<1e-8) then 
-		if(dabs(totborn - dble(Nsim))<1e-6) then 
+		!if(dabs(junk - hazborn_t(1))<1e-8) then
+		if(dabs(totborn - dble(Nsim))<1e-6) then
 			exit !iterate on the numberr alive in period 1
 		elseif( totborn > dble(Nsim) ) then
 			prH = junk
-		else! totborn<Nsim 
+		else! totborn<Nsim
 			prL = junk
 		endif
 		prborn_t(2:Tsim) = bN(2:Tsim)/sum(bN(2:Tsim))
-		prborn_t(1) = hazborn_t(1) 
+		prborn_t(1) = hazborn_t(1)
 	enddo
 !again for the constant population group
 	prH = 0.2d0
 	prL = 0.d0
-	do i =1,maxiter	
+	do i =1,maxiter
 		!prob of getting born
 		t=1
 		hazborn_constpop(t) = 0.5d0*(prH + prL)
@@ -745,29 +745,29 @@ subroutine setparams()
 				totborn = bN(t) + totborn
 			else
 				bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
-			endif		
+			endif
 			Nm = pNm
 			Ny = pNm + bN(t)
-			
+
 		enddo
 		junk = hazborn_constpop(1)
-		
+
 		hazborn_constpop(1) =  (dble(Nsim) - (totborn - hazborn_constpop(1)*Nsim ))/dble(Nsim) ! need to have some positive mass alive when the survey starts
-		
+
 		if(hazborn_constpop(1)<0) hazborn_constpop(1) = 0.d0
-		if(dabs(totborn - dble(Nsim))<1e-6) then 
+		if(dabs(totborn - dble(Nsim))<1e-6) then
 			exit !iterate on the numberr alive in period 1
 		elseif( totborn > dble(Nsim) ) then
 			prH = junk
-		else! totborn<Nsim 
+		else! totborn<Nsim
 			prL = junk
 		endif
 		prborn_constpop(2:Tsim) = bN(2:Tsim)/sum(bN(2:Tsim))
-		prborn_constpop(1) = hazborn_constpop(1) 
+		prborn_constpop(1) = hazborn_constpop(1)
 	enddo
 
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !	occupation structure
 	summy = 0.
 	do j=1,nj
@@ -804,7 +804,7 @@ subroutine setparams()
 ! Disability grid
 	forall(i=1:nd) dgrid(i) = i
 
-! Disability depreciation by occupation	
+! Disability depreciation by occupation
 	!occupation-specific factor
 	do j=1,nj
 		occdel(j) =  occ_onet(j,1)
@@ -829,25 +829,25 @@ subroutine setparams()
 		delgrid(1) = 0.5*(dRiskH + dRiskL)
 	endif
 	if(del_by_occ .eqv. .false.) delgrid = 0.
-		
+
 	!Disability Extent-Specific Things
-	!Wage Penalty 
+	!Wage Penalty
 	wd(1) = 0		!Healthy, no penalty
-	wd(2) = -0.097	!Partially Disabled, small penalty	
+	wd(2) = -0.097	!Partially Disabled, small penalty
 	wd(3) = -0.266	!Full Disabled, large penalty
 
 	!DI Acceptance probability for each d,t status
 	xiagecoef = voc_age
 	xi_d1shift = (1491*.603+2211*0.546)/(1491+2211) - (347*.581+752*.655)/(347+752) !differences from Lahiri, Vaughn, Wixon : denial rate for hlth 1,2 vs. 3,4
 	xi_d3shift = (1491*.603+2211*0.546)/(1491+2211) - .484
-	
+
 	! initialize a few starting values
 	xi_d(1) = 0.001!xi_d(2)+xi_d1shift	!
-	xi_d(2) = xi_d(1)-xi_d1shift !xi_d(3)-xi_d3shift 
+	xi_d(2) = xi_d(1)-xi_d1shift !xi_d(3)-xi_d3shift
 	xi_d(3) = xi_d(2)+xi_d3shift !
 
-	
-	
+
+
 	if(xizcoef == 0.) then
 		xizcoef = (0.4_dp - xi_d(3))/0.5_dp !dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
 		xizcoef = 1.1_dp * xizcoef !just and arbitrary adjustment
@@ -884,39 +884,39 @@ subroutine setparams()
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!Make 2-year Markov transition matrices with all wierd invidual stuff
 	!Disability: pid(id,id';i,t) <---indv. type and age specific
-	
+
 	!read in transition matrix
-	
+
 	pid_tmp(1,2:3,1) = Hmat_read(7,1:2)
 	pid_tmp(2,1,1)   = Hmat_read(7,3)
 	pid_tmp(2,3,1)   = Hmat_read(7,4)
 	pid_tmp(3,1:2,1) = Hmat_read(7,5:6)
-	
+
 	do t=2,TT-1
 		k = t
-		if(t .eq. 2) k = t+1 
+		if(t .eq. 2) k = t+1
 		pid_tmp(1,2:3,t) = Hmat_read(k,1:2) + pid_tmp(1,2:3,1)
 		pid_tmp(2,1,t)   = Hmat_read(k,3)   + pid_tmp(2,1,1)
 		pid_tmp(2,3,t)   = Hmat_read(k,4)   + pid_tmp(2,3,1)
 		pid_tmp(3,1:2,t) = Hmat_read(k,5:6) + pid_tmp(3,1:2,1)
 	enddo
-	
+
 	do t=1,TT-1
 		pid_tmp(1,1,t) = 1.d0 - sum(pid_tmp(1,2:3,t))
 		pid_tmp(2,2,t) = 1.d0 - pid_tmp(2,1,t) - pid_tmp(2,3,t)
 		pid_tmp(3,3,t) = 1.d0 - sum(pid_tmp(3,1:2,t))
 	enddo
-	
+
 	pid = 0.
 	! multiply by delgrid (was a 2-year transition matrix)
 	do i=1,TT-1
-	
+
 		pid1 = pid_tmp(:,:,i)
 		if(RAS_pid .eqv. .true.) then
 		! implement RAS method to balance matrix and enforce steady-state levels
 		! this means the row marginals, u_i = 1 \forall i and column marginals v_j
-		
-			
+
+
 			do iter=1,maxiter
 				do k=1,nd
 					r1(k) = ( (1.d0 - PrDeath(k,i))**(tlen) ) /sum(pid1(k,:))
@@ -927,7 +927,7 @@ subroutine setparams()
 					sdec(k,j) = r1(k)*pid1(k,j)
 				enddo
 				enddo
-				
+
 				do k=1,nd
 					s1(k) = PrDage_tp1(k,i)/sum(PrDage(1:nd,i)*sdec(:,k))
 				enddo
@@ -941,37 +941,37 @@ subroutine setparams()
 				if (dabs(sum(r1)/dble(nd)+ sum(s1)/dble(nd) -2._dp) < 1e-7 ) then
 					exit
 				endif
-				
+
 			enddo
 			do k=1,nd
 				pid1(k,:) = pid1(k,:)/sum(pid1(k,:))
 			enddo
 		endif !RAS
-			
+
 		do j=1,ndi
-		
+
 			pid1(1,2) = pid1(1,2) + delgrid(j)*Hmat_read(2,1)
 			pid1(1,3) = pid1(1,3) + delgrid(j)*Hmat_read(2,2)
 			pid1(1,1) = 1._dp-pid1(1,2)-pid1(1,3)
-			
+
 			pid1(2,1) = pid1(2,1) + delgrid(j)*Hmat_read(2,3)
 			pid1(2,3) = pid1(2,3) + delgrid(j)*Hmat_read(2,4)
 			pid1(2,2) = 1._dp-pid1(2,1)-pid1(2,3)
-			
+
 			pid1(3,1) = pid1(3,1) + delgrid(j)*Hmat_read(2,5)
 			pid1(3,2) = pid1(3,2) + delgrid(j)*Hmat_read(2,6)
 			pid1(3,3) = 1._dp-pid1(3,1)-pid1(3,2)
-			
+
 
 		!convert to monthly------------
 			sdec = pid1
 			lwrk = nd*(nd+6)
 			!want to construct right-side eigen vectors into matrix
-						!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI, 
+						!BALANC, JOBVL, JOBVR, SENSE, N , A   , LDA, WR, WI,
 			call dgeevx( 'N'   , 'N'  , 'V'  , 'V'  , nd, sdec, nd , wr, wi, &
 		&	 vl, nd  , vr, nd  , ilo, ihi, scl, abnrm,rconde, rcondv, wrk , lwrk , iwrk , status )
 			!VL, LDVL, VR, LDVR, ILO, IHI, SCALE, ABNRM,RCONDE, RCONDV, WORK, LWORK, IWORK, INFO )
-			
+
 			!replace vl = vr^-1
 			call invmat(vr, vl)
 			!vr = vr*wr^(1/t)
@@ -979,12 +979,12 @@ subroutine setparams()
 				vr(:,t) = vr(:,t)*wr(t)**(1._dp/tlen)
 			enddo
 			call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
-			
+
 			do t=1,nd
 				summy = sum(pid(t,:,j,i) )
 				pid(t,:,j,i) = pid(t,:,j,i)/summy
-			enddo		
-			
+			enddo
+
 			!initialize
 			PrDageDel(:,:,j) = PrDage
 			sdec = pid1
@@ -1004,7 +1004,7 @@ end subroutine setparams
 subroutine settfp()
 
 	integer :: i, k,j,nzblock
-	logical, parameter :: lower= .FALSE. 
+	logical, parameter :: lower= .FALSE.
 	real(8) ::  summy, zcondsig
 	real(8) :: zrhot,zsigt, zcondsigt
 	real(8), allocatable :: piblock(:,:),ergpi1(:,:),ergpi2(:,:)
@@ -1017,7 +1017,7 @@ subroutine settfp()
 	else
 		nzblock = nz
 	endif
-	
+
 	allocate(piblock(nzblock,nzblock))
 	allocate(ergpi1(nzblock,nzblock))
 	allocate(ergpi2(nzblock,nzblock))
@@ -1028,13 +1028,13 @@ subroutine settfp()
 	!reset separation/finding probabilities:
 	do i=1,nz
 		do j=1,nl
-		
+
 			fndgrid(j,i) = (maxval(fndrate(i,:))-minval(fndrate(i,:))) *dble( j-1 )/dble(nl-1) + minval(fndrate(i,:))
 			sepgrid(j,i) = (maxval(seprisk(i,:))-minval(seprisk(i,:))) *dble( j-1 )/dble(nl-1) + minval(seprisk(i,:))
-		
+
 		enddo
 	enddo
-	
+
 
 
 	if( nz>2 ) then !just taking nber probabilities then
@@ -1073,7 +1073,7 @@ subroutine settfp()
 			piz(nz/2+1:nz,1+nz/2:nz) = (1.-1./(dble(Tblock_exp)*tlen))*piz(nz/2+1:nz,1+nz/2:nz) ! go back
 
 			piblock = piz(1:nz/2,1:nz/2)
-			
+
 		else
 			piblock= piz(1:nzblock,1:nzblock)
 			Zzgrid = zgrid(:,1)
@@ -1116,12 +1116,12 @@ subroutine settfp()
 		ergpiz = ergpi1(1,:)
 	endif
 	deallocate(ergpi1,ergpi2,piblock)
-		
+
 end subroutine settfp
 
 
 !****************************************************************************************************************************************!
-!		FUNCTIONS		
+!		FUNCTIONS
 !
 !****************************************************************************************************************************************!
 
@@ -1148,13 +1148,13 @@ subroutine rouwenhorst(N,mu,rho,sigma,grid,PP)
 	real(8), intent(in)	:: mu,rho,sigma
 	real(8), dimension(N,N)	, intent(out)	:: PP
 	real(8), dimension(N)	, intent(out)	:: grid
-	real(8), dimension(N,N)	:: PPZ, PZP, ZPP	
+	real(8), dimension(N,N)	:: PPZ, PZP, ZPP
 	real(8)	:: sigmaz, p, fi
 	integer :: i
 	PP	= 0.0
 	PPZ	= 0.0
 	PZP	= 0.0
-	ZPP	= 0.0		
+	ZPP	= 0.0
 	sigmaz	= sigma / (1.0-rho*rho)**0.5
 	p	= (1.0+rho)/2.0
 	PP(1,1:2)	= (/ p	 , 1.0-p/)
@@ -1177,8 +1177,8 @@ subroutine rouwenhorst(N,mu,rho,sigma,grid,PP)
 end subroutine rouwenhorst
 
 
-	
-	
+
+
 subroutine invmat(A, invA)
 	real(dp), dimension(:,:), intent(in) :: A
 	real(dp), dimension(size(A,1),size(A,2)), intent(out) :: invA
@@ -1215,7 +1215,7 @@ subroutine rand_num_closed(harvest)
 			exit rngbound
 		endif
 	enddo rngbound
-	
+
 
 end subroutine rand_num_closed
 
@@ -1411,13 +1411,13 @@ fn_val = -log(-log(r) )
 END subroutine random_gumbel
 
 FUNCTION brent(ax,bx,cx,func,xmin, funcp,info,tol_in,niter)
-! inputs: 
+! inputs:
 ! 	ax,bx,cx define the domain for the optimum
 !	funcp is a vector of parameters
 ! 	func is a function that takes x and funcp
 ! outputs:
 !	brent is the function value at the optimum
-!	xmin is the arg min 
+!	xmin is the arg min
 ! 	info is the status, 0 for sucess and 1 for max iterations
 
 	IMPLICIT NONE
@@ -1445,7 +1445,7 @@ FUNCTION brent(ax,bx,cx,func,xmin, funcp,info,tol_in,niter)
 	real(8) :: a,b,d,e,etemp,fu,fv,fw,fx,p,q,r,tol1,tol2,u,v,w,x,xm
 	info = 0
 
-	if(present(tol_in) .eqv. .true.) then 
+	if(present(tol_in) .eqv. .true.) then
 		tol = tol_in
 	else
 		tol =sqrt(epsilon(ax))
@@ -1635,40 +1635,38 @@ subroutine hptrend(t,y,phi, yt,yd)
 !  Detrend time series with Hodrick-Prescott method:
 !
 !      sum  (y(t)-yt(t))^2 + phi sum [(yt(t+1)-yt(t))-(yt(t)-yt(t-1))]^2
-!     t=1:T                     t=2:T-1     
+!     t=1:T                     t=2:T-1
 !
-!  for the data in y.   A larger phi results in a smoother trend series.  
+!  for the data in y.   A larger phi results in a smoother trend series.
 !  For quarterly data Hodrick and Prescott (1980) use phi=1600.
 !
 !  Also returned are the series with no trend:  yd =y-yt
 !
-!          
+!
 
 !  Ellen R. McGrattan,  4-23-87
 !  Revised, 5-16-06, ERM
 
 !  References
 !  ----------
-!  [1] Hodrick, Robert J. and Edward C. Prescott, "Post-War U.S. Business 
-!        Cycles: An Empirical Investigation," Working Paper, Carnegie-Mellon 
+!  [1] Hodrick, Robert J. and Edward C. Prescott, "Post-War U.S. Business
+!        Cycles: An Empirical Investigation," Working Paper, Carnegie-Mellon
 !        University, November, 1980.
-!  [2] Prescott, Edward C., "Theory Ahead of Business Cycle Measurement," 
+!  [2] Prescott, Edward C., "Theory Ahead of Business Cycle Measurement,"
 !        QUARTERLY REVIEW, Federal Reserve Bank of Minneapolis, Fall 1986.
-!      
+!
 
 
 	implicit none
 	integer, parameter             :: maxit=100,nm=40
 	integer, intent(in)            :: t
-	integer, dimension(t+1)        :: ip
-	integer, dimension(t)          :: iwork,ju
+!	integer, dimension(t+1)        :: ip
+	integer, dimension(t)          :: iwork
 !	integer, dimension(5*t-6)      :: ia,ja,jlu
 	integer                        :: i,info
 	real(8), intent(in)               :: phi
-	real(8)                           :: eps
 	real(8), dimension(t),intent(in)  :: y
 	real(8), dimension(t),intent(out) :: yd,yt
-	real(8), dimension(t)             :: yn
 	real(8), dimension(t,t)           :: a
 !	real(8), dimension(5*t-6)         :: s,alu
 !	real(8), dimension(t,nm+1)        :: v
@@ -1852,7 +1850,7 @@ FUNCTION splint(x,y,y2,xi)
 	elseif(-xi+x(1) .ge. d) then
 		xhr = x(1)-d
 	endif
-	
+
 	if (d == 0.0) STOP 'bad x input in splint'
 	a=(x(i+1)-xhr)/d
 	b=(xhr-x(i))/d
@@ -1863,7 +1861,7 @@ FUNCTION splint(x,y,y2,xi)
 	elseif( xhr .le. x(1) ) then
 		splint = (y(2)-y(1))/(x(2)-x(1))*(xhr -x(1)) + y(1)
 	endif
-	
+
 END FUNCTION splint
 
 FUNCTION dsplint(x,y,y2,xi)
@@ -1905,7 +1903,7 @@ FUNCTION linint(x,y,xi)
 	i=max(min(locate(x,xi),n-1),1)
 	d=x(i+1)-x(i)
 	xhr = xi
-	if(xi-x(n) .ge. d) xhr = x(n)+d	
+	if(xi-x(n) .ge. d) xhr = x(n)+d
 	IF (d == 0.0) STOP 'bad x input in splint'
 	a=(x(i+1)-xhr)/d
 	b=(xhr-x(i))/d
@@ -1969,18 +1967,18 @@ function bilinint(x,y,f,xiyi)
 	real(8), dimension(:,:), intent(in) :: f
 	real(8), dimension(:), intent(in) :: xiyi
 	real(8) :: fq11,fq21,fq12,fq22, dx,dy
-	
+
 	real(8) :: bilinint
 	integer  :: x1,x2,y1,y2
 
 	if(size(x)/=size(f,1)) stop 'x,f grids not the same length in bilinear interpolation'
 	if(size(y)/=size(f,2)) stop 'y,f grids not the same length in bilinear interpolation'
-	
+
 	x1 = locate(x,xiyi(1))
 	if(x1 .ge. size(x)) then
 		x2 = x1
-		x1 = x1 - 1 
-	else 
+		x1 = x1 - 1
+	else
 		x2 = x1+1
 	endif
 	y1 = locate(y,xiyi(2))
@@ -1990,7 +1988,7 @@ function bilinint(x,y,f,xiyi)
 	else
 		y2 = y1+1
 	endif
-	
+
 	dx = x(x2) - x(x1)
 	dy = y(y2) - y(y1)
 
@@ -1998,7 +1996,7 @@ function bilinint(x,y,f,xiyi)
 	fq21 = f(x2,y1)
 	fq12 = f(x1,y2)
 	fq22 = f(x2,y2)
-	
+
 	bilinint = (fq11*(x(x2)-xiyi(1))*(y(y2)-xiyi(2)) &
 		&+ fq21*(xiyi(1)-x(x1))*(y(y2)-xiyi(2))  &
 		&+ fq12*(x(x2)-xiyi(1))*(xiyi(2)-y(y1))  &
@@ -2011,18 +2009,18 @@ subroutine dbilinint(x,y,f,xiyi,dxdy)
 	real(8), dimension(:,:), intent(in) :: f
 	real(8), dimension(:), intent(in) :: xiyi
 	real(8) :: fq11,fq21,fq12,fq22, dx,dy
-	
+
 	real(8), dimension(2) :: dxdy
 	integer  :: x1,x2,y1,y2
 
 	if(size(x)/=size(f,1)) stop 'x,f grids not the same length in bilinear interpolation'
 	if(size(y)/=size(f,2)) stop 'y,f grids not the same length in bilinear interpolation'
-	
+
 	x1 = locate(x,xiyi(1))
 	if(x1 .ge. size(x)) then
 		x2 = x1
-		x1 = x1 - 1 
-	else 
+		x1 = x1 - 1
+	else
 		x2 = x1+1
 	endif
 	y1 = locate(y,xiyi(2))
@@ -2032,7 +2030,7 @@ subroutine dbilinint(x,y,f,xiyi,dxdy)
 	else
 		y2 = y1+1
 	endif
-	
+
 	dx = x(x2) - x(x1)
 	dy = y(y2) - y(y1)
 
@@ -2040,17 +2038,17 @@ subroutine dbilinint(x,y,f,xiyi,dxdy)
 	fq21 = f(x2,y1)
 	fq12 = f(x1,y2)
 	fq22 = f(x2,y2)
-	
+
 	dxdy(1) = ( -fq11*(y(y2)-xiyi(2)) &
 		&+ fq21*(y(y2)-xiyi(2))  &
 		&- fq12*(xiyi(2)-y(y1))  &
 		&+ fq22*(xiyi(2)-y(y1)))/(dx*dy)
-		
+
 	dxdy(2) = (-fq11*(x(x2)-xiyi(1)) &
 		&+ fq21*(xiyi(1)-x(x1))  &
 		&- fq12*(x(x2)-xiyi(1))  &
-		&+ fq22*(xiyi(1)-x(x1)))/(dx*dy)		
-	
+		&+ fq22*(xiyi(1)-x(x1)))/(dx*dy)
+
 end subroutine
 
 function bilinint_v(x,y,f,xiyi)
@@ -2059,21 +2057,21 @@ function bilinint_v(x,y,f,xiyi)
 	real(8), dimension(:), intent(in) :: f
 	real(8), dimension(:), intent(in) :: xiyi
 	real(8) :: fq11,fq21,fq12,fq22, dx,dy
-	
+
 	real(8) :: bilinint_v
 	integer  :: x1,x2,y1,y2,Nx,Ny
 
 	Nx = size(x)
 	Ny = size(y)
 	if(Nx*Ny/=size(f,1)) stop 'x,f grids not the same length in bilinear interpolation'
-	
-		
-	
+
+
+
 	x1 = locate(x,xiyi(1))
 	if(x1 .ge. size(x)) then
 		x2 = x1
-		x1 = x1 - 1 
-	else 
+		x1 = x1 - 1
+	else
 		x2 = x1+1
 	endif
 	y1 = locate(y,xiyi(2))
@@ -2083,7 +2081,7 @@ function bilinint_v(x,y,f,xiyi)
 	else
 		y2 = y1+1
 	endif
-	
+
 	dx = x(x2) - x(x1)
 	dy = y(y2) - y(y1)
 
@@ -2091,7 +2089,7 @@ function bilinint_v(x,y,f,xiyi)
 	fq21 = f((x2-1)*Ny+y1)
 	fq12 = f((x1-1)*Ny+y2)
 	fq22 = f((x2-1)*Ny+y2)
-	
+
 	bilinint_v = (fq11*(x(x2)-xiyi(1))*(y(y2)-xiyi(2)) &
 		&+ fq21*(xiyi(1)-x(x1))*(y(y2)-xiyi(2))  &
 		&+ fq12*(x(x2)-xiyi(1))*(xiyi(2)-y(y1))  &
@@ -2107,7 +2105,7 @@ function bisplint(x,y,f,coefs,xiyi)
 	real(8), dimension(:), intent(in) :: xiyi
 
 	real(8) :: bisplint
-	
+
 	bisplint = bilinint(x,y,f,xiyi)
 
 end function bisplint
@@ -2140,6 +2138,3 @@ PURE FUNCTION locate(xx,x)
 END FUNCTION locate
 
 end module V0para
-
-
-
