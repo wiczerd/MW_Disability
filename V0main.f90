@@ -388,7 +388,7 @@ module helper_funs
 		enddo
 		write(1,FMT) A(ri,c)
 	enddo
-	write(1,*) " "! trailing space
+!	write(1,*) " "! trailing space
 	close(1)
 
 	end subroutine mat2csv
@@ -419,10 +419,11 @@ module helper_funs
 	do ri=1,r
 		do ci = 1,c-1
 			write(1,FMT, advance='no') A(ri,ci)
+			write(1,'(A1)' , advance='no') ","
 		enddo
 		write(1,FMT) A(ri,c)
 	enddo
-	write(1,*) " "! trailing space
+!	write(1,*) " "! trailing space
 	close(1)
 
 	end subroutine mati2csv
@@ -451,7 +452,7 @@ module helper_funs
 	do ri=1,r
 		write(1,*) A(ri)
 	end do
-	write(1,*) " "! trailing space
+!	write(1,*) " "! trailing space
 	close(1)
 
 	end subroutine vec2csv
@@ -480,7 +481,7 @@ module helper_funs
 		do ri=1,r
 			write(1,*) A(ri)
 		end do
-		write(1,*) " "! trailing space
+!		write(1,*) " "! trailing space
 		close(1)
 
 	end subroutine veci2csv
@@ -5526,7 +5527,7 @@ program V0main
 	! Other
 	!************************************************************************************************!
 		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(2)=1.,err0(2)=1.,cumpid(nd,nd+1,ndi,TT-1)
-		real(dp)	:: jshift_hr(nj)
+		real(dp)	:: jshift_hr(nj),wage_coef_0chng(size(wage_coef))
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct), target :: vfs
@@ -5534,7 +5535,6 @@ program V0main
 		type(hist_struct):: hst
 		type(shocks_struct) :: shk
 		type(moments_struct):: moments_sim
-
 		type(val_pol_shocks_struct) :: vfs_pfs_shk
 	! Timers
 		integer :: c1=1,c2=1,cr=1,cm=1
@@ -5858,9 +5858,9 @@ program V0main
 !~  	enddo
 !~  	enddo
 
-if( dbg_skip .eqv. .false.) then
-	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
-endif
+! if( dbg_skip .eqv. .false.) then
+! 	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
+! endif
 
 
 !****************************************************************************
@@ -5896,13 +5896,15 @@ if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
 	!read in xi, nu
 	open(unit= fread, file="nuxiw_opt.csv")
 		read(fread,*) nu
-
 		read(fread,*) xizcoef
 		read(fread,*) wmean
 	close(fread)
+	cal_on_iter_wgtrend = .false.
+	parvec = (/nu, xizcoef/)
 
-	caselabel = "sol2"
+	caselabel = "base"
  	print *, caselabel, " ---------------------------------------------------"
+
 	call cal_dist(parvec,err0,shk)
  	print *, "error in iniital", err0(1), err0(2)
 	print *, "---------------------------------------------------"
@@ -5912,40 +5914,33 @@ if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
 	call clean_hist(hst)
  	caselabel = "wchng0"
  	print *, caselabel, " ---------------------------------------------------"
- 	w_strchng = .false.
+ ! 	w_strchng = .false. !<- either turn off the structural change completely
+ 	wage_coef_0chng = wage_coef
+	do i=(1+NTpolyT),size(wage_coef)
+		wage_coef_0chng = 0._dp
+	enddo
+	call gen_new_wgtrend(wage_trend,wage_coef_0chng)
  	del_by_occ = .true.
  	demog_dat  = .true.
 	verbose = 1
-
- 	! if(verbose >2) print *, "Simulating the model"
- 	! call sim(vfs, pfs, hst,shk)
- 	! if(verbose >2) print *, "Computing moments"
- 	! call moments_compute(hst,moments_sim,shk)
- 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
-	! print *, "---------------------------------------------------"
-	call dealloc_econ(vfs,pfs,hst)
-	print *, "Running experiments? " , run_experiments
+	print *, "---------------------------------------------------"
 	call cal_dist(parvec,err0,shk)
- 	print *, "error in iniital with wgchng0", err0(1), err0(2)
+ 	print *, "error in iniital with ", caselabel,  " ", err0(1), err0(2)
+	call gen_new_wgtrend(wage_trend,wage_coef)
 	print *, "---------------------------------------------------"
 
  	! without the correlation between delta and occupation
-	call clean_hist(hst)
- 	del_by_occ = .false.
+	del_by_occ = .false.
  	w_strchng = .true.
  	demog_dat = .true.
  	caselabel = "deloc0"
  	print *, caselabel, " ---------------------------------------------------"
  	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
  	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
- 	if(verbose >2) print *, "Simulating the model"
- 	call sim(vfs, pfs, hst,shk)
- 	if(verbose >2) print *, "Computing moments"
- 	call moments_compute(hst,moments_sim,shk)
- 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
- 	print *, "---------------------------------------------------"
+	call cal_dist(parvec,err0,shk)
+	print *, "error in iniital with ", caselabel, " ", err0(1), err0(2)
+	print *, "---------------------------------------------------"
 
-	call clean_hist(hst)
  	del_by_occ = .true.
  	w_strchng = .true.
  	demog_dat = .false.
@@ -5953,26 +5948,20 @@ if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
  	print *, caselabel, " ---------------------------------------------------"
  	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
  	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
- 	if(verbose >2) print *, "Simulating the model"
- 	call sim(vfs, pfs, hst,shk)
- 	if(verbose >2) print *, "Computing moments"
- 	call moments_compute(hst,moments_sim,shk)
- 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	call cal_dist(parvec,err0,shk)
  	print *, "---------------------------------------------------"
 
  	! without either the correlation between delta and occupation or wage trend
  	del_by_occ = .false.
- 	w_strchng = .false.
+ 	w_strchng = .true.
  	demog_dat = .true.
+	call gen_new_wgtrend(wage_trend,wage_coef_0chng)
  	caselabel = "wchng0deloc0"
- 	print *, caselabel, " ---------------------------------------------------"
+	print *, caselabel, " ---------------------------------------------------"
  	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
  	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
- 	if(verbose >2) print *, "Simulating the model"
- 	call sim(vfs, pfs, hst,shk)
- 	if(verbose >2) print *, "Computing moments"
- 	call moments_compute(hst,moments_sim,shk)
- 	if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	call cal_dist(parvec,err0,shk)
+	call gen_new_wgtrend(wage_trend,wage_coef)
  	print *, "---------------------------------------------------"
 
  	! del_by_occ = .true.
