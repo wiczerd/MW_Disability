@@ -33,14 +33,14 @@ else
 	FCFLAGS = $(FGFLAGS)
 	LIBS    = $(GLIBS)
 	FDBGFLAGS = $(FGDBGFLAGS)
-	MPIFC = mpifort
+	MPIFC = mpif90
 endif
 
 V0main: V0main.f90 $(SOLOBJS) V0para.o minpack.o
 	$(MPIFC) $(FCFLAGS) V0main.f90 V0para.o minpack.o $(SOLOBJS) -o V0main.out $(LIBS)
 
 V0dbg: V0main.f90 $(SOLOBJS) V0para.o minpack.o
-	$(FC) $(FDBGFLAGS) V0main.f90 V0para.o minpack.o $(SOLOBJS) -o V0main_dbg.out $(LIBS)
+	$(MPIFC) $(FDBGFLAGS) V0main.f90 V0para.o minpack.o $(SOLOBJS) -o V0main_dbg.out $(LIBS)
 
 V0para.o: V0para.f90
 	$(FC) -c -ffree-line-length-none $(SRCDIR)V0para.f90

@@ -122,6 +122,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		PrDageDel(nd,TT,ndi), &	!Ergodic distribution of each D at each Age and Delta (implied by pid)
 		PrDeath(nd,TT),&	!Probability of death during work-life
 !
+		tr_decls(11),& !0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1
+!
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
 		wage_trend(Tsim,nj),&!trend in wages
 		wage_lev(nj),&		!occupation-specific differences in wage-level
@@ -243,7 +245,7 @@ subroutine setparams()
 
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(31,TT), maxADL_read(16),avgADL, &
+	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(31,TT), maxADL_read(16), &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
 		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(31), &
 		& wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(22)
@@ -252,7 +254,7 @@ subroutine setparams()
 
 	real(8) :: Hdist_read(5,nd+1),Hmat_read(7,9)
 
-	real(8) :: agein1,ageout1,agein2,ageout2,agein3,ageout3,bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21,d1,d2,d3
+	real(8) :: bornin,p1,p2,p3,p1p,p2p,p3p,junk,pi21
 	real(8) :: pNy,pNm,Ny,Nm,dy,dm, Nbar,totborn,prH,prL, bN(Tsim)
 
 	real(8) :: wr(nd),wi(nd),vl(nd,nd),vr(nd,nd),abnrm,rcondv(nd),scl(nd),sdec(nd,nd),rconde(nd),wrk(nd*(nd+6))
@@ -538,7 +540,12 @@ subroutine setparams()
 		wage_lev = occwg_lev
 	endif
 	wage_trend = occwg_trend
-
+	!initialize tr_decls
+	tr_decls(1) = minval(wage_trend)
+	tr_decls(11)= maxval(wage_trend)
+	do i=2,10
+		tr_decls(i) = dble(i-1)/10._dp*(tr_decls(11)-tr_decls(1))
+	enddo
 
 	!Wage-trend grid-setup
 	trgrid(1) = minval(occwg_trend)-.2_dp*abs(minval(occwg_trend))
@@ -1787,7 +1794,7 @@ subroutine spline(x,y,y2,yp1,ypn)
 	REAL(8), INTENT(IN), OPTIONAL :: yp1,ypn
 	REAL(8), DIMENSION(size(x)-1) :: u
 	real(8) :: p,qn,si,un
-	INTEGER :: n,i,k,info
+	INTEGER :: n,i,k
 	n=size(x)
 	IF (size(y)/=n .or. size(y2)/=n) THEN
 		PRINT *, 'spline: x,y and y2 must be of the same size'

@@ -222,7 +222,8 @@ module helper_funs
 		real(dp), intent(in):: trin
 		integer, intent(in):: idin,itin
 		real(dp), optional :: hlthprob
-		real(dp) :: xifunH,xifunV,xifun, hlthfrac
+		real(dp) :: xifunH,xifunV,xifun, hlthfrac,trqtl
+		integer :: trqtl_L, trqtl_H
 
 		!stage 1-3
 		xifunH = xi_d(idin)
@@ -230,10 +231,16 @@ module helper_funs
 		xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
 
 		!vocational stages 4-5
+		trqtl_L = max(locate(tr_decls,trin),1)
+		trqtl_H = min(size(tr_decls), trqtl_L+1)
+		trqtl = (trin -tr_decls(trqtl_L))/(tr_decls(trqtl_H)-tr_decls(trqtl_L))*dble(trqtl_H-1)/10._dp &
+		 		& + dble(trqtl_L-1)/10._dp
+		trqtl = min(max(trqtl,0._dp),1._dp)
 		if(itin>=(TT-2)) then
-			xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef*(1.+xiagecoef)
+			!xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef*(1.+xiagecoef)
+			xifunV =  (-trqtl)*xizcoef*(1.+xiagecoef)
 		else
-			xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef
+			xifunV =  (-trqtl)*xizcoef
 		endif
 		!adjust for time aggregation in second stage?
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
@@ -2648,14 +2655,14 @@ module sim_hists
 		deallocate(bdayseed)
 	end subroutine draw_status_innov
 
-	subroutine draw_alit(al_it,al_it_int, seed0, success)
+	subroutine draw_alit(al_it,al_int_it, seed0, success)
 	! draws alpha shocks and idices on the alpha grid (i.e at the discrete values)
 		implicit none
 
 		integer, intent(in) :: seed0
 		integer, intent(out),optional :: success
 		real(dp), dimension(:,:) :: al_it
-		integer, dimension(:,:) :: al_it_int
+		integer, dimension(:,:) :: al_int_it
 		integer :: ss=1, Ndraw, alfgrid_int, t,m,i,k
 		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i,alf_i
 		real(dp) :: alfcondsig,alfrhot,alfsigt,alfcondsigt
@@ -2726,7 +2733,7 @@ module sim_hists
 					alfgrid_int = max(min(alfgrid_int,nal),1)
 					if(t>=1) al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
 				endif
-				if(t>=1) al_it_int(i,t) = alfgrid_int
+				if(t>=1) al_int_it(i,t) = alfgrid_int
 			enddo
 		enddo
 		if(success > 0.2*Ndraw*Tsim)  success = success
@@ -2997,11 +3004,11 @@ module sim_hists
 
 	end subroutine set_age
 
-	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it,al_it_int, seed0, success)
+	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it,al_int_it, seed0, success)
 
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
-		integer,intent(in) :: age_it(:,:),al_it_int(:,:)
+		integer,intent(in) :: age_it(:,:),al_int_it(:,:)
 		integer, allocatable :: bdayseed(:)
 		integer,intent(out) :: drawi_ititer(:,:),drawt_ititer(:,:)
 		integer :: i,it,id,m,ss=1,drawt,drawi,ndraw,Ncols, seedi,brn_yr(Nsim)
@@ -3044,7 +3051,7 @@ module sim_hists
 					drawi = max(1,idnint(junk*Nsim))
 					call random_number(junk)
 					drawt = max(1,idnint(junk*Tsim))
-					if( (age_it(drawi,drawt) .eq. age_it(i,it)) .and. (al_it_int(drawi,drawt) .eq. al_it_int(i,it)) ) then
+					if( (age_it(drawi,drawt) .eq. age_it(i,it)) .and. (al_int_it(drawi,drawt) .eq. al_int_it(i,it)) ) then
 						drawi_ititer(i,id) = drawi
 						drawt_ititer(i,id) = drawt
 						exit ageloop
@@ -3233,7 +3240,7 @@ module sim_hists
 		integer, pointer     :: z_jt_macroint(:)! shocks to be drawn
 		real(8), pointer     :: z_jt_panel(:,:)! shocks to be drawn
 
-		integer, pointer     :: al_it_int(:,:)! integer valued shocks
+		integer, pointer     :: al_int_it(:,:)! integer valued shocks
 		real(dp), pointer    :: occgrow_jt(:,:), occshrink_jt(:,:), occsize_jt(:,:)
 		real(dp), pointer    :: a_it(:,:) 	! assets
 		real(dp), pointer    ::	al_it(:,:)	! individual shocks
@@ -3331,7 +3338,7 @@ module sim_hists
 		dead_draw   => shk%dead_draw
 		j_i         => shk%j_i
 		al_it       => shk%al_hist
-		al_it_int	=> shk%al_int_hist
+		al_int_it	=> shk%al_int_hist
 		age_it 	    => shk%age_hist
 		born_it	    => shk%born_hist
 		status_it_innov => shk%status_it_innov
@@ -3370,7 +3377,7 @@ module sim_hists
 		app_dif_it       = 0.
 		hst%hlth_voc_hist= 0
 		Ncol = size(drawi_ititer,2)
-		al_int_it_endog  = al_it_int
+		al_int_it_endog  = al_int_it
 		al_it_endog      = al_it
 		wtr_it = 0.
 		trX_it = 0.
@@ -3482,9 +3489,9 @@ module sim_hists
 					endif
 					if( (iter==1) .or. ii >=Ncol ) then
 						status_it(i,it) = 1
-						if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_it_int(i,it) ==1 ) then
+						invol_un = 0
+						if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_int_it(i,it) ==1 ) then
 							status_it(i,it) = 2
-
 						endif
 						d_it(i,it) = d_hr
 						brn_drawi_drawt(i,it,:) = (/i,it/)
@@ -3599,7 +3606,6 @@ module sim_hists
 						e_hr 	= e_it(i,it)
 						ai_hr 	= a_it_int(i,it)
 						status_hr = status_it(i,it)
-
 					endif !if make decisions when first born?
 
 					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
@@ -3618,8 +3624,6 @@ module sim_hists
 					endif
 
 					if(dead .eqv. .true.) then
-							!print *, 'DEAD!!!'
-							!age_it(i,it) = -1 !if I change this, then I have to reset for the next iteration
 							a_it(i,it) = 0.
 							a_it_int(i,it) = 1
 							d_it(i,it) = 1
@@ -3646,7 +3650,7 @@ module sim_hists
 					endif
 					!set the idiosyncratic income state
 					al_hr	= al_it(i,it)
-					ali_hr	= al_it_int(i,it)
+					ali_hr	= al_int_it(i,it)
 					if( (born_it(i,it) .eq. 1) .or. (it .eq. 1 .and. age_it(i,it) .gt. 0) ) then
 						drawi = brn_drawi_drawt(i,it,1)
 						drawt = brn_drawi_drawt(i,it,2)
@@ -3655,11 +3659,18 @@ module sim_hists
 						if(ali_hr .eq. 1) then
 							invol_un = 1
 							al_last_invol = al_it(drawi,drawt) ! have to set this to something. Given persistence, it's likely true
+							! status_hr = 2
+							! if( status_it_innov(drawi,drawt)<1._dp - (1._dp - fnd_hr(2))**6 ) then
+							! 	status_hr = 3
+							! endif
 						endif
 					endif
-					if(invol_un .eq. 1 )then
+					if((invol_un .eq. 1) .and. (status_hr .ne. 1))then !have already been born
 						al_hr	= alfgrid(1)
 						ali_hr	= 1
+					else
+						al_hr	= al_it(i,it)
+						ali_hr	= al_int_it(i,it)
 					endif
 					if( w_strchng .eqv. .true.) then
 						wtr_it(i,it) = wage_trend(it,j_hr)
@@ -3756,7 +3767,6 @@ module sim_hists
 									wage_hr	= wage(wage_lev(j_hr),al_last_invol,d_hr,z_hr,age_hr)
 									if(w_strchng .eqv. .true.) &
 										& wage_hr	= wage(wage_lev(j_hr) + wtr_it(i,it),al_last_invol,d_hr,z_hr,age_hr)
-
 									if(status_it_innov(i,it) < sepi) then !separated involunarily
 										ali_hr = 1
 										invol_un = 1
@@ -3770,32 +3780,31 @@ module sim_hists
 									status_tmrw = 1
 									status_it(i,it) = 1
 								endif
-
 							case(2)
 								! unemployed, may stay unemployed or become long-term unemployed
 								if(status_it_innov(i,it) <=pphi) then
 									status_tmrw = 3
 									status_it(i,it) = 2
-									if( invol_un ==1 ) then
-										ali_hr = 1
-										al_hr = alfgrid(ali_hr)
-										iiwt = 1.
-										iiH = 2
-									else
-										ali_hr	= al_it_int(i,it)
-										al_hr = al_it(i,it)
-									endif
+									! if( invol_un ==1 ) then
+									! 	ali_hr = 1
+									! 	al_hr = alfgrid(ali_hr)
+									! 	iiwt = 1.
+									! 	iiH = 2
+									! else
+									! 	ali_hr	= al_int_it(i,it)
+									! 	al_hr = al_it(i,it)
+									! endif
 								elseif( (invol_un == 1)  .and. (fndarrive_draw(i,it) > fndi)) then
 								!voluntary or involuntary?
-									ali_hr = 1
-									al_hr = alfgrid(ali_hr)
-									iiwt = 1.
-									iiH = 2
+									! ali_hr = 1
+									! al_hr = alfgrid(ali_hr)
+									! iiwt = 1.
+									! iiH = 2
 									status_it(i,it) = 2
 									status_tmrw =2
 								elseif((invol_un == 1) .and. (fndarrive_draw(i,it) <= fndi)) then
 									invol_un = 0
-									ali_hr	= al_it_int(i,it)
+									ali_hr	= al_int_it(i,it)
 									al_hr = al_it(i,it)
 									! found a job!
 									status_it(i,it)= 1
@@ -3812,26 +3821,27 @@ module sim_hists
 								!lfstatus updates
 								if( (invol_un == 1)  .and. (fndarrive_draw(i,it) > lrho*fndi)) then
 								!voluntary or involuntary?
-									ali_hr = 1
-									al_hr = alfgrid(ali_hr)
-									iiwt = 1.
-									iiH = 2
+									! ali_hr = 1
+									! al_hr = alfgrid(ali_hr)
+									! iiwt = 1.
+									! iiH = 2
 									status_it(i,it) = 3
 									status_tmrw =3
-								elseif((invol_un == 1) .and. (fndarrive_draw(i,it) <= lrho*fndi) .and. work_dif_hr >0 ) then
+								elseif((invol_un == 1) .and. (fndarrive_draw(i,it) <= lrho*fndi)) then
 									invol_un = 0
-									ali_hr	= al_it_int(i,it)
+									ali_hr	= al_int_it(i,it)
 									al_hr = al_it(i,it)
 									! found a job!
 									status_it(i,it)= 3
 									status_tmrw = 1
-								elseif( work_dif_hr < 0 ) then !voluntary unemployment (implies invol_un ==0)
-									status_it(i,it) = 3
-									status_tmrw =3
 								else ! invol_un != 1 and work_dif>0
 									status_tmrw = 1
 									status_it(i,it) = 3
 									status_hr = 3
+								endif
+								if( work_dif_hr < 0 ) then !voluntary unemployment (implies invol_un ==0)
+									status_it(i,it) = 3
+									status_tmrw =3
 								endif
 
 								!evaluate application choice
@@ -4035,7 +4045,6 @@ module sim_hists
 						if(it<Tsim) &
 						&	status_it(i,it+1) = status_hr
 					endif
-
 					al_int_it_endog(i,it) = ali_hr
 					al_it_endog(i,it)     = al_hr
 					if(status_hr>1) then
@@ -4117,7 +4126,7 @@ module sim_hists
 							enddo
 						endif
 
-					endif
+					endif !t<Tsim
 				else !age_it(i,it) <= 0, they've not been born or they are dead
 					a_it(i,it) = 0.
 					a_it_int(i,it) = 1
@@ -4129,6 +4138,15 @@ module sim_hists
 				enddo !1,Tsim
 			enddo! 1,Nsim
 			!$OMP  end parallel do
+
+			junk = 0._dp
+			do i=1,Nsim
+				do it=1,Tsim
+					if( al_int_it_endog(i,it) == 1 .and. status_it(i,it) == 1 ) &
+					&	junk = junk+1._dp
+				enddo
+			enddo
+
 			if(print_lev >=3)then
 				call vec2csv(val_hr_it,"val_hr.csv")
 				call mat2csv (e_it,"e_it.csv")
@@ -4284,6 +4302,7 @@ module sim_hists
 					call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(status_it,"status_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(d_it,"d_it_hist"//trim(caselabel)//".csv")
+					call mati2csv (shk%age_hist,"age_ it_hist"//trim(caselabel)//".csv")
 					call veci2csv(j_i,"j_i_hist"//trim(caselabel)//".csv")
 					call veci2csv(z_jt_macroint,"z_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (occsize_jt,"occsize_jt_hist"//trim(caselabel)//".csv")
@@ -5225,6 +5244,7 @@ module find_params
 					!test it for being too far away:
 					call dfovec(nopt,nopt,x0,v_err)
 					if( (abs(v_err(1)) > 4._dp) .or. (abs(v_err(2))>0.99_dp) ) then
+						! exit
 						do i=1,nopt
 							call random_number(x0(i))
 							x0(i) = x0(i)*( xu(i)-xl(i) ) + xl(i)
@@ -5253,8 +5273,9 @@ module find_params
 						&	rhobeg,rhoend,iprint,200,wspace,nopt)
 
 						call dfovec(nopt,nopt,x0,v_err)
+						exit
 					endif
-				enddo
+				enddo !j=1,5 to loop over starting points
 
 				err0 = sum( v_err**2 )
 				node_fopts(dd) = err0
@@ -5271,7 +5292,7 @@ module find_params
 				call vec2csv(wage_coef, "wage_coef"// rank_str //".csv")
 				call mat2csv(fndgrid*fndrt_mul, "fndgrid_opt"// rank_str //".csv")
 				call mat2csv(sepgrid*seprt_mul, "sepgrid_opt"// rank_str //".csv")
-			enddo
+			enddo ! dd = 1,nstartpn
 			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, world_fopts,&
 			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
 			call mpi_allgather( node_xopts, nopt*nstartpn, MPI_DOUBLE, world_xopts,&
@@ -5346,6 +5367,9 @@ module find_params
 		call mat2csv(fndgrid, "fndgrid_opt.csv")
 		call mat2csv(sepgrid, "sepgrid_opt.csv")
 		call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt.csv")
+
+		call vec2csv(fopt_hist,"fopt_hist.csv")
+		call mat2csv(xopt_hist,"xopt_hist.csv")
 
 		deallocate(wspace,node_fopts,node_xopts,world_fopts,world_xopts)
 		deallocate(world_internalopt,node_internalopt)
@@ -5528,6 +5552,7 @@ program V0main
 	!************************************************************************************************!
 		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app, param0(2)=1.,err0(2)=1.,cumpid(nd,nd+1,ndi,TT-1)
 		real(dp)	:: jshift_hr(nj),wage_coef_0chng(size(wage_coef))
+		real(dp), allocatable :: tr_hist_vec(:)
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct), target :: vfs
@@ -5546,8 +5571,7 @@ program V0main
 		integer  :: nodei,ierr
 !		external :: cal_dist_nloptwrap
 
-
-	include 'nlopt.f'
+!	include 'nlopt.f'
 
 	moments_sim%alloced = 0
 
@@ -5575,9 +5599,6 @@ program V0main
 		print *, "run experiments", run_experiments
 	endif
 
-	print *, "Nsim,Tsim", Nsim,Tsim
-	print *, "setting wmean to 0.88"
-	wmean = 0.878_dp
 	caselabel = ""
 	agrid(1) = .05*(agrid(1)+agrid(2))
 	if(print_lev >= 2) then
@@ -5701,6 +5722,7 @@ program V0main
 	junk = junk/dble(2*nd*nal*(TT-1))
 	!util_const = - junk - util_const
 
+	allocate(tr_hist_vec(Nsim*Tsim))
 
 	call alloc_shocks(shk)
 	call draw_shocks(shk)
@@ -5797,12 +5819,15 @@ program V0main
 		if( run_experiments .eqv. .false. ) then
 			wmean = 0._dp
 			junk = 0._dp
+			ii =1
 			do i=1,Nsim
 				do it=1,Tsim
 					wagehere = hst%wage_hist(i,it)
 					if( hst%status_hist(i,it)==1) then
 						wmean = wagehere + wmean
 						junk = junk+1.
+						tr_hist_vec(ii) = wage_trend(it,shk%j_i(i))
+						ii = ii+1
 					endif
 				enddo
 			enddo
@@ -5811,6 +5836,13 @@ program V0main
 		print *, "average wage:", wmean
 		do i=1,ne
 			egrid(i) = egrid(i)*wmean
+		enddo
+		!fill in tr_decls
+		call quicksort(tr_hist_vec,1,ii-1)
+		tr_decls(1) = tr_hist_vec(2)
+		tr_decls(11)= tr_hist_vec(ii-2)
+		do i =2,10
+			tr_decls(i) = tr_hist_vec((i*ii-ii)/10 )
 		enddo
 
 		if(run_experiments .eqv. .false.) then
@@ -5858,11 +5890,17 @@ program V0main
 !~  	enddo
 !~  	enddo
 
+
 ! if( dbg_skip .eqv. .false.) then
+! 	call system_clock(count_rate=cr)
+! 	call system_clock(count_max=cm)
+! 	call system_clock(c1)
+!
 ! 	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
+!
+! 	call system_clock(c2)
+! 	if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
 ! endif
-
-
 !****************************************************************************
 !   Now run some experiments:
 if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
@@ -5899,10 +5937,13 @@ if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
 		read(fread,*) xizcoef
 		read(fread,*) wmean
 	close(fread)
+
+	call dealloc_econ(vfs,pfs,hst)
 	cal_on_iter_wgtrend = .false.
 	parvec = (/nu, xizcoef/)
+	call gen_new_wgtrend(wage_trend,wage_coef)
 
-	caselabel = "base"
+	caselabel = ""
  	print *, caselabel, " ---------------------------------------------------"
 
 	call cal_dist(parvec,err0,shk)
@@ -5911,15 +5952,15 @@ if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
 
 
 	! without wage trend
-	call clean_hist(hst)
- 	caselabel = "wchng0"
+	caselabel = "wchng0"
  	print *, caselabel, " ---------------------------------------------------"
  ! 	w_strchng = .false. !<- either turn off the structural change completely
  	wage_coef_0chng = wage_coef
 	do i=(1+NTpolyT),size(wage_coef)
-		wage_coef_0chng = 0._dp
+		wage_coef_0chng(i)= 0._dp
 	enddo
 	call gen_new_wgtrend(wage_trend,wage_coef_0chng)
+	if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
  	del_by_occ = .true.
  	demog_dat  = .true.
 	verbose = 1
@@ -6010,7 +6051,7 @@ endif
 !~  	!****************************************************************************!
 	! IF you love something....
 	!****************************************************************************!
-
+	deallocate(tr_hist_vec)
 !~ 	call nlo_destroy(calopt)
 	call dealloc_shocks(shk)
 
