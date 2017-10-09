@@ -5339,6 +5339,16 @@ module find_params
 					wage_coef = internalopt_hist(1:size(wage_coef),i)
 					fndrt_mul = internalopt_hist(1+size(wage_coef),i)
 					seprt_mul = internalopt_hist(2+size(wage_coef),i)
+					!output global wage_trend  in optimal
+					call gen_new_wgtrend(wage_trend, wage_coef)
+					fndgrid = fndgrid*fndrt_mul
+					sepgrid = sepgrid*seprt_mul
+					!print them all
+					call mat2csv(wage_trend, "wage_trend_opt.csv")
+					call vec2csv(wage_coef, "wage_coef_opt.csv")
+					call mat2csv(fndgrid*fndrt_mul, "fndgrid_opt.csv")
+					call mat2csv(sepgrid*seprt_mul, "sepgrid_opt.csv")
+					call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt.csv")
 				endif
 			enddo
 			EW = W*dble(nstarts-1)/max( dble(nstarts) - W-2 ,1._dp)
@@ -5347,26 +5357,8 @@ module find_params
 			if( EW < W + 0.5_dp ) then
 				exit
 			endif
-			!output global wage_trend  in optimal
-			call gen_new_wgtrend(wage_trend, wage_coef)
-			!print them all
-			call mat2csv(wage_trend, "wage_trend_opt.csv")
-			call vec2csv(wage_coef, "wage_coef_opt.csv")
-			call mat2csv(fndgrid*fndrt_mul, "fndgrid_opt.csv")
-			call mat2csv(sepgrid*seprt_mul, "sepgrid_opt.csv")
-			call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt.csv")
-		enddo
 
-		!set global wage_trend to that in optimal
-		call gen_new_wgtrend(wage_trend, wage_coef)
-		fndgrid = fndgrid*fndrt_mul
-		sepgrid = sepgrid*seprt_mul
-		!print them all
-		call mat2csv(wage_trend, "wage_trend_opt.csv")
-		call vec2csv(wage_coef, "wage_coef_opt.csv")
-		call mat2csv(fndgrid, "fndgrid_opt.csv")
-		call mat2csv(sepgrid, "sepgrid_opt.csv")
-		call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt.csv")
+		enddo
 
 		call vec2csv(fopt_hist,"fopt_hist.csv")
 		call mat2csv(xopt_hist,"xopt_hist.csv")
@@ -5816,23 +5808,21 @@ program V0main
 		call moments_compute(hst,moments_sim,shk)
 		if(verbose >=1) print *, "DI rate" , moments_sim%avg_di
 !	set mean wage:
-		if( run_experiments .eqv. .false. ) then
-			wmean = 0._dp
-			junk = 0._dp
-			ii =1
-			do i=1,Nsim
-				do it=1,Tsim
-					wagehere = hst%wage_hist(i,it)
-					if( hst%status_hist(i,it)==1) then
-						wmean = wagehere + wmean
-						junk = junk+1.
-						tr_hist_vec(ii) = wage_trend(it,shk%j_i(i))
-						ii = ii+1
-					endif
-				enddo
+		wmean = 0._dp
+		junk = 0._dp
+		ii =1
+		do i=1,Nsim
+			do it=1,Tsim
+				wagehere = hst%wage_hist(i,it)
+				if( hst%status_hist(i,it)==1) then
+					wmean = wagehere + wmean
+					junk = junk+1.
+					tr_hist_vec(ii) = wage_trend(it,shk%j_i(i))
+					ii = ii+1
+				endif
 			enddo
-			wmean = wmean/junk
-		endif
+		enddo
+		wmean = wmean/junk
 		print *, "average wage:", wmean
 		do i=1,ne
 			egrid(i) = egrid(i)*wmean
