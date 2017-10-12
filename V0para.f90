@@ -540,12 +540,6 @@ subroutine setparams()
 		wage_lev = occwg_lev
 	endif
 	wage_trend = occwg_trend
-	!initialize tr_decls
-	tr_decls(1) = minval(wage_trend)
-	tr_decls(11)= maxval(wage_trend)
-	do i=2,10
-		tr_decls(i) = dble(i-1)/10._dp*(tr_decls(11)-tr_decls(1))
-	enddo
 
 	!Wage-trend grid-setup
 	trgrid(1) = minval(occwg_trend)-.2_dp*abs(minval(occwg_trend))
@@ -561,6 +555,13 @@ subroutine setparams()
 		trgrid(1) = 0.
 		tri0 = 1
 	endif
+
+	!initialize tr_decls
+	tr_decls(1) = minval(trgrid)
+	tr_decls(11)= maxval(trgrid)
+	do i=2,10
+		tr_decls(i) = dble(i-1)/10._dp*(tr_decls(11)-tr_decls(1))
+	enddo
 
 	!read these numberrs in already
 	seprisk = 0._dp

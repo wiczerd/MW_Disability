@@ -222,7 +222,7 @@ module helper_funs
 		real(dp), intent(in):: trin
 		integer, intent(in):: idin,itin
 		real(dp), optional :: hlthprob
-		real(dp) :: xifunH,xifunV,xifun, hlthfrac,trqtl
+		real(dp) :: xifunH,xifunV,xifun, hlthfrac,trqtl,triwt
 		integer :: trqtl_L, trqtl_H
 
 		!stage 1-3
@@ -233,14 +233,14 @@ module helper_funs
 		!vocational stages 4-5
 		trqtl_L = max(locate(tr_decls,trin),1)
 		trqtl_H = min(size(tr_decls), trqtl_L+1)
-		trqtl = (trin -tr_decls(trqtl_L))/(tr_decls(trqtl_H)-tr_decls(trqtl_L))*dble(trqtl_H-1)/10._dp &
-		 		& + dble(trqtl_L-1)/10._dp
+		triwt   = max(min( (trin -tr_decls(trqtl_L))/(tr_decls(trqtl_H)-tr_decls(trqtl_L)),1._dp),0._dp)
+		trqtl = triwt*dble(trqtl_H-1)/10._dp + (1._dp-triwt)*dble(trqtl_L-1)/10._dp
 		trqtl = min(max(trqtl,0._dp),1._dp)
 		if(itin>=(TT-2)) then
 			!xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef*(1.+xiagecoef)
-			xifunV =  (-trqtl)*xizcoef*(1.+xiagecoef)
+			xifunV =  (1._dp-trqtl)*xizcoef*(1.+xiagecoef)
 		else
-			xifunV =  (-trqtl)*xizcoef
+			xifunV =  (1._dp-trqtl)*xizcoef
 		endif
 		!adjust for time aggregation in second stage?
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
@@ -4986,6 +4986,9 @@ module find_params
 
 		! set up economy and solve it
 		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
+		!be sure tr_decls is actually on the domain of trgrid
+		tr_decls = ( (tr_decls-minval(tr_decls))/(maxval(tr_decls)-minval(tr_decls)) &
+				& ) * ( maxval(wage_trend)-minval(wage_trend)) + minval(wage_trend)
 
 		if(verbose >2) print *, "Solving the model"
 		call sol(vfs,pfs)
@@ -5196,7 +5199,7 @@ module find_params
 		allocate(world_internalopt(  nnode*nstartpn*ninternalopt))
 		dfbols_nuxi_trproc = 1
 
-		rhobeg = minval( xu - xl )/nnode
+		rhobeg = minval( xu - xl )/dble(max(nnode,2))
 		rhoend = rhobeg/100._dp
 
 		fval = 0._dp
@@ -5207,6 +5210,9 @@ module find_params
 			!x0hist(:,d) = draw
 			do dd=1,nopt
 				x0hist(dd,d) = xl(dd)+draw(dd)*(xu(dd)-xl(dd))
+				if(nnode <= 1 .and. d==1) then
+					x0hist(dd,d) = xl(dd)+0.5_dp*(xu(dd)-xl(dd))
+				endif
 			enddo
 		enddo
   	 	verbose=1
@@ -5834,6 +5840,7 @@ program V0main
 		do i =2,10
 			tr_decls(i) = tr_hist_vec((i*ii-ii)/10 )
 		enddo
+		call vec2csv(tr_decls,"tr_decls.csv")
 
 		if(run_experiments .eqv. .false.) then
 			call dealloc_econ(vfs,pfs,hst)
@@ -5881,19 +5888,21 @@ program V0main
 !~  	enddo
 
 
-! if( dbg_skip .eqv. .false.) then
-! 	call system_clock(count_rate=cr)
-! 	call system_clock(count_max=cm)
-! 	call system_clock(c1)
-!
-! 	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
-!
-! 	call system_clock(c2)
-! 	if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
-! endif
+if( dbg_skip .eqv. .false.) then
+	call system_clock(count_rate=cr)
+	call system_clock(count_max=cm)
+	call system_clock(c1)
+
+	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
+
+	call system_clock(c2)
+	if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
+endif
 !****************************************************************************
 !   Now run some experiments:
 if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
+	print_lev = 2
+	verbose = 2
 	!read in the optimal inner stuff:
 	!wage_trend <- "wage_trend_opt.csv"
 	!wage_coef <- "wage_coef_opt.csv")
