@@ -1,8 +1,8 @@
 ! V0main.f90
 
 !************************************************************************************************!
-! @ Amanda Michaud, v1: 10/6/2014; current: 10/31/2014
-! @ David Wiczer, v2: 03/31/2015
+! @ Amanda Michaud, v1: 10/6/2014
+! @ David Wiczer, v2: 10/17/2017
 !-----------------------------------------------------
 !************************************************************************************************!
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -lnlopt -o V0main.out
@@ -237,10 +237,11 @@ module helper_funs
 		trqtl = triwt*dble(trqtl_H-1)/10._dp + (1._dp-triwt)*dble(trqtl_L-1)/10._dp
 		trqtl = min(max(trqtl,0._dp),1._dp)
 		if(itin>=(TT-2)) then
-			!xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef*(1.+xiagecoef)
-			xifunV =  (1._dp-trqtl)*xizcoef*(1.+xiagecoef)
+			xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef*(1.+xiagecoef)
+			!xifunV =  (1._dp-trqtl)*xizcoef*(1.+xiagecoef)
 		else
-			xifunV =  (1._dp-trqtl)*xizcoef
+			xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef
+			!xifunV =  (1._dp-trqtl)*xizcoef
 		endif
 		!adjust for time aggregation in second stage?
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
@@ -1008,7 +1009,6 @@ module model_data
 			!make the award rates annual:
 			moments_sim%init_diaward = 1._dp-(1._dp-moments_sim%init_diaward)**(tlen)
 			init_diaward_discr = 1._dp-(1._dp-init_diaward_discr)**(tlen)
-
 		else
 			moments_sim%init_diaward = 0._dp
 			moments_sim%init_di= 0._dp
@@ -1322,9 +1322,6 @@ module sol_val
 		if(Vapp <-1e5) then
 			write(*,*) "ruh roh!"
 			write(*,*) "Vapp, aapp: ", Vapp, aapp
-!~ 			pause
-!~ 			write(*,*) "VD: ",id,ie,iaa,it
-!~ 			write(*,*) "VN: ",il,itr,idi,ialal,id,ie,iaa,izz,it
 		endif
 
 		!******************************************************
@@ -2771,8 +2768,8 @@ module sim_hists
 					enddo
 				enddo
 			else
-			jshock_ij = 0._dp
-			!do periods 2:Tsim
+				jshock_ij = 0._dp
+				!do periods 2:Tsim
 				do it=2,Tsim
 					do ij=1,nj
 						Njcumdist(ij+1,it) = occpr_trend(it,ij) + Njcumdist(ij,it)
@@ -2980,9 +2977,6 @@ module sim_hists
 					elseif(bn_i == 1) then
 						born_it(i,it) = 0
 						age_ct = age_ct+1
-						!if(age_it(i,it-1)==1) age_jump = nint(youngD)*itlen - 1
-						!if(age_it(i,it-1) >1) age_jump = nint(oldD)*itlen - 1
-						!if((age_ct >= age_jump ) .and. (age_it(i,it-1) < TT) ) then
 						if((age_draw(i,it+3) <1.- ptau( age_it(i,it-1) ) ) .and. (age_it(i,it-1) < TT) ) then
 							age_it(i,it) = age_it(i,it-1)+1
 							age_ct = 0
@@ -4302,7 +4296,7 @@ module sim_hists
 					call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(status_it,"status_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(d_it,"d_it_hist"//trim(caselabel)//".csv")
-					call mati2csv (shk%age_hist,"age_ it_hist"//trim(caselabel)//".csv")
+					call mati2csv (shk%age_hist,"age_it_hist"//trim(caselabel)//".csv")
 					call veci2csv(j_i,"j_i_hist"//trim(caselabel)//".csv")
 					call veci2csv(z_jt_macroint,"z_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (occsize_jt,"occsize_jt_hist"//trim(caselabel)//".csv")
@@ -5033,8 +5027,6 @@ module find_params
 		call moments_compute(hst,moments_sim,shk)
 		if(verbose >1) print *, "DI rate" , moments_sim%avg_di
 
-
-
 		condstd_tsemp = 0.
 		do ij = 1,nj
 			condstd_tsemp = moments_sim%ts_emp_coefs(ij+1) *occsz0(ij)+ condstd_tsemp
@@ -5090,7 +5082,6 @@ module find_params
 		verbose_old = verbose
 		print_lev = 0
 		verbose = 1
-
 		!if(smth_dicont .le. 20._dp) smth_dicont = smth_dicont*1.05_dp
 
 		if(verbose_old >=1) print *, "test parameter vector ", paramvec
@@ -5166,17 +5157,19 @@ module find_params
 		real(dp) :: draw(nopt)
 		real(dp) :: x0(nopt), x0hist(nopt,500),xopt_hist(nopt,500),fopt_hist(500),internalopt_hist(size(wage_coef)+2,500),v_err(nopt)
 		real(dp) :: rhobeg, rhoend, EW,W,err0,fdist,xdist
-		real(dp), allocatable :: wspace(:)
+		real(dp), allocatable :: wspace(:),sepgrid0(:,:),fndgrid0(:,:)
 		real(dp), allocatable :: node_fopts(:),node_xopts(:),world_fopts(:), world_xopts(:)
 		real(dp), allocatable :: world_internalopt(:),node_internalopt(:)
 		character(len=2) :: rank_str
-		integer :: fcal_eval
+		integer :: fcal_eval,print_lev_old,verbose_old
 		integer :: c1=1,c2=1,cr=1,cm=1
 		real(dp) :: t1=1.,t2=1.
 
 		external dfovec
 		call random_seed(size = iprint)
 		allocate( seedhr(iprint) )
+		allocate(sepgrid0(size(sepgrid,1),size(sepgrid,2)))
+		allocate(fndgrid0(size(fndgrid,1),size(fndgrid,2)))
 		ndraw = size(x0hist,2)
 		ninterppt = 2*nopt+1
 		ninternalopt = size(wage_coef) + 2 !wage coefficients, fmul smul
@@ -5185,6 +5178,11 @@ module find_params
 		fopt_hist = -1.e5_dp
 
 		mod_shk => shk
+
+		print_lev_old = print_lev
+		verbose_old = verbose
+		print_lev = 0
+		verbose = 1
 
 		call mpi_comm_size(mpi_comm_world,nnode,ierr)
 		call mpi_comm_rank(mpi_comm_world,rank,ierr)
@@ -5215,8 +5213,6 @@ module find_params
 				endif
 			enddo
 		enddo
-  	 	verbose=1
-  	 	print_lev =0
 
 		if( rank .eq. 0 ) then
 			call mat2csv(x0hist,"x0hist.csv")
@@ -5336,9 +5332,11 @@ module find_params
 			nstarts = nstarts+nnode*nstartpn !<-number of starts so far
 			fval = fopt_hist(1)
 			xopt = xopt_hist(:,1)
+			fndgrid0 = fndgrid
+			sepgrid0 = sepgrid
 			do i=1,nstarts
 				fdist = dabs( fopt_hist(i)-fval )/dabs(fval)
-				if( (fdist .ge. 2*simtol) .and. (fopt_hist(i) .lt. fval) ) then
+				if( ((fdist .ge. 2*simtol) .and. (fopt_hist(i) .le. fval)) .or. (i==1)) then
 					W = W + 1._dp
 					fval = fopt_hist(i)
 					xopt = xopt_hist(:,i)
@@ -5347,8 +5345,8 @@ module find_params
 					seprt_mul = internalopt_hist(2+size(wage_coef),i)
 					!output global wage_trend  in optimal
 					call gen_new_wgtrend(wage_trend, wage_coef)
-					fndgrid = fndgrid*fndrt_mul
-					sepgrid = sepgrid*seprt_mul
+					fndgrid = fndgrid0*fndrt_mul
+					sepgrid = sepgrid0*seprt_mul
 					!print them all
 					call mat2csv(wage_trend, "wage_trend_opt.csv")
 					call vec2csv(wage_coef, "wage_coef_opt.csv")
@@ -5366,12 +5364,16 @@ module find_params
 
 		enddo
 
+		print_lev = print_lev_old
+		verbose = verbose_old
+
 		call vec2csv(fopt_hist,"fopt_hist.csv")
 		call mat2csv(xopt_hist,"xopt_hist.csv")
 
 		deallocate(wspace,node_fopts,node_xopts,world_fopts,world_xopts)
 		deallocate(world_internalopt,node_internalopt)
 		deallocate(seedhr)
+		deallocate(sepgrid0,fndgrid0)
 	end subroutine cal_mlsl
 
 
@@ -5595,6 +5597,14 @@ program V0main
 			run_experiments = .false.
 		endif
 		print *, "run experiments", run_experiments
+		if(narg_in > 3) then
+			call GETARG(4, arg_in)
+			read(arg_in, *) run_cal
+		else
+			run_cal = .false.
+		endif
+		print *, "run calibration", run_cal
+
 	endif
 
 	caselabel = ""
@@ -5616,6 +5626,9 @@ program V0main
 		call mat2csv(PrDage,"PrDage.csv",wo)
 		call mat2csv(PrDageDel(:,:,1),"PrDageDelL.csv",wo)
 		call mat2csv(PrDageDel(:,:,ndi),"PrDageDelH.csv",wo)
+		call vec2csv(prborn_constpop,"prborn_constpop.csv",wo)
+		call vec2csv(prborn_t,"prborn_t.csv",wo)
+
 		cumpid = 0._dp
 		do idi=1,ndi
 		do it =1,TT-1
@@ -5781,10 +5794,10 @@ program V0main
 			endif
 			if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 		endif
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-		call sim(vfs, pfs, hst,shk,.false.)
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! 		call sim(vfs, pfs, hst,shk,.false.) ---- lingering issue that 1st stage seems to have correlated results
+!
+! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
 			if(verbose>1) print *, "iterating to find wage trend"
 			call iter_wgtrend(vfs, pfs, hst,shk)
@@ -5862,7 +5875,7 @@ program V0main
 	! xizcoef = 0.123992114316186
 
 	lb = (/ 0.1_dp, 0.01_dp/)
-	ub = (/ 2.0_dp, 0.5_dp /)
+	ub = (/ 2.5_dp, 0.5_dp /)
 
 	!set up the grid over which to check derivatives
 !~  	open(unit=fcallog, file="cal_square.csv")
@@ -5887,8 +5900,17 @@ program V0main
 !~  	enddo
 !~  	enddo
 
+del_by_occ = .true.
+w_strchng = .true.
+demog_dat = .false.
+caselabel = "demog0"
+print *, caselabel, " ---------------------------------------------------"
+call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+call cal_dist(parvec,err0,shk)
+print *, "---------------------------------------------------"
 
-if( dbg_skip .eqv. .false.) then
+if( run_cal .eqv. .true. ) then
 	call system_clock(count_rate=cr)
 	call system_clock(count_max=cm)
 	call system_clock(c1)
@@ -5902,7 +5924,7 @@ endif
 !   Now run some experiments:
 if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
 	print_lev = 2
-	verbose = 2
+	verbose = 1
 	!read in the optimal inner stuff:
 	!wage_trend <- "wage_trend_opt.csv"
 	!wage_coef <- "wage_coef_opt.csv")
@@ -5960,6 +5982,7 @@ if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
 	enddo
 	call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 	if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
+ 	w_strchng = .true.
  	del_by_occ = .true.
  	demog_dat  = .true.
 	verbose = 1

@@ -81,8 +81,8 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
 					  RAS_pid    = .true.   !balance the health transition matrix
 
-logical			  ::  run_experiments = .false.
-
+logical			  ::  run_experiments = .false., &
+					  run_cal = .false.
 
 real(8), parameter ::  amax 	 = 10.0,   &	!Max on Asset Grid
 					   amin = 0.0	   	!Min on Asset Grid
@@ -675,46 +675,53 @@ subroutine setparams()
 	pop_size(1) = sum(prob_age(:,1))
 	!evolution of age-structure!!!!!!!!!!!!!!!!!!!!!!
 
-	dy = PrDeath(1,1)*PrDage(1,1)+PrDeath(2,1)*PrDage(2,1)+PrDeath(3,1)*PrDage(3,1)
 	if(dieyoung .eqv. .true.) then
+		dy = PrDeath(1,1)*PrDage(1,1)+PrDeath(2,1)*PrDage(2,1)+PrDeath(3,1)*PrDage(3,1)
 		t=2
 		dm = PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t)
+		junk = dm
 		do t=3,TT-1
-			dm =  (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t)) *(1._dp-dm) +dm !die
+			dm =  (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t))*(1._dp-dm) +dm !die
+			junk = (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t)) + junk
 		enddo
+		junk = junk/dble(TT-oldn)
+		dm = junk !!! This is temporary
 	else
-		dm = 0.
+		dm = 0.d0
+		dy = 0.d0
 	endif
-	dm = dm + ((tlen*oldN*oldD)**(-1))*(1.d0-dm)  ! This was .0038
+	!dm = dm + ((tlen*oldN*oldD)**(-1))*(1.d0-dm)
 	!dm = 0.009
 
-	!now bisection on Nbar 0
-	prH = 0.2d0
+	prH = 1.0d0
 	prL = 0.d0
 	do i =1,maxiter
 		!prob of getting born
 		t=1
 		hazborn_t(t) = 0.5d0*(prH + prL)
-		bN(t) = hazborn_t(t)*dble(Nsim)
-		Ny = bN(t)*prob_age(1,t)
-		Nm = bN(t)*(1.-prob_age(1,t))
+		Ny = hazborn_t(t)*dble(Nsim)*prob_age(1,t)
+		Nm = hazborn_t(t)*dble(Nsim)*(1.-prob_age(1,t))
+		pNy = Ny*ptau(1)*(1.d0-dy)
+		pNm	= Nm*(1.d0-dm)*(1.d0-(tlen*oldN*oldD)**(-1)) + Ny*(1.d0-ptau(1))*(1.d0-dy)
+		bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
 		totborn = hazborn_t(t)*dble(Nsim)
-		do j=1,(Tsim+999)
+		do j=1001,(Tsim+999)
 			if(j>1000) then
 				t=t+1
 			endif
 			pNy = Ny*ptau(1)*(1.d0-dy)
-			pNm	= Nm*(1.d0-dm) + Ny*(1.d0-ptau(1))*(1.d0-dy)
+			pNm	= Nm*(1.d0-dm)*(1.d0-(tlen*oldN*oldD)**(-1)) + Ny*(1.d0-ptau(1))*(1.d0-dy)
 			if(t>1) then
-				bN(t) = (prob_age(1,t)*(pNy+pNm)-pNy)/(1.-prob_age(1,t))
+				bN(t) = max( (prob_age(1,t)*(pNy+pNm)-pNy)/(1.-prob_age(1,t)), 0.d0)
+!				print *, bN(t)
+!				print *, prob_age(1,t)
 				hazborn_t(t) = bN(t)/(Nsim - totborn) !hazborn*(remaining unborn) = bN
 				totborn = bN(t) + totborn
 			else
-				bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
+				bN(t) = max( (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1)), 0.d0)
 			endif
-
 			Nm = pNm
-			Ny = pNm + bN(t)
+			Ny = pNy + bN(t)
 		enddo
 		junk = hazborn_t(1)
 		hazborn_t(1) =  (dble(Nsim) - (totborn - hazborn_t(1)*Nsim ))/dble(Nsim) ! need to have some positive mass alive when the survey starts
@@ -725,37 +732,38 @@ subroutine setparams()
 			exit !iterate on the numberr alive in period 1
 		elseif( totborn > dble(Nsim) ) then
 			prH = junk
-		else! totborn<Nsim
+		else ! totborn<Nsim
 			prL = junk
 		endif
 		prborn_t(2:Tsim) = bN(2:Tsim)/sum(bN(2:Tsim))
 		prborn_t(1) = hazborn_t(1)
 	enddo
 !again for the constant population group
-	prH = 0.2d0
+	prH = 1.d0
 	prL = 0.d0
 	do i =1,maxiter
 		!prob of getting born
 		t=1
 		hazborn_constpop(t) = 0.5d0*(prH + prL)
-		bN(t) = hazborn_constpop(t)*dble(Nsim)
 		Ny = bN(t)*prob_age(1,t)
 		Nm = bN(t)*(1.-prob_age(1,t))
+		pNy = Ny*ptau(1)*(1.d0-dy)
+		pNm	= Nm*(1.d0-dm)*(1.d0-(tlen*oldN*oldD)**(-1)) + Ny*(1.d0-ptau(1))*(1.d0-dy)
+		bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
 		totborn = hazborn_constpop(t)*dble(Nsim)
-		do j=1,(Tsim+999)
-
+		do j=1001,(Tsim+999)
 			pNy = Ny*ptau(1)*(1.d0-dy)
-			pNm	= Nm*(1.d0-dm) + Ny*(1.d0-ptau(1))*(1.d0-dy)
+			pNm	= Nm*(1.d0-dm)*(1.d0-(tlen*oldN*oldD)**(-1)) + Ny*(1.d0-ptau(1))*(1.d0-dy)
 			if(j>1000) then
 				t=t+1
-				bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
+				bN(t) = max( (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1)) ,0.d0)
 				hazborn_constpop(t) = bN(t)/(Nsim - totborn) !hazborn*(remaining unborn) = bN
 				totborn = bN(t) + totborn
 			else
 				bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
 			endif
 			Nm = pNm
-			Ny = pNm + bN(t)
+			Ny = pNy + bN(t)
 
 		enddo
 		junk = hazborn_constpop(1)
@@ -764,10 +772,10 @@ subroutine setparams()
 
 		if(hazborn_constpop(1)<0) hazborn_constpop(1) = 0.d0
 		if(dabs(totborn - dble(Nsim))<1e-6) then
-			exit !iterate on the numberr alive in period 1
+			exit !iterate on the number alive in period 1
 		elseif( totborn > dble(Nsim) ) then
 			prH = junk
-		else! totborn<Nsim
+		else ! totborn<Nsim
 			prL = junk
 		endif
 		prborn_constpop(2:Tsim) = bN(2:Tsim)/sum(bN(2:Tsim))
