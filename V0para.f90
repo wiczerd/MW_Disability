@@ -84,7 +84,7 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 logical			  ::  run_experiments = .false., &
 					  run_cal = .false.
 
-real(8), parameter ::  amax 	 = 10.0,   &	!Max on Asset Grid
+real(8), parameter ::  amax 	 = 20.0,   &	!Max on Asset Grid
 					   amin = 0.0	   	!Min on Asset Grid
 
 
@@ -154,7 +154,7 @@ real(8)	::	agegrid(TT)		! the mid points of the ages
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
-		nu = 1., &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income process
 		alfrho = 0.988, &	!Peristence of Alpha_i type
@@ -684,8 +684,8 @@ subroutine setparams()
 			dm =  (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t))*(1._dp-dm) +dm !die
 			junk = (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t)) + junk
 		enddo
-		junk = junk/dble(TT-oldn)
-		dm = junk !!! This is temporary
+		junk = junk/dble(TT-oldn) !!! This is temporary
+		dm = dm/dble(TT-oldn)
 	else
 		dm = 0.d0
 		dy = 0.d0
@@ -713,8 +713,6 @@ subroutine setparams()
 			pNm	= Nm*(1.d0-dm)*(1.d0-(tlen*oldN*oldD)**(-1)) + Ny*(1.d0-ptau(1))*(1.d0-dy)
 			if(t>1) then
 				bN(t) = max( (prob_age(1,t)*(pNy+pNm)-pNy)/(1.-prob_age(1,t)), 0.d0)
-!				print *, bN(t)
-!				print *, prob_age(1,t)
 				hazborn_t(t) = bN(t)/(Nsim - totborn) !hazborn*(remaining unborn) = bN
 				totborn = bN(t) + totborn
 			else
@@ -735,8 +733,9 @@ subroutine setparams()
 		else ! totborn<Nsim
 			prL = junk
 		endif
-		prborn_t(2:Tsim) = bN(2:Tsim)/sum(bN(2:Tsim))
 		prborn_t(1) = hazborn_t(1)
+		prborn_t(2:Tsim) = bN(2:Tsim)/totborn
+
 	enddo
 !again for the constant population group
 	prH = 1.d0
@@ -745,8 +744,8 @@ subroutine setparams()
 		!prob of getting born
 		t=1
 		hazborn_constpop(t) = 0.5d0*(prH + prL)
-		Ny = bN(t)*prob_age(1,t)
-		Nm = bN(t)*(1.-prob_age(1,t))
+		Ny = hazborn_constpop(t)*dble(Nsim)*prob_age(1,t)
+		Nm = hazborn_constpop(t)*dble(Nsim)*(1.-prob_age(1,t))
 		pNy = Ny*ptau(1)*(1.d0-dy)
 		pNm	= Nm*(1.d0-dm)*(1.d0-(tlen*oldN*oldD)**(-1)) + Ny*(1.d0-ptau(1))*(1.d0-dy)
 		bN(t) = (prob_age(1,1)*(pNy+pNm)-pNy)/(1.-prob_age(1,1))
@@ -778,8 +777,8 @@ subroutine setparams()
 		else ! totborn<Nsim
 			prL = junk
 		endif
-		prborn_constpop(2:Tsim) = bN(2:Tsim)/sum(bN(2:Tsim))
 		prborn_constpop(1) = hazborn_constpop(1)
+		prborn_constpop(2:Tsim) = bN(2:Tsim)/totborn
 	enddo
 
 
