@@ -237,16 +237,18 @@ module helper_funs
 		trqtl = triwt*dble(trqtl_H-1)/10._dp + (1._dp-triwt)*dble(trqtl_L-1)/10._dp
 		trqtl = min(max(trqtl,0._dp),1._dp)
 		if(itin>=(TT-2)) then
-			xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef*(1.+xiagecoef)
-			!xifunV =  (1._dp-trqtl)*xizcoef*(1.+xiagecoef)
+			!xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef*(1.+xiagecoef)
+			xifunV =  (1._dp-trqtl)*xizcoef*(1.+xiagecoef)
+			!xifunV =  dexp(-trin)*xizcoef*(1.+xiagecoef)
 		else
-			xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef
-			!xifunV =  (1._dp-trqtl)*xizcoef
+			!xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef
+			xifunV =  (1._dp-trqtl)*xizcoef
+			!xifunV =  dexp(-trin)*xizcoef
 		endif
 		!adjust for time aggregation in second stage?
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 
-		xifun = xifunV + xifunH
+		xifun = xifunH+xifunV
 
 		hlthfrac = xifunH/xifun
 
@@ -275,19 +277,19 @@ module helper_funs
 		real(dp)			:: util
 
 
-		if ((wkin .gt. 1) .or. (din .gt. 1)) then
+		! if ((wkin .gt. 1) .or. (din .gt. 1)) then
 			if(gam> 1+1e-5_dp .or. gam < 1-1e-5_dp) then
 				util = ((cin*dexp(theta*dble(din-1)+eta*dble(wkin-1)))**(1._dp-gam) )/(1._dp-gam)
 			else
 				util = dlog(cin*dexp(theta*dble(din-1)+eta*dble(wkin-1)))
 			endif
-		else
-			if(gam> 1._dp+1e-5_dp .or. gam < 1_dp-1e-5_dp) then
-				util = (cin**(1._dp-gam))/(1._dp-gam)
-			else
-				util = dlog(cin)
-			endif
-		end if
+		! else
+		! 	if(gam> 1._dp+1e-5_dp .or. gam < 1_dp-1e-5_dp) then
+		! 		util = (cin**(1._dp-gam))/(1._dp-gam)
+		! 	else
+		! 		util = dlog(cin)
+		! 	endif
+		! endif
 		util = util + util_const
 
 	end function
@@ -968,7 +970,7 @@ module model_data
 		moments_sim%init_hlth_acc = 0._dp
 		do i=1,Nsim
 			dicont_hr = 0._dp
-			do it=1,(init_yrs*itlen)
+			do it=(init0_yrs*itlen),(init_yrs*itlen)
 				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
 					ninsur_app = 1._dp + ninsur_app
 					if(hst%status_hist(i,it) == 3) then
@@ -1014,10 +1016,6 @@ module model_data
 			init_diaward_discr = 0._dp
 		endif
 		moments_sim%init_diaward_discr = init_diaward_discr
-		!if( cal_on_grad .eqv. .false. .and. (dabs(moments_sim%init_diaward - init_diaward_discr)/diaward_target > 1e-3 .or.  cal_obj > 1e-2)  ) then
-		!	moments_sim%init_diaward = init_diaward_discr
-		!endif
-
 
 		if(napp_t > 0._dp) then
 			moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/napp_t
@@ -1203,7 +1201,7 @@ module sol_val
 		real(dp), intent(out) :: gapp_dif
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VN0(:,:,:,:,:,:,:),VD0(:,:,:,:),V0(:,:,:,:,:,:,:),wagehere
-		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, VNhr, VDhr, maxVNV0, EVD,minvalVN, xihr,nuhr
+		real(dp) :: Vc1,chere,Vtest1,Vtest2,Vapp,VNapp,smthV, VNhr, VDhr, maxVNV0, EVD,Ewage,minvalVN, xihr,nuhr
 		real(dp) :: pid_here(nd,nd)
 		integer :: iw, iaa,ialal,izz,aapp,aNapp, ialalhr,idd
 
@@ -1273,6 +1271,7 @@ module sol_val
 		Vtest1 = -1e6
 		apol = iaa0
 		EVD = 0._dp
+		Ewage = 0._dp
 		do iaa = iaa0,iaaA
 			chere = b+R*agrid(ia)-agrid(iaa)
 			if(chere >0.) then
@@ -1294,17 +1293,20 @@ module sol_val
 					maxVNV0 = max(	 V0((il-1)*ntr+itr,(idi-1)*nal +ialal  ,idd,ie,iaa,izz,it),VNhr)
 
 					VDhr    = max(VD0(idd,ie,iaa,it),VNhr)
-					if(iaa == iaa0) EVD     = EVD   + beta*piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *VDhr
 
 					Vc1 = Vc1 +	    ptau(it)*(1-xihr)*( (1-lrho*fndgrid(il,iz))*VNhr +lrho*fndgrid(il,iz)*maxVNV0 ) &
 						&     + 	ptau(it)*xihr    * VDhr     !Don't age, might go on DI
 
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *Vc1
+					if(iaa == iaa0) then
+						Ewage = Ewage+     piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *wage(trgrid(itr),alfgrid(ialal),idd,zgrid(izz,1),it)
+						EVD   = EVD + beta*piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *VDhr
+					endif
 				enddo
 				enddo
 				enddo
 				Vtest2 = util(chere,id,iw) + Vtest2 &
-					& -  nuhr*dabs(EVD)
+					& -  nuhr*Ewage
 				if (Vtest2>Vtest1  .or. iaa .eq. iaa0) then
 					apol = iaa
 					Vtest1 = Vtest2
@@ -3489,6 +3491,9 @@ module sim_hists
 						invol_un = 0
 						if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_int_it(i,it) ==1 ) then
 							status_it(i,it) = 2
+							if( (status_it_innov(i,it) >(1.-avg_unrt/5._dp)) .or. &
+							& ((al_int_it(i,it) ==1) .and. (status_it_innov(i,it)<0.2_dp)) ) & !about 1/5 of these are LTU
+							&	status_it(i,it) = 3
 						endif
 						d_it(i,it) = d_hr
 						brn_drawi_drawt(i,it,:) = (/i,it/)
@@ -5023,7 +5028,7 @@ module find_params
 		endif
 
 		!I only want to iterate on the wage trend if I have a good set of parameters
-		if((cal_on_iter_wgtrend .eqv. .true.) .and. (w_strchng .eqv. .true.) .and. (run_experiments .eqv. .false.))  then
+		if((cal_on_iter_wgtrend .eqv. .true.) .and. (w_strchng .eqv. .true.) )  then
 			call iter_wgtrend(vfs, pfs, hst,shk)
 		endif
 		fndgrid = fndrt_mul*fndgrid0
@@ -5055,7 +5060,7 @@ module find_params
 
 		errvec(1) = (moments_sim%init_diaward - diaward_target)/diaward_target
 		if(size(errvec)>1) &
-		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_accept)/hlth_accept
+		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
 
 		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
 		write(rank_str, '(I2.2)') rank_hr
@@ -5260,9 +5265,7 @@ module find_params
 
 					cal_niter = 0
 					!test it for being too far away:
-					if( nnode>4 ) cal_on_iter_wgtrend = .true.
 					call dfovec(nopt,nopt,x0,v_err)
-					if( nnode>4 ) cal_on_iter_wgtrend = .false.
 					!call random_number(v_err(1))
 					!call random_number(v_err(2))
 					if( (abs(v_err(1)) > 4._dp) .or. (abs(v_err(2))>0.99_dp) ) then
@@ -5291,10 +5294,13 @@ module find_params
 						print *, "Computing from: ",  x0(1), x0(2)," on node: ", rank, "after ", j, " tries"
 						cal_niter = 1
 						iprint = 1
+						if( nnode>4 ) cal_on_iter_wgtrend = .false.
 						call bobyqa_h(nopt,ninterppt,x0,xl,xu, &
 						&	rhobeg,rhoend,iprint,50,wspace,nopt)
 
 						call dfovec(nopt,nopt,x0,v_err)
+						if( nnode>4 ) cal_on_iter_wgtrend = .true.
+
 						exit
 					endif
 				enddo !j=1,5 to loop over starting points
@@ -5887,7 +5893,7 @@ program V0main
 			if(nodei ==0)  print *, "Sol Once, CPU Time   ", (t2-t1)
 		endif
 		print *, "error 1: ",	(moments_sim%init_diaward - diaward_target)/diaward_target
-		print *, "error 2: ",	(moments_sim%init_hlth_acc - hlth_accept)/hlth_accept
+		print *, "error 2: ",	(moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
 
 	endif !sol_once
 
@@ -5897,192 +5903,193 @@ program V0main
 	! xizcoef = 0.123992114316186
 
 	lb = (/ 0.00_dp, 0.01_dp/)
-	ub = (/ 0.01_dp, 0.50_dp /)
+	ub = (/ 2.00_dp, 0.50_dp /)
 
 	!set up the grid over which to check derivatives
-!~  	open(unit=fcallog, file="cal_square.csv")
-!~  	write(fcallog,*) nu, xizcoef, ervec
-!~  	close(unit=fcallog)
-!~  	do i=1,6
-!~  	do j=1,6
-!~ 		cal_on_iter_wgtrend = .false.
-!~  	 	verbose=1
-!~  	 	print_lev =1
-!~  	 	open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-!~  	 	parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/5._dp
-!~  	 	parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/5._dp
-
-!~  	 	call cal_dist(parvec,ervec,shk)
-!~  		write(fcallog, "(G20.12)", advance='no')  nu
-!~  	 	write(fcallog, "(G20.12)", advance='no')  xizcoef
-!~  	 	write(fcallog, "(G20.12)", advance='no')  ervec(1)
-!~  	 	write(fcallog, "(G20.12)", advance='yes') ervec(2)
-!~  	 	print *, nu, xizcoef, ervec(1), ervec(2)
-!~  	 	close(unit=fcallog)
-!~  	enddo
-!~  	enddo
-
-if( run_cal .eqv. .true. ) then
-	call system_clock(count_rate=cr)
-	call system_clock(count_max=cm)
-	call system_clock(c1)
-
-	call cal_mlsl( erval, parvec, 2, lb, ub, shk)
-
-	call system_clock(c2)
-	if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
-endif
-!****************************************************************************
-!   Now run some experiments:
-if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
-	print_lev = 2
-	verbose = 1
-	!read in the optimal inner stuff:
-	!wage_trend <- "wage_trend_opt.csv"
-	!wage_coef <- "wage_coef_opt.csv")
-	!fndgrid <- "fndgrid_opt.csv")
-	!sepgrid <- "sepgrid_opt.csv")
-
-	! redundant because of wage_coef_opt
-	! open(unit = fread, file= "wage_trend_opt.csv")
-	! do it=1,Tsim
-	! 	read(fread, *) wage_trend(it,:)
-	! enddo
-	! close(fread)
-	open(unit = fread, file= "wage_coef_opt.csv")
-	do i=1,size(occwg_datcoef)
-		read(fread, *) wage_coef(i)
+	open(unit=fcallog, file="cal_square.csv")
+	write(fcallog,*) nu, xizcoef, ervec
+	close(unit=fcallog)
+	do i=1,6
+	do j=1,6
+		cal_on_iter_wgtrend = .false.
+ 	 	verbose=1
+	 	print_lev =1
+	 	open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
+	 	parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/5._dp
+	 	parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/5._dp
+		cal_on_iter_wgtrend = .false.
+	 	call cal_dist(parvec,ervec,shk)
+		cal_on_iter_wgtrend = .true.
+ 		write(fcallog, "(G20.12)", advance='no')  nu
+ 	 	write(fcallog, "(G20.12)", advance='no')  xizcoef
+	 	write(fcallog, "(G20.12)", advance='no')  ervec(1)
+	 	write(fcallog, "(G20.12)", advance='yes') ervec(2)
+	 	print *, nu, xizcoef, ervec(1), ervec(2)
+	 	close(unit=fcallog)
 	enddo
-	close(fread)
-	open(unit = fread, file= "fndgrid_opt.csv")
-	do i=1,size(fndgrid,1)
-		read(fread, *) fndgrid(i,:)
 	enddo
-	close(fread)
-	open(unit = fread, file= "sepgrid_opt.csv")
-	do i=1,size(sepgrid,1)
-		read(fread, *) sepgrid(i,:)
-	enddo
-	close(fread)
 
-	!read in xi, nu
-	open(unit= fread, file="nuxiw_opt.csv")
-		read(fread,*) nu
-		read(fread,*) xizcoef
-		read(fread,*) wmean
-	close(fread)
+	if( run_cal .eqv. .true. ) then
+		call system_clock(count_rate=cr)
+		call system_clock(count_max=cm)
+		call system_clock(c1)
 
-	cal_on_iter_wgtrend = .false.
-	parvec = (/nu, xizcoef/)
-	call gen_new_wgtrend(wage_trend,wage_coef)
+		call cal_mlsl( erval, parvec, 2, lb, ub, shk)
 
-	caselabel = ""
- 	print *, caselabel, " ---------------------------------------------------"
+		call system_clock(c2)
+		if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
+	endif
+	!****************************************************************************
+	!   Now run some experiments:
+	if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
+		print_lev = 2
+		verbose = 1
+		!read in the optimal inner stuff:
+		!wage_trend <- "wage_trend_opt.csv"
+		!wage_coef <- "wage_coef_opt.csv")
+		!fndgrid <- "fndgrid_opt.csv")
+		!sepgrid <- "sepgrid_opt.csv")
 
-	call cal_dist(parvec,err0,shk)
- 	print *, "error in iniital", err0(1), err0(2)
-	print *, "---------------------------------------------------"
+		! redundant because of wage_coef_opt
+		! open(unit = fread, file= "wage_trend_opt.csv")
+		! do it=1,Tsim
+		! 	read(fread, *) wage_trend(it,:)
+		! enddo
+		! close(fread)
+		open(unit = fread, file= "wage_coef_opt.csv")
+		do i=1,size(occwg_datcoef)
+			read(fread, *) wage_coef(i)
+		enddo
+		close(fread)
+		open(unit = fread, file= "fndgrid_opt.csv")
+		do i=1,size(fndgrid,1)
+			read(fread, *) fndgrid(i,:)
+		enddo
+		close(fread)
+		open(unit = fread, file= "sepgrid_opt.csv")
+		do i=1,size(sepgrid,1)
+			read(fread, *) sepgrid(i,:)
+		enddo
+		close(fread)
+
+		!read in xi, nu
+		open(unit= fread, file="nuxiw_opt.csv")
+			read(fread,*) nu
+			read(fread,*) xizcoef
+			read(fread,*) wmean
+		close(fread)
+
+		cal_on_iter_wgtrend = .false.
+		parvec = (/nu, xizcoef/)
+		call gen_new_wgtrend(wage_trend,wage_coef)
+
+		caselabel = ""
+	 	print *, caselabel, " ---------------------------------------------------"
+
+		call cal_dist(parvec,err0,shk)
+	 	print *, "error in iniital", err0(1), err0(2)
+		print *, "---------------------------------------------------"
 
 
-	! without wage trend
-	caselabel = "wchng0"
- 	print *, caselabel, " ---------------------------------------------------"
- ! 	w_strchng = .false. !<- either turn off the structural change completely
- 	wage_coef_0chng = wage_coef
-	do i=(1+NTpolyT),size(wage_coef)
-		wage_coef_0chng(i)= 0._dp
-	enddo
-	call gen_new_wgtrend(wage_trend,wage_coef_0chng)
-	if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
- 	w_strchng = .true.
- 	del_by_occ = .true.
- 	demog_dat  = .true.
-	verbose = 1
-	print *, "---------------------------------------------------"
-	call cal_dist(parvec,err0,shk)
- 	print *, "error in iniital with ", caselabel,  " ", err0(1), err0(2)
-	call gen_new_wgtrend(wage_trend,wage_coef)
-	print *, "---------------------------------------------------"
+		! without wage trend
+		caselabel = "wchng0"
+	 	print *, caselabel, " ---------------------------------------------------"
+	 ! 	w_strchng = .false. !<- either turn off the structural change completely
+	 	wage_coef_0chng = wage_coef
+		do i=(1+NTpolyT),size(wage_coef)
+			wage_coef_0chng(i)= 0._dp
+		enddo
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
+		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
+	 	w_strchng = .true.
+	 	del_by_occ = .true.
+	 	demog_dat  = .true.
+		verbose = 1
+		print *, "---------------------------------------------------"
+		call cal_dist(parvec,err0,shk)
+	 	print *, "error in iniital with ", caselabel,  " ", err0(1), err0(2)
+		call gen_new_wgtrend(wage_trend,wage_coef)
+		print *, "---------------------------------------------------"
 
- 	! without the correlation between delta and occupation
-	del_by_occ = .false.
- 	w_strchng = .true.
- 	demog_dat = .true.
- 	caselabel = "deloc0"
- 	print *, caselabel, " ---------------------------------------------------"
- 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
- 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	call cal_dist(parvec,err0,shk)
-	print *, "error in iniital with ", caselabel, " ", err0(1), err0(2)
-	print *, "---------------------------------------------------"
+	 	! without the correlation between delta and occupation
+		del_by_occ = .false.
+	 	w_strchng = .true.
+	 	demog_dat = .true.
+	 	caselabel = "deloc0"
+	 	print *, caselabel, " ---------------------------------------------------"
+	 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call cal_dist(parvec,err0,shk)
+		print *, "error in iniital with ", caselabel, " ", err0(1), err0(2)
+		print *, "---------------------------------------------------"
 
- 	del_by_occ = .true.
- 	w_strchng = .true.
- 	demog_dat = .false.
- 	caselabel = "demog0"
- 	print *, caselabel, " ---------------------------------------------------"
- 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
- 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	call cal_dist(parvec,err0,shk)
- 	print *, "---------------------------------------------------"
+	 	del_by_occ = .true.
+	 	w_strchng = .true.
+	 	demog_dat = .false.
+	 	caselabel = "demog0"
+	 	print *, caselabel, " ---------------------------------------------------"
+	 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call cal_dist(parvec,err0,shk)
+	 	print *, "---------------------------------------------------"
 
- 	! without either the correlation between delta and occupation or wage trend
- 	del_by_occ = .false.
- 	w_strchng = .true.
- 	demog_dat = .true.
-	call gen_new_wgtrend(wage_trend,wage_coef_0chng)
- 	caselabel = "wchng0deloc0"
-	print *, caselabel, " ---------------------------------------------------"
- 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
- 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-	call cal_dist(parvec,err0,shk)
-	call gen_new_wgtrend(wage_trend,wage_coef)
- 	print *, "---------------------------------------------------"
+	 	! without either the correlation between delta and occupation or wage trend
+	 	del_by_occ = .false.
+	 	w_strchng = .true.
+	 	demog_dat = .true.
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
+	 	caselabel = "wchng0deloc0"
+		print *, caselabel, " ---------------------------------------------------"
+	 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call cal_dist(parvec,err0,shk)
+		call gen_new_wgtrend(wage_trend,wage_coef)
+	 	print *, "---------------------------------------------------"
 
- 	! del_by_occ = .true.
- 	! w_strchng = .false.
- 	! demog_dat = .false.
- 	! caselabel = "wchng0demog0"
- 	! print *, caselabel, " ---------------------------------------------------"
- 	! call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
- 	! call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
- 	! if(verbose >2) print *, "Simulating the model"
- 	! call sim(vfs, pfs, hst,shk)
- 	! if(verbose >2) print *, "Computing moments"
- 	! call moments_compute(hst,moments_sim,shk)
- 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
- 	! print *, "---------------------------------------------------"
+	 	! del_by_occ = .true.
+	 	! w_strchng = .false.
+	 	! demog_dat = .false.
+	 	! caselabel = "wchng0demog0"
+	 	! print *, caselabel, " ---------------------------------------------------"
+	 	! call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	 	! call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	 	! if(verbose >2) print *, "Simulating the model"
+	 	! call sim(vfs, pfs, hst,shk)
+	 	! if(verbose >2) print *, "Computing moments"
+	 	! call moments_compute(hst,moments_sim,shk)
+	 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	 	! print *, "---------------------------------------------------"
 
- 	! del_by_occ = .false.
- 	! w_strchng = .true.
- 	! demog_dat = .false.
- 	! caselabel = "deloc0demog0"
- 	! print *, caselabel, " ---------------------------------------------------"
- 	! call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
- 	! call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
- 	! if(verbose >2) print *, "Simulating the model"
- 	! call sim(vfs, pfs, hst,shk)
- 	! if(verbose >2) print *, "Computing moments"
- 	! call moments_compute(hst,moments_sim,shk)
- 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
- 	! print *, "---------------------------------------------------"
+	 	! del_by_occ = .false.
+	 	! w_strchng = .true.
+	 	! demog_dat = .false.
+	 	! caselabel = "deloc0demog0"
+	 	! print *, caselabel, " ---------------------------------------------------"
+	 	! call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	 	! call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	 	! if(verbose >2) print *, "Simulating the model"
+	 	! call sim(vfs, pfs, hst,shk)
+	 	! if(verbose >2) print *, "Computing moments"
+	 	! call moments_compute(hst,moments_sim,shk)
+	 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	 	! print *, "---------------------------------------------------"
 
- 	! del_by_occ = .false.
- 	! w_strchng = .false.
- 	! demog_dat = .false.
- 	! caselabel = "wchng0deloc0demog0"
- 	! print *, caselabel, " ---------------------------------------------------"
- 	! call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
- 	! call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
- 	! if(verbose >2) print *, "Simulating the model"
- 	! call sim(vfs, pfs, hst,shk)
- 	! if(verbose >2) print *, "Computing moments"
- 	! call moments_compute(hst,moments_sim,shk)
- 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
- 	! print *, "---------------------------------------------------"
-endif
+	 	! del_by_occ = .false.
+	 	! w_strchng = .false.
+	 	! demog_dat = .false.
+	 	! caselabel = "wchng0deloc0demog0"
+	 	! print *, caselabel, " ---------------------------------------------------"
+	 	! call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+	 	! call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	 	! if(verbose >2) print *, "Simulating the model"
+	 	! call sim(vfs, pfs, hst,shk)
+	 	! if(verbose >2) print *, "Computing moments"
+	 	! call moments_compute(hst,moments_sim,shk)
+	 	! if(verbose >0) print *, "DI rate" , moments_sim%avg_di
+	 	! print *, "---------------------------------------------------"
+	endif
 
-!~  	!****************************************************************************!
+  	!****************************************************************************!
 	! IF you love something....
 	!****************************************************************************!
 	deallocate(tr_hist_vec)

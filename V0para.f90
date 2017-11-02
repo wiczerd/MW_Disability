@@ -56,7 +56,8 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			maxiter = 2000, &		!Tolerance parameter
 			Nsim = 20000,&!5000*nj	!how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
-			init_yrs = 3,&			!how many years for calibration to initial state of things
+			init_yrs = 4,&			!how many years for calibration to initial state of things
+			init0_yrs= 1,&			!how many years buffer before calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10
@@ -153,7 +154,7 @@ integer :: 	dgrid(nd)	! just enumerate the d states
 real(8)	::	agegrid(TT)		! the mid points of the ages
 
 !***preferences and technologies that may change
-real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
+real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (5% annual discount rate to start)
 		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income process
@@ -213,8 +214,8 @@ logical  :: cal_on_grad = .false.
 real(8) :: apprt_target = .01,&	!target for application rates (to be filled below)
 		dirt_target = 0.018,&	!target for di rates
 		diaward_target = 0.0038,& !target for new award rate
-		voc_accept = 0.25,&		!fraction of admissions from vocational criteria, target 1985
-		hlth_accept = 0.75,&		!fraction taken based on health criteria, target 1985
+		voc_acc_target = 0.25,&		!fraction of admissions from vocational criteria, target 1985
+		hlth_acc_target = 0.75,&		!fraction taken based on health criteria, target 1985
 		avg_unrt = 0.055,&	!average rate of unemployment over the period.
 		avg_undur = 3.,&	! average months of unemployment
 		avg_frt   = 0.4	! average rate of long-term unemployment
