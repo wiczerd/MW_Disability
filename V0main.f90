@@ -252,17 +252,16 @@ module helper_funs
 
 		hlthfrac = xifunH/xifun
 
-
 		!adjust for time aggregation all at once
 	!	xifun = 1._dp - max(0._dp,1._dp-xifun)**(1._dp/proc_time2)
 
 		xifun = min(xifun,1._dp)
 
+		if(present(hlthprob) .eqv. .true.) &
+			hlthprob = hlthfrac*xifun
 		if((itin .eq. 1) .and. (ineligNoNu .eqv. .false.)) then
 			xifun = xifun*eligY
 		endif
-		if(present(hlthprob) .eqv. .true.) &
-			hlthprob = hlthfrac*xifun
 
 	end function
 
@@ -1031,8 +1030,10 @@ module model_data
 			call vec2csv(appdif_age, "appdif_age"//trim(caselabel)//".csv")
 			call vec2csv(moments_sim%work_rate,"work_age"//trim(caselabel)//".csv")
 			call vec2csv(workdif_age, "workdif_age"//trim(caselabel)//".csv")
-			call vec2csv(alD,"alD"//trim(caselabel)//".csv")
-			call mat2csv(alD_age,"alD_age"//trim(caselabel)//".csv")
+			if(caselabel == "") then
+				call vec2csv(alD,"alD"//trim(caselabel)//".csv")
+				call mat2csv(alD_age,"alD_age"//trim(caselabel)//".csv")
+			endif
 			call mat2csv(status_Nt,"status_Nt"//trim(caselabel)//".csv")
 			call vec2csv(moments_sim%hlth_acc_rt,"hlth_acc_rt"//trim(caselabel)//".csv")
 		endif
@@ -2335,7 +2336,7 @@ module sol_val
 
 		if(verbose>0 .and. iter_timeout>0) print*, "did not converge ", iter_timeout, " times"
 		! this plots work-rest and di application on the cross product of alphai and deltai and di
-		if(print_lev >1) then
+		if(print_lev >1 .and. caselabel == "") then
 			itr = tri0
 			il  = 1
 			wo  = 0
@@ -2514,9 +2515,9 @@ module sim_hists
 		enddo
 		enddo
 
-		if(print_lev >=2) &
+		if(print_lev >=2 .and. caselabel == "") &
 		&	call mat2csv(fndwt(:,:,2),"fndwt"//trim(caselabel)//".csv")
-		if(print_lev >=2) &
+		if(print_lev >=2 .and. caselabel == "") &
 		&	call mat2csv(sepwt(:,:,2),"sepwt"//trim(caselabel)//".csv")
 
 	end subroutine set_fndsepi
@@ -3099,7 +3100,7 @@ module sim_hists
 		call system_clock(count = timeT)
 		print *, "draws took: ", dble((timeT-time0))/dble(timert)
 		! check the distributions
-		if(print_lev > 1 ) then
+		if(print_lev > 1 .and. caselabel == "") then
 			call mat2csv(shk%jshock_ij,"jshock_ij_hist"//trim(caselabel)//".csv")
 			call vec2csv(shk%del_i_draw,"del_i_draw_hist"//trim(caselabel)//".csv")
 			call veci2csv(shk%j_i,"j_i_hist"//trim(caselabel)//".csv")
@@ -3565,23 +3566,23 @@ module sim_hists
 							do ii=1,Ncol
 								drawi = drawi_ititer(i,ii)  !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
 								drawt = drawt_ititer(i,ii)  !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
-!~ 								if((age_it(drawi,drawt) .eq. 1 ).and. (d_it(drawi,drawt) .eq. d_hr) &
-!~ 								&	.and. (status_it(drawi,drawt) .gt. 0) .and. (status_it(drawi,drawt) .le. 3) ) then
-!~ 									brn_drawi_drawt(i,it,:) = (/drawi, drawt /)
-!~ 									d_it(i,it)		= d_hr
-!~ 									a_it(i,it)      = a_it(drawi,drawt)
-!~ 									e_it(i,it)      = e_it(drawi,drawt)
-!~ 									e_it_int(i,it)  = e_it_int(drawi,drawt)
-!~ 									a_it_int(i,it)  = a_it_int(drawi,drawt)
-!~ 									status_it(i,it) = status_it(drawi,drawt)
+								if((age_it(drawi,drawt) .eq. 1 ).and. (d_it(drawi,drawt) .eq. d_hr) &
+								&	.and. (status_it(drawi,drawt) .gt. 0) .and. (status_it(drawi,drawt) .le. 3) ) then
+									brn_drawi_drawt(i,it,:) = (/drawi, drawt /)
+									d_it(i,it)		= d_hr
+									a_it(i,it)      = a_it(drawi,drawt)
+									e_it(i,it)      = e_it(drawi,drawt)
+									e_it_int(i,it)  = e_it_int(drawi,drawt)
+									a_it_int(i,it)  = a_it_int(drawi,drawt)
+									status_it(i,it) = status_it(drawi,drawt)
 
-!~ 									a_hr  = a_it(drawi,drawt)
-!~ 									e_hr  = e_it(drawi,drawt)
-!~ 									ei_hr = e_it_int(drawi,drawt)
-!~ 									ai_hr  = a_it_int(drawi,drawt)
-!~ 									status_hr = status_it(drawi,drawt)
-!~ 									exit
-!~ 								elseif(ii==Ncol) then
+									a_hr  = a_it(drawi,drawt)
+									e_hr  = e_it(drawi,drawt)
+									ei_hr = e_it_int(drawi,drawt)
+									ai_hr  = a_it_int(drawi,drawt)
+									status_hr = status_it(drawi,drawt)
+									exit
+								elseif(ii==Ncol) then
 									brn_drawi_drawt(i,it,1) = i
 									brn_drawi_drawt(i,it,2) = it
 									a_hr 	= minval(agrid)
@@ -3595,8 +3596,8 @@ module sim_hists
 									e_it_int(i,it) = 1
 									a_it_int(i,it) = 1
 									status_it(i,it) = 1
-!~ 									nomatch = nomatch+1
-!~ 								endif
+									nomatch = nomatch+1
+								endif
 							enddo
 						endif !iter ==1
 
@@ -4291,31 +4292,33 @@ module sim_hists
 			!$omp end parallel do
 
 			if(print_lev > 1)then
-					call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (ewt_it,"ewt_it_hist.csv")
-					call mati2csv(e_it_int,"e_int_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
-					call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
+					if( caselabel == "") then
+						call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
+						call mat2csv (ewt_it,"ewt_it_hist.csv")
+						call mati2csv(e_it_int,"e_int_it_hist"//trim(caselabel)//".csv")
+						call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
+						call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
+						call mat2csv (wtr_it,"wtr_it_hist"//trim(caselabel)//".csv")
+						call mat2csv (trX_it,"transfer_it_hist"//trim(caselabel)//".csv")
+						call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
+						call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
+						call mati2csv(brn_drawi_drawt(:,:,1),"brn_drawi_drawt.csv",0)
+						call mati2csv(brn_drawi_drawt(:,:,2),"brn_drawi_drawt.csv",1)
+					endif
 					call mati2csv(status_it,"status_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(d_it,"d_it_hist"//trim(caselabel)//".csv")
-					call mati2csv (shk%age_hist,"age_it_hist"//trim(caselabel)//".csv")
+					call mati2csv(shk%age_hist,"age_it_hist"//trim(caselabel)//".csv")
 					call veci2csv(j_i,"j_i_hist"//trim(caselabel)//".csv")
 					call veci2csv(z_jt_macroint,"z_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (occsize_jt,"occsize_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (occgrow_jt,"occgrow_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%wage_hist,"wage_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (wtr_it,"wtr_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (trX_it,"transfer_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%app_dif_hist,"app_dif_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%di_prob_hist,"di_prob_it_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
-					call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
-					call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
-					call mati2csv (hst%hlth_voc_hist,"hlth_voc_hist"//trim(caselabel)//".csv")
+					call mati2csv(hst%hlth_voc_hist,"hlth_voc_hist"//trim(caselabel)//".csv")
 					call mat2csv (hst%hlthprob_hist,"hlthprob_hist"//trim(caselabel)//".csv")
-					call mati2csv(brn_drawi_drawt(:,:,1),"brn_drawi_drawt.csv",0)
-					call mati2csv(brn_drawi_drawt(:,:,2),"brn_drawi_drawt.csv",1)
 			endif
 		endif
 
@@ -5174,7 +5177,7 @@ module find_params
 		integer, allocatable :: seedhr(:)
 		real(dp) :: draw(nopt)
 		real(dp) :: x0(nopt), x0hist(nopt,500),xopt_hist(nopt,500),fopt_hist(500),internalopt_hist(size(wage_coef)+2,500),v_err(nopt)
-		real(dp) :: rhobeg, rhoend, EW,W,err0,fdist,xdist
+		real(dp) :: rhobeg, rhoend, EW,W,err0,fdist,xdist,junk,attraction_size
 		real(dp), allocatable :: wspace(:),sepgrid0(:,:),fndgrid0(:,:)
 		real(dp), allocatable :: node_fopts(:),node_xopts(:),world_fopts(:), world_xopts(:)
 		real(dp), allocatable :: world_internalopt(:),node_internalopt(:)
@@ -5220,7 +5223,8 @@ module find_params
 
 		fval = 0._dp
 		xopt = 0._dp
-		call insobl ( nopt, ndraw )
+		attraction_size = 0._dp
+		call insobl( nopt, ndraw )
 		do d = 1,ndraw
 			call I4_SOBOL( nopt, draw )
 			!x0hist(:,d) = draw
@@ -5265,11 +5269,12 @@ module find_params
 
 					cal_niter = 0
 					!test it for being too far away:
-					call dfovec(nopt,nopt,x0,v_err)
 					!call random_number(v_err(1))
 					!call random_number(v_err(2))
+					call dfovec(nopt,nopt,x0,v_err)
 					if( (abs(v_err(1)) > 4._dp) .or. (abs(v_err(2))>0.99_dp) ) then
 						! exit
+						call random_number(junk) !burn one
 						do i=1,nopt
 							call random_number(x0(i))
 							x0(i) = x0(i)*( xu(i)-xl(i) ) + xl(i)
@@ -5294,30 +5299,31 @@ module find_params
 						print *, "Computing from: ",  x0(1), x0(2)," on node: ", rank, "after ", j, " tries"
 						cal_niter = 1
 						iprint = 1
-						if( nnode>4 ) cal_on_iter_wgtrend = .false.
-						call bobyqa_h(nopt,ninterppt,x0,xl,xu, &
-						&	rhobeg,rhoend,iprint,50,wspace,nopt)
+						xopt = x0
+						cal_on_iter_wgtrend = .false.
+						call bobyqa_h(nopt,ninterppt,xopt,xl,xu, &
+						&	rhobeg,rhoend,iprint,100,wspace,nopt)
 
-						call dfovec(nopt,nopt,x0,v_err)
-						if( nnode>4 ) cal_on_iter_wgtrend = .true.
-
+						call dfovec(nopt,nopt,xopt,v_err)
+						cal_on_iter_wgtrend = .true.
 						exit
 					endif
 				enddo !j=1,5 to loop over starting points
-				if( nnode>4 ) cal_on_iter_wgtrend = .true.
+				attraction_size = sum(dabs(xopt - x0))/dble(nopt)
+
 				err0 = sum( v_err**2 )
 				node_fopts(dd) = err0
-				node_xopts(((dd-1)*nopt+1):(dd*nopt)) = x0
+				node_xopts(((dd-1)*nopt+1):(dd*nopt)) = xopt
 				node_internalopt( ((dd - 1)*ninternalopt+1):(dd - 1)*ninternalopt + size(wage_coef) ) = wage_coef
 				node_internalopt( ((dd - 1)*ninternalopt+1+ size(wage_coef)):dd*ninternalopt ) = (/ fndrt_mul, seprt_mul /) !are these available globally?
-				print *, "Found min ", err0, "at ", x0," on node: ", rank
+				print *, "Found min ", err0, "at ", xopt," on node: ", rank, "attraction basin: ", attraction_size
 
 				call CPU_TIME(t2)
 				call SYSTEM_CLOCK(c2)
 				print *, "System Time on calibration for rank ", rank, ": ", dble(c2-c1)/dble(cr)
 				print *, "   CPU Time for rank ", rank_str, ": ", (t2-t1)
 
-				call vec2csv(wage_coef, "wage_coef"// rank_str //".csv")
+				call vec2csv(wage_coef, "wage_coef_opt"// rank_str //".csv")
 				call mat2csv(fndgrid0*fndrt_mul, "fndgrid_opt"// rank_str //".csv")
 				call mat2csv(sepgrid0*seprt_mul, "sepgrid_opt"// rank_str //".csv")
 				call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt"// rank_str //".csv")
@@ -5363,7 +5369,9 @@ module find_params
 			sepgrid0 = sepgrid
 			do i=1,nstarts
 				fdist = dabs( fopt_hist(i)-fval )/dabs(fval)
-				if( ((fdist .ge. 2*simtol) .and. (fopt_hist(i) .le. fval)) .or. (i==1)) then
+				xdist = sum(dabs( xopt_hist(:,i)- xopt ) / dabs(xopt))
+				if( ( (fopt_hist(i) .lt. fval) .and. (xdist .ge. nopt*simtol) ) &
+				&  .or. (i==1)) then
 					W = W + 1._dp
 					fval = fopt_hist(i)
 					xopt = xopt_hist(:,i)
@@ -5534,7 +5542,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		!if(smth_dicont .le. 20._dp) smth_dicont = smth_dicont*1.05_dp
 		call cal_dist(paramvec, errvec,mod_shk)
 
-		paramwt(1) = 5.0_dp
+		paramwt(1) = 2.0_dp
 		paramwt(2) = 1.0_dp
 		do i=1,ntheta
 			v_err(i) = errvec(i)*paramwt(i)
@@ -5597,7 +5605,6 @@ program V0main
 		integer  :: nodei,ierr
 !		external :: cal_dist_nloptwrap
 
-!	include 'nlopt.f'
 
 	moments_sim%alloced = 0
 
@@ -5634,6 +5641,7 @@ program V0main
 	endif
 
 	caselabel = ""
+
 	agrid(1) = .05*(agrid(1)+agrid(2))
 	if(print_lev >= 2) then
 		! plot out a bunch of arrays for analyzing VFs, etc
@@ -5906,28 +5914,28 @@ program V0main
 	ub = (/ 2.00_dp, 0.50_dp /)
 
 	!set up the grid over which to check derivatives
-	open(unit=fcallog, file="cal_square.csv")
-	write(fcallog,*) nu, xizcoef, ervec
-	close(unit=fcallog)
-	do i=1,6
-	do j=1,6
-		cal_on_iter_wgtrend = .false.
- 	 	verbose=1
-	 	print_lev =1
-	 	open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-	 	parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/5._dp
-	 	parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/5._dp
-		cal_on_iter_wgtrend = .false.
-	 	call cal_dist(parvec,ervec,shk)
-		cal_on_iter_wgtrend = .true.
- 		write(fcallog, "(G20.12)", advance='no')  nu
- 	 	write(fcallog, "(G20.12)", advance='no')  xizcoef
-	 	write(fcallog, "(G20.12)", advance='no')  ervec(1)
-	 	write(fcallog, "(G20.12)", advance='yes') ervec(2)
-	 	print *, nu, xizcoef, ervec(1), ervec(2)
-	 	close(unit=fcallog)
-	enddo
-	enddo
+	! open(unit=fcallog, file="cal_square.csv")
+	! write(fcallog,*) nu, xizcoef, ervec
+	! close(unit=fcallog)
+	! do i=1,6
+	! do j=1,6
+	! 	cal_on_iter_wgtrend = .false.
+ ! 	 	verbose=1
+	!  	print_lev =1
+	!  	open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
+	!  	parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/5._dp
+	!  	parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/5._dp
+	! 	cal_on_iter_wgtrend = .false.
+	!  	call cal_dist(parvec,ervec,shk)
+	! 	cal_on_iter_wgtrend = .true.
+ ! 		write(fcallog, "(G20.12)", advance='no')  nu
+ ! 	 	write(fcallog, "(G20.12)", advance='no')  xizcoef
+	!  	write(fcallog, "(G20.12)", advance='no')  ervec(1)
+	!  	write(fcallog, "(G20.12)", advance='yes') ervec(2)
+	!  	print *, nu, xizcoef, ervec(1), ervec(2)
+	!  	close(unit=fcallog)
+	! enddo
+	! enddo
 
 	if( run_cal .eqv. .true. ) then
 		call system_clock(count_rate=cr)
@@ -5941,55 +5949,55 @@ program V0main
 	endif
 	!****************************************************************************
 	!   Now run some experiments:
+	print_lev = 2
+	verbose = 1
+	!read in the optimal inner stuff:
+	!wage_trend <- "wage_trend_opt.csv"
+	!wage_coef <- "wage_coef_opt.csv")
+	!fndgrid <- "fndgrid_opt.csv")
+	!sepgrid <- "sepgrid_opt.csv")
+
+	! redundant because of wage_coef_opt
+	! open(unit = fread, file= "wage_trend_opt.csv")
+	! do it=1,Tsim
+	! 	read(fread, *) wage_trend(it,:)
+	! enddo
+	! close(fread)
+	open(unit = fread, file= "wage_coef_opt.csv")
+	do i=1,size(occwg_datcoef)
+		read(fread, *) wage_coef(i)
+	enddo
+	close(fread)
+	open(unit = fread, file= "fndgrid_opt.csv")
+	do i=1,size(fndgrid,1)
+		read(fread, *) fndgrid(i,:)
+	enddo
+	close(fread)
+	open(unit = fread, file= "sepgrid_opt.csv")
+	do i=1,size(sepgrid,1)
+		read(fread, *) sepgrid(i,:)
+	enddo
+	close(fread)
+
+	!read in xi, nu
+	open(unit= fread, file="nuxiw_opt.csv")
+		read(fread,*) nu
+		read(fread,*) xizcoef
+		read(fread,*) wmean
+	close(fread)
+
+	cal_on_iter_wgtrend = .false.
+	parvec = (/nu, xizcoef/)
+	call gen_new_wgtrend(wage_trend,wage_coef)
+
+	caselabel = ""
+ 	print *, caselabel, " ---------------------------------------------------"
+
+	call cal_dist(parvec,err0,shk)
+ 	print *, "error in iniital", err0(1), err0(2)
+	print *, "---------------------------------------------------"
+
 	if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
-		print_lev = 2
-		verbose = 1
-		!read in the optimal inner stuff:
-		!wage_trend <- "wage_trend_opt.csv"
-		!wage_coef <- "wage_coef_opt.csv")
-		!fndgrid <- "fndgrid_opt.csv")
-		!sepgrid <- "sepgrid_opt.csv")
-
-		! redundant because of wage_coef_opt
-		! open(unit = fread, file= "wage_trend_opt.csv")
-		! do it=1,Tsim
-		! 	read(fread, *) wage_trend(it,:)
-		! enddo
-		! close(fread)
-		open(unit = fread, file= "wage_coef_opt.csv")
-		do i=1,size(occwg_datcoef)
-			read(fread, *) wage_coef(i)
-		enddo
-		close(fread)
-		open(unit = fread, file= "fndgrid_opt.csv")
-		do i=1,size(fndgrid,1)
-			read(fread, *) fndgrid(i,:)
-		enddo
-		close(fread)
-		open(unit = fread, file= "sepgrid_opt.csv")
-		do i=1,size(sepgrid,1)
-			read(fread, *) sepgrid(i,:)
-		enddo
-		close(fread)
-
-		!read in xi, nu
-		open(unit= fread, file="nuxiw_opt.csv")
-			read(fread,*) nu
-			read(fread,*) xizcoef
-			read(fread,*) wmean
-		close(fread)
-
-		cal_on_iter_wgtrend = .false.
-		parvec = (/nu, xizcoef/)
-		call gen_new_wgtrend(wage_trend,wage_coef)
-
-		caselabel = ""
-	 	print *, caselabel, " ---------------------------------------------------"
-
-		call cal_dist(parvec,err0,shk)
-	 	print *, "error in iniital", err0(1), err0(2)
-		print *, "---------------------------------------------------"
-
 
 		! without wage trend
 		caselabel = "wchng0"
