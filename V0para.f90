@@ -181,9 +181,11 @@ real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (5% annual discount rat
 !
 		proc_time1 =   2.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
 		proc_time2 = 14.12,&!The average time to decision	(could be 28.05 for appeal that continues)
-		xizcoef = 0.1, &	!change in acceptance rate with z deterioration
-		xiagecoef = 0.,&	!increase in vocational acceptance due to age
-		voc_age	= 0.25,&	!target for increase in vocation due to age
+		xizcoef    = 0.1, &	!change in acceptance rate with z deterioration
+		xizd1coef  = 0.0, &	!change in acceptance rate with z deterioration if d=1
+		xizd23coef = 0.1, &	!change in acceptance rate with z deterioration if d=2 or 3
+		xiagecoef  = 0.,&	!increase in vocational acceptance due to age
+		voc_age	   = 0.25,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
 
@@ -214,6 +216,7 @@ logical  :: cal_on_grad = .false.
 real(8) :: apprt_target = .01,&	!target for application rates (to be filled below)
 		dirt_target = 0.018,&	!target for di rates
 		diaward_target = 0.0038,& !target for new award rate
+		d1_diaward_target = 0.002 ,&
 		voc_acc_target = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_acc_target = 0.75,&		!fraction taken based on health criteria, target 1985
 		avg_unrt = 0.055,&	!average rate of unemployment over the period.
