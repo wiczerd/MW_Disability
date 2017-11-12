@@ -79,7 +79,7 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  demog_dat	 = .true.,& !do the demographics follow
-					  wtr_occ    = .true.,& ! do we feed in occupation-specific trends for wages
+					  wtr_by_occ    = .true.,& ! do we feed in occupation-specific trends for wages
 					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
 					  RAS_pid    = .true.   !balance the health transition matrix
 

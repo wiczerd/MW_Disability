@@ -223,7 +223,7 @@ module helper_funs
 		real(dp), intent(in):: trin
 		integer, intent(in):: idin,itin
 		real(dp), optional :: hlthprob
-		real(dp) :: xifunH,xifunV,xifun, hlthfrac,trqtl,triwt
+		real(dp) :: xifunH,xifunV,xifun, hlthfrac,trqtl,triwt,trhr
 		integer :: trqtl_L, trqtl_H
 
 		!stage 1-3
@@ -231,10 +231,17 @@ module helper_funs
 		!adjsut for time aggregation in first stage?
 		xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
 
+		!prevent non-wage trend from getting an advantage?
+		if(wtr_by_occ .eqv. .false.) then
+			trhr = max(trin,0._dp)
+		else
+			trhr = trin
+		endif
+
 		!vocational stages 4-5
-		trqtl_L = max(locate(tr_decls,trin),1)
+		trqtl_L = max(locate(tr_decls,trhr),1)
 		trqtl_H = min(size(tr_decls), trqtl_L+1)
-		triwt   = max(min( (trin -tr_decls(trqtl_L))/(tr_decls(trqtl_H)-tr_decls(trqtl_L)),1._dp),0._dp)
+		triwt   = max(min( (trhr -tr_decls(trqtl_L))/(tr_decls(trqtl_H)-tr_decls(trqtl_L)),1._dp),0._dp)
 		trqtl = triwt*dble(trqtl_H-1)/10._dp + (1._dp-triwt)*dble(trqtl_L-1)/10._dp
 		trqtl = min(max(trqtl,0._dp),1._dp)
 		if( idin ==1 ) then
@@ -247,11 +254,6 @@ module helper_funs
 		&	xifunV = xifunV*(1._dp+xiagecoef)
 		!adjust for time aggregation in second stage?
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
-
-		!adjust this for the growth over-time ?
-		! if(wtr_occ .eqv. .false.) then
-		! 	xifunV = 0._dp
-		! endif
 
 		xifun = xifunH+xifunV
 
@@ -4378,7 +4380,7 @@ module find_params
 
 	save
 
-	integer :: mod_ij_obj, mod_it,mod_solcoefiter
+	integer :: mod_solcoefiter !just a counter for iterations on coefs
 	type(val_struct), pointer :: mod_vfs
 	type(pol_struct), pointer :: mod_pfs
 	type(hist_struct), pointer :: mod_hst
@@ -5014,7 +5016,6 @@ module find_params
 
 		! set up economy and solve it
 		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
-		!be sure tr_decls is actually on the domain of trgrid
 
 		if(verbose >2) print *, "Solving the model"
 		call sol(vfs,pfs)
@@ -5049,29 +5050,29 @@ module find_params
 		endif
 
 		!I only want to iterate on the wage trend if I have a good set of parameters
-		if((cal_on_iter_wgtrend .eqv. .true.) .and. (w_strchng .eqv. .true.) )  then
+		if( cal_on_iter_wgtrend .eqv. .true. )  then
 			call iter_wgtrend(vfs, pfs, hst,shk)
+		else
+			fndrt_mul =1._dp
+			seprt_mul =1._dp
 		endif
+
 		fndgrid = fndrt_mul*fndgrid0
 		sepgrid = seprt_mul*sepgrid0
 
-		if( (wtr_occ .eqv. .true.) ) then !.and. &
-	!	&	(minval(tr_decls)<minval(wage_trend) .or. maxval(tr_decls)>maxval(wage_trend)) )
-		tr_decls = ( (tr_decls-minval(tr_decls))/(maxval(tr_decls)-minval(tr_decls)) &
-				& ) * ( maxval(wage_trend)-minval(wage_trend)) + minval(wage_trend)
-		endif
-
+		!did I need to rescale? I don't think so
+	! 	if( (wtr_by_occ .eqv. .true.) ) then !.and. &
+	! !	&	(minval(tr_decls)<minval(wage_trend) .or. maxval(tr_decls)>maxval(wage_trend)) )
+	! 	tr_decls = ( (tr_decls-minval(tr_decls))/(maxval(tr_decls)-minval(tr_decls)) &
+	! 			& ) * ( maxval(wage_trend)-minval(wage_trend)) + minval(wage_trend)
+	! 	endif
 
 		if(verbose >2) print *, "Simulating the model"
-		call sim(vfs, pfs, hst,shk)
+		call sim(vfs, pfs, hst,shk,.false.)
 		if(verbose >2) print *, "Computing moments"
 		call moments_compute(hst,moments_sim,shk)
 		if(verbose >1) print *, "DI rate" , moments_sim%avg_di
 
-		condstd_tsemp = 0.
-		do ij = 1,nj
-			condstd_tsemp = moments_sim%ts_emp_coefs(ij+1) *occsz0(ij)+ condstd_tsemp
-		enddo
 		totapp_dif_hist = 0.
 		ninsur_app = 0.
 		do i =1,Nsim
@@ -5114,6 +5115,7 @@ module find_params
 
 		!put things back:
 		call dealloc_econ(vfs,pfs,hst)
+
 		fndgrid = fndgrid0
 		sepgrid = sepgrid0
 
@@ -5873,7 +5875,7 @@ program V0main
 			if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 		endif
 ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! 		call sim(vfs, pfs, hst,shk,.false.) ---- lingering issue that 1st stage seems to have correlated results
+! 		call sim(vfs, pfs, hst,shk,.false.) !---- lingering issue that 1st stage seems to have correlated results
 !
 ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
@@ -6001,12 +6003,6 @@ program V0main
 	!fndgrid <- "fndgrid_opt.csv")
 	!sepgrid <- "sepgrid_opt.csv")
 
-	! redundant because of wage_coef_opt
-	! open(unit = fread, file= "wage_trend_opt.csv")
-	! do it=1,Tsim
-	! 	read(fread, *) wage_trend(it,:)
-	! enddo
-	! close(fread)
 	open(unit = fread, file= "wage_coef_opt.csv")
 	do i=1,size(occwg_datcoef)
 		read(fread, *) wage_coef(i)
@@ -6038,6 +6034,9 @@ program V0main
 
 	caselabel = ""
  	print *, caselabel, " ---------------------------------------------------"
+	del_by_occ = .true.
+	wtr_by_occ = .true.
+	demog_dat = .true.
 
 	call cal_dist(parvec,err0,shk)
  	print *, "error in iniital", err0(1), err0(2), err0(3)
@@ -6055,7 +6054,7 @@ program V0main
 	 	print *, caselabel, " ---------------------------------------------------"
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
-	 	wtr_occ = .false.
+	 	wtr_by_occ = .false.
 	 	del_by_occ = .false.
 	 	demog_dat  = .false.
 		verbose = 1
@@ -6072,7 +6071,7 @@ program V0main
 	 	print *, caselabel, " ---------------------------------------------------"
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
-	 	wtr_occ = .false.
+	 	wtr_by_occ = .false.
 	 	del_by_occ = .true.
 	 	demog_dat  = .true.
 		verbose = 1
@@ -6086,7 +6085,7 @@ program V0main
 
 	 	! without the correlation between delta and occupation
 		del_by_occ = .false.
-	 	wtr_occ = .true.
+	 	wtr_by_occ = .true.
 	 	demog_dat = .true.
 	 	caselabel = "deloc0"
 	 	print *, caselabel, " ---------------------------------------------------"
@@ -6097,7 +6096,7 @@ program V0main
 		print *, "---------------------------------------------------"
 
 	 	del_by_occ = .true.
-	 	wtr_occ = .true.
+	 	wtr_by_occ = .true.
 	 	demog_dat = .false.
 	 	caselabel = "demog0"
 	 	print *, caselabel, " ---------------------------------------------------"
@@ -6109,7 +6108,7 @@ program V0main
 
 	 	! without either the correlation between delta and occupation or wage trend
 	 	del_by_occ = .false.
-	 	wtr_occ = .true.
+	 	wtr_by_occ = .true.
 	 	demog_dat = .true.
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 	 	caselabel = "wchng0deloc0"
@@ -6122,7 +6121,7 @@ program V0main
 	 	print *, "---------------------------------------------------"
 
 		del_by_occ = .true.
-		wtr_occ = .false.
+		wtr_by_occ = .false.
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		demog_dat = .false.
 		caselabel = "wchng0demog0"
@@ -6135,7 +6134,7 @@ program V0main
 		print *, "---------------------------------------------------"
 
 	 	del_by_occ = .false.
-	 	wtr_occ = .true.
+	 	wtr_by_occ = .true.
 	 	demog_dat = .false.
 	 	caselabel = "deloc0demog0"
 	 	print *, caselabel, " ---------------------------------------------------"
