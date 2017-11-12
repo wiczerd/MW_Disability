@@ -70,6 +70,7 @@ logical            :: al_contin  = .true.,&		!make alpha draws continuous or sta
 					  z_regimes	 = .false.,&	!different z regimes?
 					  ineligNoNu = .false.,&	!do young ineligable also pay the nu cost when they are ineligable?
 					  dieyoung   = .true.,&		!do the young die (rate associated with health state)
+					  w_strchng	 = .true.,&     ! w gets fed a structural change sequence
 					  wglev_0	 = .false.  	!should the initial wage level be 0 for all occupations
 
 
@@ -77,8 +78,8 @@ logical            :: al_contin  = .true.,&		!make alpha draws continuous or sta
 logical           ::  del_by_occ = .true.,& !delta is fully determined by occupation, right now alternative is fully random
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
-					  w_strchng	 = .true.,& ! w gets fed a structural change sequence
 					  demog_dat	 = .true.,& !do the demographics follow
+					  wtr_occ    = .true.,& ! do we feed in occupation-specific trends for wages
 					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
 					  RAS_pid    = .true.   !balance the health transition matrix
 
@@ -216,7 +217,7 @@ logical  :: cal_on_grad = .false.
 real(8) :: apprt_target = .01,&	!target for application rates (to be filled below)
 		dirt_target = 0.018,&	!target for di rates
 		diaward_target = 0.0038,& !target for new award rate
-		d1_diaward_target = 0.002 ,&
+		d1_diawardfrac_target = 0.16,&
 		voc_acc_target = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_acc_target = 0.75,&		!fraction taken based on health criteria, target 1985
 		avg_unrt = 0.055,&	!average rate of unemployment over the period.
@@ -249,7 +250,7 @@ subroutine setparams()
 
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: pop_size(Tsim), age_occ_read(6,18), age_read(31,TT), maxADL_read(16), &
+	real(8) :: age_occ_read(6,18), age_read(31,TT), maxADL_read(16), &
 		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
 		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(31), &
 		& wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(22)
@@ -676,20 +677,17 @@ subroutine setparams()
 		enddo
 	enddo
 
-	pop_size(1) = sum(prob_age(:,1))
 	!evolution of age-structure!!!!!!!!!!!!!!!!!!!!!!
 
 	if(dieyoung .eqv. .true.) then
 		dy = PrDeath(1,1)*PrDage(1,1)+PrDeath(2,1)*PrDage(2,1)+PrDeath(3,1)*PrDage(3,1)
 		t=2
 		dm = PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t)
-		junk = dm
 		do t=3,TT-1
 			dm =  (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t))*(1._dp-dm) +dm !die
-			junk = (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t)) + junk
 		enddo
-		junk = junk/dble(TT-oldn) !!! This is temporary
-		dm = dm/dble(TT-oldn)
+		dm = dm/dble(TT-1-2)
+		dm = 0.002008144_dp !just using from the simulation
 	else
 		dm = 0.d0
 		dy = 0.d0
@@ -767,7 +765,6 @@ subroutine setparams()
 			endif
 			Nm = pNm
 			Ny = pNy + bN(t)
-
 		enddo
 		junk = hazborn_constpop(1)
 
@@ -934,8 +931,6 @@ subroutine setparams()
 		if(RAS_pid .eqv. .true.) then
 		! implement RAS method to balance matrix and enforce steady-state levels
 		! this means the row marginals, u_i = 1 \forall i and column marginals v_j
-
-
 			do iter=1,maxiter
 				do k=1,nd
 					r1(k) = ( (1.d0 - PrDeath(k,i))**(tlen) ) /sum(pid1(k,:))
@@ -1005,7 +1000,7 @@ subroutine setparams()
 			enddo
 
 			!initialize
-			PrDageDel(:,:,j) = PrDage
+			!PrDageDel(:,:,j) = PrDage
 			sdec = pid1
 			call  dgeev( 'V', 'N', nd, sdec, nd, wr, wi, vl, nd, vr, nd, &
 		    	& wrk, lwrk, status)
@@ -1015,8 +1010,9 @@ subroutine setparams()
 			enddo
 			summy = sum(PrDageDel(:,i,j))
 			PrDageDel(:,i,j) = PrDageDel(:,i,j)/summy
-		enddo
+		enddo !j=1,ndi
 	enddo
+	PrDageDel(:,TT,:) = PrDageDel(:,TT-1,:)
 
 end subroutine setparams
 
