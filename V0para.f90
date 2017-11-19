@@ -79,7 +79,8 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  j_regimes  = .true.,& !different pref shifts
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  demog_dat	 = .true.,& !do the demographics follow
-					  wtr_by_occ    = .true.,& ! do we feed in occupation-specific trends for wages
+					  wtr_by_occ = .true.,& ! do we feed in occupation-specific trends for wages
+					  occ_dat    = .true.,& ! do we
 					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
 					  RAS_pid    = .true.   !balance the health transition matrix
 
@@ -125,6 +126,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		PrDeath(nd,TT),&	!Probability of death during work-life
 !
 		tr_decls(11),& !0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1
+		wg_decls(11),& !0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1
 !
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
 		wage_trend(Tsim,nj),&!trend in wages
@@ -148,8 +150,8 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		step_derwgcoef(Nskill*2+NTpolyT+5),&	! the step size for derivatives in wage coefficients. Will set this optimally later.
 		noise_coef( Nskill*2+NTpolyT+5 ),&	!the noise associated with
 !
-		occsz0(nj),&		!Fraction in each occupation
-		occpr_trend(Tsim,nj)!trend in occupation choice
+		occsz0(nj),&		   !Fraction in each occupation
+		occpr_trend(Tsim,nj) !trend in occupation choice
 
 integer :: 	dgrid(nd)	! just enumerate the d states
 real(8)	::	agegrid(TT)		! the mid points of the ages
@@ -567,6 +569,11 @@ subroutine setparams()
 	do i=2,10
 		tr_decls(i) = dble(i-1)/10._dp*(tr_decls(11)-tr_decls(1))
 	enddo
+	wg_decls(1) = dexp(minval(alfgrid)+minval(trgrid))
+	wg_decls(11)= dexp(maxval(alfgrid)+maxval(trgrid))
+	do i=2,10
+		wg_decls(i) = dble(i-1)/10._dp*(wg_decls(11)-wg_decls(1))
+	enddo
 
 	!read these numberrs in already
 	seprisk = 0._dp
@@ -799,7 +806,6 @@ subroutine setparams()
 		enddo
 		occpr_trend(t,:) = occpr_trend(t,:)/summy
 	enddo
-
 
 
 ! Initial distribution of people across occupations

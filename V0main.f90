@@ -223,7 +223,7 @@ module helper_funs
 		real(dp), intent(in):: trin
 		integer, intent(in):: idin,itin
 		real(dp), optional :: hlthprob
-		real(dp) :: xifunH,xifunV,xifun, hlthfrac,trqtl,triwt,trhr
+		real(dp) :: xifunH,xifunV,xifun, hlthfrac,trqtl,trwt,trhr
 		integer :: trqtl_L, trqtl_H
 
 		!stage 1-3
@@ -241,15 +241,16 @@ module helper_funs
 		!vocational stages 4-5
 		trqtl_L = max(locate(tr_decls,trhr),1)
 		trqtl_H = min(size(tr_decls), trqtl_L+1)
-		triwt   = max(min( (trhr -tr_decls(trqtl_L))/(tr_decls(trqtl_H)-tr_decls(trqtl_L)),1._dp),0._dp)
-		trqtl = triwt*dble(trqtl_H-1)/10._dp + (1._dp-triwt)*dble(trqtl_L-1)/10._dp
+		trwt   = max(min( (trhr -tr_decls(trqtl_L))/(tr_decls(trqtl_H)-tr_decls(trqtl_L)),1._dp),0._dp)
+		trqtl = trwt*dble(trqtl_H-1)/10._dp + (1._dp-trwt)*dble(trqtl_L-1)/10._dp
 		trqtl = min(max(trqtl,0._dp),1._dp)
 		if( idin ==1 ) then
-			xifunV =  (1._dp-trqtl)*xizd1coef
+			!xifunV =  (1._dp-trqtl)*xizd1coef
+			xifunV =  xizd1coef*(maxval(trgrid)-trhr)/((maxval(trgrid)-minval(trgrid)))
 		else
-			xifunV =  (1._dp-trqtl)*xizd23coef
+			!xifunV =  (1._dp-trqtl)*xizd23coef
+			xifunV =  xizd23coef*(maxval(trgrid)-trhr)/((maxval(trgrid)-minval(trgrid)))
 		endif
-		!xifunV =  (maxval(trgrid)-trin)/((maxval(trgrid)-minval(trgrid)))*xizcoef
 		if(itin>=(TT-2)) &
 		&	xifunV = xifunV*(1._dp+xiagecoef)
 		!adjust for time aggregation in second stage?
@@ -258,9 +259,6 @@ module helper_funs
 		xifun = xifunH+xifunV
 
 		hlthfrac = xifunH/xifun
-
-		!adjust for time aggregation all at once
-	!	xifun = 1._dp - max(0._dp,1._dp-xifun)**(1._dp/proc_time2)
 
 		xifun = max(min(xifun,1._dp),0._dp)
 
@@ -1282,7 +1280,7 @@ module sol_val
 
 		!adjust AIME for early young workers with less-then 35 years:
 
-		xihr = xifun(id,trgrid(itr),it)
+		xihr = xifun(id,trgrid(itr),it) !xifun(id, wagehere,it)
 		nuhr = nu
 		if(it== TT-1) nuhr = nu*(ptau(it)) !only pay nu for non-retired state
 		minvalVN = minval(VN0((il-1)*ntr+itr,((idi-1)*nal+1):(idi*nal),:,:,:,:,it))
@@ -2769,10 +2767,8 @@ module sim_hists
 		integer,intent(in)  :: seed0
 		integer,intent(out) :: success
 		integer, allocatable :: bdayseed(:)
-		real(dp) :: Njcumdist(nj+1,Tsim)
 		real(dp) :: draw_i
 
-		Njcumdist = 0
 		j_i = 0
 		if(nj>1) then
 			call random_seed(size = ss)
@@ -2789,52 +2785,91 @@ module sim_hists
 				enddo
 			else
 				jshock_ij = 0._dp
-				!do periods 2:Tsim
-				do it=2,Tsim
-					do ij=1,nj
-						Njcumdist(ij+1,it) = occpr_trend(it,ij) + Njcumdist(ij,it)
-					enddo
-					do i=1,Nsim
-						if( born_it(i,it)==1) then
-							call random_number(draw_i)
-							j_i(i) = finder(Njcumdist(:,it),draw_i)
-							if(j_i(i) < 1 ) j_i(i) = 1
-							if(j_i(i) > nj) j_i(i) = nj
-						endif
-					enddo
-				enddo
-			!do period 1
-				it=1
-				do ij=1,nj
-					Njcumdist(ij+1,it) = occsz0(ij) + Njcumdist(ij,it)
-				enddo
-
-				do i=1,Nsim
-					if( j_i(i) ==0) then !not born in 2:Tsim and so doesn't have an occupation yet
-						call random_number(draw_i)
-						j_i(i) = finder(Njcumdist(:,it),draw_i)
-						if(j_i(i) < 1 ) j_i(i) = 1
-						if(j_i(i) > nj) j_i(i) = nj
-					endif
-				enddo
+				call random_number(draw_i)
+				jshock_ij(i,:) = draw_i
+				call set_ji(j_i,jshock_ij,born_it)
 			endif
-			!make sure everyone has a job:
-			do i=1,Nsim
-				if( j_i(i)==0 ) then
-					call random_number(draw_i)
-					j_i(i) = nint( draw_i*(nj-1)+1 )
-				endif
-			enddo
-
 
 			deallocate(bdayseed)
 		else
 			jshock_ij = 0.
 			j_i = 1
 		endif
+
 		success = 0
 
 	end subroutine draw_ji
+
+	subroutine set_ji(j_i,jshock_ij,born_it)
+		implicit none
+		integer	:: j_i(:),born_it(:,:)
+		real(dp) :: jshock_ij(:,:)
+		real(dp) :: jwt
+		integer	:: i,m,ss=1,ij,it
+		integer, allocatable :: bdayseed(:)
+		real(dp) :: Njcumdist(nj+1,Tsim),Njconstcumdist(nj+1)
+		real(dp) :: draw_i
+
+		Njcumdist = 0._dp
+		Njconstcumdist = 0._dp
+		j_i = 0
+		do ij=1,nj
+			Njconstcumdist(ij+1) = occsz0(ij) + Njconstcumdist(ij)
+		enddo
+		if(nj>1) then
+			!do periods 2:Tsim
+			do it=2,Tsim
+				if( occ_dat .eqv. .true. ) then
+					do ij=1,nj
+						Njcumdist(ij+1,it) = occpr_trend(it,ij) + Njcumdist(ij,it)
+					enddo
+				else
+					Njcumdist(:,it) = Njconstcumdist
+				endif
+				do i=1,Nsim
+					if( born_it(i,it)==1) then
+						draw_i = jshock_ij(i,1)
+						j_i(i) = finder(Njcumdist(:,it),draw_i)
+						if(j_i(i) < 1 ) j_i(i) = 1
+						if(j_i(i) > nj) j_i(i) = nj
+					endif
+				enddo
+			enddo
+			!do period 1
+			it=1
+			do ij=1,nj
+				Njcumdist(ij+1,it) = occsz0(ij) + Njcumdist(ij,it)
+			enddo
+			if( occ_dat .eqv. .true. ) then
+				do ij=1,nj
+					Njcumdist(ij+1,it) = occpr_trend(it,ij) + Njcumdist(ij,it)
+				enddo
+			else
+				Njcumdist(:,it) = Njconstcumdist
+			endif
+			do i=1,Nsim
+				if( j_i(i) ==0) then !not born in 2:Tsim and so doesn't have an occupation yet
+					draw_i = jshock_ij(i,1)
+					j_i(i) = finder(Njcumdist(:,it),draw_i)
+					if(j_i(i) < 1 ) j_i(i) = 1
+					if(j_i(i) > nj) j_i(i) = nj
+				endif
+			enddo
+
+			!make sure everyone has a job:
+			do i=1,Nsim
+				if( j_i(i)==0 ) then
+					draw_i = jshock_ij(i,1)
+					j_i(i) = nint( draw_i*(nj-1)+1 )
+				endif
+			enddo
+
+		else
+			jshock_ij = 0.
+			j_i = 1
+		endif
+
+	end subroutine set_ji
 
 	subroutine draw_zjt(z_jt_select, z_jt_innov, seed0, success)
 		implicit none
@@ -3019,11 +3054,11 @@ module sim_hists
 
 	end subroutine set_age
 
-	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it,al_int_it, seed0, success)
+	subroutine draw_draw(drawi_ititer, drawt_ititer, age_it,al_int_it,del_i_int, seed0, success)
 
 		integer,intent(in) :: seed0
 		integer,intent(out) :: success
-		integer,intent(in) :: age_it(:,:),al_int_it(:,:)
+		integer,intent(in) :: age_it(:,:),al_int_it(:,:),del_i_int(:)
 		integer, allocatable :: bdayseed(:)
 		integer,intent(out) :: drawi_ititer(:,:),drawt_ititer(:,:)
 		integer :: i,it,id,m,ss=1,drawt,drawi,ndraw,Ncols, seedi,brn_yr(Nsim),iter
@@ -3068,7 +3103,9 @@ module sim_hists
 					call random_number(junk)
 					drawt = max(1,idnint(junk*Tsim))
 					iter = iter+1
-					if( (age_it(drawi,drawt) .eq. age_it(i,it)) .and. (al_int_it(drawi,drawt) .eq. al_int_it(i,it)) ) then
+					if( (age_it(drawi,drawt) .eq. age_it(i,it)) .and. &
+					&	(al_int_it(drawi,drawt) .eq. al_int_it(i,it)) .and. &
+						(del_i_int(drawi) .eq. del_i_int(i) ) ) then
 						drawi_ititer(i,id) = drawi
 						drawt_ititer(i,id) = drawt
 						exit ageloop
@@ -3098,17 +3135,17 @@ module sim_hists
 		if(verbose >2) print *, "Drawing types and shocks"
 		call draw_age_it(shk%age_hist,shk%born_hist,shk%age_draw,seed0,status)
 		seed0 = seed0 + 1
-		call draw_ji(shk%j_i,shk%jshock_ij,shk%born_hist,seed1, status)
-		seed1 = seed1 + 1
 		call draw_alit(shk%al_hist,shk%al_int_hist, seed0, status)
 		seed0 = seed0 + 1
+		call draw_ji(shk%j_i,shk%jshock_ij,shk%born_hist,seed1, status)
+		seed1 = seed1 + 1
 		call draw_deli(shk%del_i_draw, shk%del_i_int, shk%j_i, seed1, status)
 		seed1 = seed1 + 1
 		call draw_fndsepi(shk%fndsep_i_draw, shk%fndsep_i_int, shk%fndarrive_draw, shk%j_i, seed0, status)
 		seed0 = seed0 + 1
 		call draw_zjt(shk%z_jt_select,shk%z_jt_innov, seed1, status)
 		seed1 = seed1 + 1
-		call draw_draw(shk%drawi_ititer, shk%drawt_ititer, shk%age_hist, shk%al_int_hist,seed0, status)
+		call draw_draw(shk%drawi_ititer, shk%drawt_ititer, shk%age_hist, shk%al_int_hist, shk%del_i_int, seed0, status)
 		seed0 = seed0 + 1
 		call draw_status_innov(shk%status_it_innov, shk%health_it_innov, shk%dead_draw,seed1, status)
 		seed1 = seed1 + 1
@@ -3481,10 +3518,11 @@ module sim_hists
 				del_hr = del_i_int(i)
 				if(age_hr>0) then
 					!use status_it_innov(i,Tsim) to identify the d state, along with age of this guy
-					do d_hr=1,nd
-						if(health_it_innov(i,it) < cumPrDageDel(d_hr+1,age_hr,del_hr)) &
-							& exit
-					enddo
+					!do d_hr=1,nd
+					!	if(health_it_innov(i,it) < cumPrDageDel(d_hr+1,age_hr,del_hr)) &
+					!		& exit
+					!enddo
+					d_hr = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
 
 					if((iter>1) ) then
 						do ii=1,Ncol
@@ -3562,10 +3600,11 @@ module sim_hists
 					! draw state from distribution of age 1
 						age_hr	= 1
 						brn_yr_hr = it
-						do d_hr=1,nd
-							if(health_it_innov(i,it) < cumPrDageDel(d_hr+1,age_hr,del_hr)) &
-								& exit
-						enddo
+						! do d_hr=1,nd
+						! 	if(health_it_innov(i,it) < cumPrDageDel(d_hr+1,age_hr,del_hr)) &
+						! 		& exit
+						! enddo
+						d_hr = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
 						if(iter ==1) then
 							brn_drawi_drawt(i,it,:) = (/i,it /)
 							a_hr 	= minval(agrid)
@@ -3898,7 +3937,7 @@ module sim_hists
 
 									!applying, do you get it?
 									!record probabilities
-									junk = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)
+									junk = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)!xifun(d_hr,wage_hr,age_hr,hlthprob)
 									if( (age_hr .eq. 1) .and. (ineligNoNu .eqv. .true.) ) then
 										di_prob_it(i,it) = junk*eligY
 										hst%hlthprob_hist(i,it) = hlthprob*eligY
@@ -4131,14 +4170,14 @@ module sim_hists
 						else
 							d_it(i,it+1) = d_hr
 						endif
-						if( (brn_yr_hr == 1) .and. (age_it(i,it)<age_it(i,it+1)) )then !correct for health/aging by alive in first period:
-							do ii=1,nd
-								if( cumPrDageDel(ii+1,age_it(i,it+1),del_hr)> health_it_innov(i,it) ) then
-									d_it(i,it+1) = ii
-									exit
-								endif
-							enddo
-						endif
+						!if( (brn_yr_hr == 1) .and. (age_it(i,it)<age_it(i,it+1)) )then !correct for health/aging by alive in first period:
+						!	do ii=1,nd
+						!		if( cumPrDageDel(ii+1,age_it(i,it+1),del_hr)> health_it_innov(i,it) ) then
+						!			d_it(i,it+1) = ii
+						!			exit
+						!		endif
+						!	enddo
+						!endif
 
 					endif !t<Tsim
 				else !age_it(i,it) <= 0, they've not been born or they are dead
@@ -4819,7 +4858,7 @@ module find_params
 		!for running/matching the wage regression:
 		real(dp), allocatable :: coef_est(:), dif_coef(:), reldist_coef(:),wcU(:),wcL(:),wc0(:)
 		real(dp), allocatable :: dif_h(:), d2_coef(:)  ! for estimating "mu" from More and Wild
-		real(dp), allocatable :: coef_dist_der_hist(:,:),fval(:),jac(:,:), wa_coef(:),wksp_dfbols(:)
+		real(dp), allocatable :: fval(:),jac(:,:), wa_coef(:),wksp_dfbols(:)
 		real(dp) :: maxskill(Nskill),minskill(Nskill),ret_onet(nj),rhobeg,rhoend
 
 		if( NKpolyT>=2 ) then
@@ -4850,9 +4889,7 @@ module find_params
 
 		step_derwgcoef = 1e-4
 		noise_coef = 0._dp
-		allocate(coef_dist_der_hist(maxiter,Ncoef*2)) !distance and derivative
 
-		coef_dist_der_hist = 1._dp !initialize
 		allocate(dist_wgtrend_jt(Tsim,nj))
 
 		plO = print_lev
@@ -4887,7 +4924,6 @@ module find_params
 		! 	call clean_hist(hst)
 		! 	call reg_wgtrend(coef_est,vfs,pfs,hst,shk)
 		! 	call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
-		! 	coef_dist_der_hist(iter,1:Ncoef) = dif_coef
 		! enddo
 		! do ri=1,Ncoef
 		! 	call stdev_v( d2_coef(ri) ,coef_dist_der_hist(1:sd_estpts,ri))
@@ -4963,7 +4999,6 @@ module find_params
 		deallocate(dist_wgtrend_jt)
 
 		deallocate(coef_est)
-		deallocate(coef_dist_der_hist)
 		deallocate(dif_coef,reldist_coef)
 		deallocate(d2_coef)
 
@@ -5052,9 +5087,6 @@ module find_params
 		!I only want to iterate on the wage trend if I have a good set of parameters
 		if( cal_on_iter_wgtrend .eqv. .true. )  then
 			call iter_wgtrend(vfs, pfs, hst,shk)
-		else
-			fndrt_mul =1._dp
-			seprt_mul =1._dp
 		endif
 
 		fndgrid = fndrt_mul*fndgrid0
@@ -5405,9 +5437,8 @@ module find_params
 			do i=1,nstarts
 				fdist = dabs( fopt_hist(i)-fval )/dabs(fval)
 				xdist = sum(dabs( xopt_hist(:,i)- xopt ) / dabs(xopt))
-				if( ( (fopt_hist(i) .lt. fval) .and. (xdist .ge. nopt*simtol) ) &
-				&  .or. (i==1)) then
-					W = W + 1._dp
+				if( (fopt_hist(i) .lt. fval) .or. (i==1)) then
+					if(xdist .ge. nopt*simtol) W = W + 1._dp
 					fval = fopt_hist(i)
 					xopt = xopt_hist(:,i)
 					wage_coef = internalopt_hist(1:size(wage_coef),i)
@@ -5416,7 +5447,9 @@ module find_params
 					!output global wage_trend  in optimal
 					call gen_new_wgtrend(wage_trend, wage_coef)
 					fndgrid = fndgrid0*fndrt_mul
+					fndrt_mul =1._dp
 					sepgrid = sepgrid0*seprt_mul
+					seprt_mul =1._dp
 					!print them all
 					call mat2csv(wage_trend, "wage_trend_opt.csv")
 					call vec2csv(wage_coef, "wage_coef_opt.csv")
@@ -5626,7 +5659,8 @@ program V0main
 	!************************************************************************************************!
 		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app,cumpid(nd,nd+1,ndi,TT-1)
 		real(dp)	:: jshift_hr(nj),wage_coef_0chng(size(wage_coef))
-		real(dp), allocatable :: tr_hist_vec(:)
+		real(dp), allocatable :: tr_hist_vec(:),wg_hist_vec(:)
+		real(dp) :: xsec_PrDageDel(nd,TT,ndi)
 	!************************************************************************************************!
 	! Structure to communicate everything
 		type(val_struct), target :: vfs
@@ -5814,7 +5848,7 @@ program V0main
 	!util_const = - junk - util_const
 
 	allocate(tr_hist_vec(Nsim*Tsim))
-
+	allocate(wg_hist_vec(Nsim*Tsim))
 	call alloc_shocks(shk)
 	call draw_shocks(shk)
 	if( run_experiments .eqv. .true. ) then
@@ -5875,8 +5909,26 @@ program V0main
 			if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
 		endif
 ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! 		call sim(vfs, pfs, hst,shk,.false.) !---- lingering issue that 1st stage seems to have correlated results
-!
+! THIS IS AN ENGINEERING FIX AND SHOULD BE REPLACED
+		call sim(vfs, pfs, hst,shk,.false.) !---- lingering issue that 1st stage seems to have correlated results
+		xsec_PrDageDel = 0._dp
+		do i=1,Nsim
+			do it=100,Tsim !totally ad hoc to start at 100
+				if(shk%age_hist(i,it)>0 .and. hst%status_hist(i,it)>0) then
+					xsec_PrDageDel( hst%d_hist(i,it),shk%age_hist(i,it), shk%del_i_int(i) ) = 1._dp &
+						& + xsec_PrDageDel( hst%d_hist(i,it), shk%age_hist(i,it), shk%del_i_int(i) )
+				endif
+			enddo
+		enddo
+		do idi=1,ndi
+			do it=1,TT
+				junk = sum(xsec_PrDageDel(:,it,idi))
+				xsec_PrDageDel(:,it,idi) = xsec_PrDageDel(:,it,idi)/junk
+			enddo
+		enddo
+		call mat2csv( xsec_PrDageDel(:,:,1),"xsec_PrDageDelL.csv")
+		call mat2csv( xsec_PrDageDel(:,:,ndi),"xsec_PrDageDelH.csv")
+		PrDageDel = xsec_PrDageDel
 ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
 			if(verbose>1) print *, "iterating to find wage trend"
@@ -5917,6 +5969,7 @@ program V0main
 					wmean = wagehere + wmean
 					junk = junk+1.
 					tr_hist_vec(ii) = wage_trend(it,shk%j_i(i))
+					wg_hist_vec(ii) = wagehere
 					ii = ii+1
 				endif
 			enddo
@@ -5933,11 +5986,17 @@ program V0main
 		do i =2,10
 			tr_decls(i) = tr_hist_vec((i*ii-ii)/10 )
 		enddo
+		call quicksort(wg_hist_vec,1,ii-1)
+		wg_decls(1) = wg_hist_vec(2)
+		wg_decls(11)= wg_hist_vec(ii-2)
+		do i =2,10
+			tr_decls(i) = tr_hist_vec((i*ii-ii)/10 )
+		enddo
 		call vec2csv(tr_decls,"tr_decls.csv")
-
-		if(run_experiments .eqv. .false.) then
-			call dealloc_econ(vfs,pfs,hst)
-		endif
+		call vec2csv(wg_decls,"wg_decls.csv")
+		! if(run_experiments .eqv. .false.) then
+		! 	call dealloc_econ(vfs,pfs,hst)
+		! endif
 
 		if(verbose >=1) then
 			call CPU_TIME(t2)
@@ -6018,6 +6077,8 @@ program V0main
 		read(fread, *) sepgrid(i,:)
 	enddo
 	close(fread)
+	fndrt_mul =1._dp
+	seprt_mul =1._dp
 
 	!read in xi, nu
 	open(unit= fread, file="nuxiw_opt.csv")
@@ -6041,6 +6102,12 @@ program V0main
 	call cal_dist(parvec,err0,shk)
  	print *, "error in iniital", err0(1), err0(2), err0(3)
 	print *, "---------------------------------------------------"
+	! do i=1,10
+	! 	print *, "RUNNING IT AGAIN-----------------------------------"
+	! 	call cal_dist(parvec,err0,shk)
+	!  	print *, "error in iniital", err0(1), err0(2), err0(3)
+	! 	print *, "---------------------------------------------------"
+	! enddo
 
 	if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
 
@@ -6055,12 +6122,16 @@ program V0main
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
 	 	wtr_by_occ = .false.
-	 	del_by_occ = .false.
+	 	occ_dat = .false.
 	 	demog_dat  = .false.
 		verbose = 1
 		print *, "---------------------------------------------------"
 		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+	!	call draw_draw(shk%drawi_ititer,shk%drawt_ititer,shk%age_it,shk%al_int_it,shk%del_i_int,&
+	!		&	seed0,success)
 		call cal_dist(parvec,err0,shk)
 	 	print *, "error in targets with ", caselabel,  " ", err0
 		call gen_new_wgtrend(wage_trend,wage_coef)
@@ -6072,74 +6143,92 @@ program V0main
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
 	 	wtr_by_occ = .false.
-	 	del_by_occ = .true.
+	 	occ_dat = .true.
 	 	demog_dat  = .true.
 		verbose = 1
 		print *, "---------------------------------------------------"
 		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+
 		call cal_dist(parvec,err0,shk)
 	 	print *, "error in targets with ", caselabel,  " ", err0
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "---------------------------------------------------"
 
 	 	! without the correlation between delta and occupation
-		del_by_occ = .false.
+		occ_dat = .false.
 	 	wtr_by_occ = .true.
 	 	demog_dat = .true.
 	 	caselabel = "deloc0"
 	 	print *, caselabel, " ---------------------------------------------------"
-	 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
 		print *, "---------------------------------------------------"
 
-	 	del_by_occ = .true.
+	 	occ_dat = .true.
 	 	wtr_by_occ = .true.
 	 	demog_dat = .false.
 	 	caselabel = "demog0"
 	 	print *, caselabel, " ---------------------------------------------------"
-	 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"
 
 	 	! without either the correlation between delta and occupation or wage trend
-	 	del_by_occ = .false.
+	 	occ_dat = .false.
 	 	wtr_by_occ = .true.
 	 	demog_dat = .true.
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 	 	caselabel = "wchng0deloc0"
 		print *, caselabel, " ---------------------------------------------------"
-	 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+
 		call cal_dist(parvec,err0,shk)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"
 
-		del_by_occ = .true.
+		occ_dat = .true.
 		wtr_by_occ = .false.
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		demog_dat = .false.
 		caselabel = "wchng0demog0"
 		print *, caselabel, " ---------------------------------------------------"
-	 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-		call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+
 		call cal_dist(parvec,err0,shk)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "error in targets with ", caselabel, " ", err0
 		print *, "---------------------------------------------------"
 
-	 	del_by_occ = .false.
+	 	occ_dat = .false.
 	 	wtr_by_occ = .true.
 	 	demog_dat = .false.
 	 	caselabel = "deloc0demog0"
 	 	print *, caselabel, " ---------------------------------------------------"
-	 	call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"
@@ -6149,7 +6238,7 @@ program V0main
   	!****************************************************************************!
 	! IF you love something....
 	!****************************************************************************!
-	deallocate(tr_hist_vec)
+	deallocate(tr_hist_vec,wg_hist_vec)
 !~ 	call nlo_destroy(calopt)
 	call dealloc_shocks(shk)
 
