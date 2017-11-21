@@ -2785,8 +2785,10 @@ module sim_hists
 				enddo
 			else
 				jshock_ij = 0._dp
-				call random_number(draw_i)
-				jshock_ij(i,:) = draw_i
+				do i = 1,Nsim
+					call random_number(draw_i)
+					jshock_ij(i,:) = draw_i
+				enddo
 				call set_ji(j_i,jshock_ij,born_it)
 			endif
 
@@ -2813,8 +2815,9 @@ module sim_hists
 		Njcumdist = 0._dp
 		Njconstcumdist = 0._dp
 		j_i = 0
+		it=1
 		do ij=1,nj
-			Njconstcumdist(ij+1) = occsz0(ij) + Njconstcumdist(ij)
+			Njconstcumdist(ij+1) = occpr_trend(it,ij) + Njconstcumdist(ij)
 		enddo
 		if(nj>1) then
 			!do periods 2:Tsim
@@ -2838,7 +2841,7 @@ module sim_hists
 			!do period 1
 			it=1
 			do ij=1,nj
-				Njcumdist(ij+1,it) = occsz0(ij) + Njcumdist(ij,it)
+				Njcumdist(ij+1,it) = occpr_trend(it,ij) + Njcumdist(ij,it)
 			enddo
 			if( occ_dat .eqv. .true. ) then
 				do ij=1,nj
@@ -5682,6 +5685,8 @@ program V0main
 
 	moments_sim%alloced = 0
 
+!	occ_dat = .false.
+
 	call mpi_init(ierr)
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
 
@@ -6095,7 +6100,7 @@ program V0main
 
 	caselabel = ""
  	print *, caselabel, " ---------------------------------------------------"
-	del_by_occ = .true.
+	occ_dat = .true.
 	wtr_by_occ = .true.
 	demog_dat = .true.
 
