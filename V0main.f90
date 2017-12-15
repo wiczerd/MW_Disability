@@ -3644,7 +3644,7 @@ module sim_hists
 								status_it(i,it) = 1
 								if(ii>=Ncol) then
 									nomatch = nomatch+1
-									print *, "missed at d_hr: " d_hr, "t= ", it, "al_int ", al_init_it(i,it), "del_i_int ",del_i_int(i,it)
+									print *, "missed at d_hr: ", d_hr, "t= ", it, "al_int ", al_int_it(i,it), "del_i_int ",del_i_int(i)
 								endif
 								exit
 							endif
@@ -3689,7 +3689,7 @@ module sim_hists
 					if(zj_contin .eqv. .false.) then
 						zi_hr	= z_jt_macroint(it)
 						z_hr	= zgrid(zi_hr,j_hr)
-						il_hr = fndi_hr(z_hr)
+						il_hr = fndi_hr(zi_hr)
 					else
 						z_hr	= z_jt_panel(it,j_hr)
 						do zi_hr = nz,1,-1
@@ -4423,162 +4423,6 @@ module find_params
 
 	contains
 
-
-	subroutine vscale_set(vfs, hst, shk, vscale_out)
-		! this sets the scaling for vscale, which is necessary to do discrete choice over occuptions
-		type(val_struct),intent(in) :: vfs
-		type(hist_struct), intent(in):: hst
-		type(shocks_struct), intent(in):: shk
-		real(8)	:: vscale_out
-		real(8)	:: cumval,updjscale,nborn
-		integer  :: ij=1, i=1, it=1
-		integer :: age_hr=1,d_hr=1,ai_hr=1,ali=1,ei_hr=1,idi=1, tri=1
-		real(dp), allocatable :: j_val_ij(:,:)
-		allocate(j_val_ij(Nsim,nj))
-		cumval = 0.
-		updjscale  = 0.1_dp
-		j_val_ij = -1.e10_dp
-		nborn = 0._dp
-		vscale_out= 0._dp
-		! use value functions for the first period alive
-
-		tri = tri0
-		it = 1
-		do i = 1,Nsim
-			if(shk%age_hist(i,it) > 0 ) then !they're alive in the first period
-				nborn = 1._dp + nborn
-				!set the state
-				age_hr 	= 1
-				d_hr 	= 1
-				ai_hr	= 1
-				ei_hr	= 1
-				do ij = 1,nj
-					j_val_ij(i,ij) = 0.
-					do idi = 1,ndi ! expectation over delta
-					do ali = 1,nal
-						j_val_ij(i,ij) = vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr, &
-									& hst%z_jt_macroint(it),age_hr)*delwt(idi,ij)*ergpialf(ali) + j_val_ij(i,ij)
-					enddo
-					enddo
-					vscale_out = dabs(j_val_ij(i,ij)) + vscale_out
-					!print *, j_val_ij(i,ij)
-				enddo
-			endif
-		enddo
-		vscale_out = vscale/nborn/dble(nj)
-		deallocate(j_val_ij)
-	end subroutine vscale_set
-
-
-	subroutine jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
-		! solves for the factors jshift(j)
-		type(val_struct),intent(in) :: vfs
-		type(hist_struct), intent(in):: hst
-		type(shocks_struct), intent(in):: shk
-
-		real(dp), intent(in) :: probj_in(:)
-		integer,  intent(in) :: t0tT(:) ! should have the start and end periods during which people are born
-		real(dp), intent(out):: jshift_out(:)
-		real(dp) :: jshift_prratio=1.,cumval=1.,updjscale=1.,distshift=1.,ziwt=1.,z_hr=1.,nborn=0., al_hr=0.
-		real(dp) :: jshift0(nj),pialf_conddist(nal)
-		integer  :: ij=1, ik=1, iter=1
-		integer :: age_hr=1,d_hr=1,ai_hr=1,ali=1,ali_hr=1, &
-					& ei_hr=1,i=1,ii=1,idi=1, it=1, tri=1, ziH=1,zi_hr=1
-		real(dp), allocatable :: j_val_ij(:,:)
-
-		allocate(j_val_ij(Nsim,nj))
-
-		cumval = 0.
-		updjscale  = 0.1_dp
-		jshift_out = 0._dp !initialize
-		jshift0 = 0._dp
-		j_val_ij = -1.e10_dp
-		nborn = 0._dp
-
-		tri = tri0
-		! first load the value functions for the target period
-		do it = t0tT(1), t0tT(2)
-			do i = 1,Nsim
-				if(shk%born_hist(i,it) > 0 .or.  ((it == 1) .and. (shk%age_hist(i,it) > 0)) ) then
-				!they're alive in the first period or born this period
-					nborn = 1._dp + nborn
-					!set the state
-					!ali_hr 	= shk%al_int_hist(i,it)
-					age_hr 	= 1
-					d_hr 	= 1
-					ai_hr	= 1
-					ei_hr	= 1
-					do ij = 1,nj
-						j_val_ij(i,ij) = 0.
-						if(zj_contin .eqv. .true.)then
-							z_hr	= hst%z_jt_panel(it,ij)
-							zi_hr	= finder(zgrid(:,ij),z_hr)
-							ziH  = min(zi_hr+1,nz)
-							ziwt = (zgrid(ziH,ij)- z_hr)/( zgrid(ziH,ij) -   zgrid(zi_hr,ij) )
-							if(ziH == zi_hr) ziwt=1.
-						endif
-						al_hr	= shk%al_hist(i,it)
-						ali_hr	= shk%al_int_hist(i,it)
-						if(w_strchng .eqv. .true.) then
-							if(ali_hr>1) al_hr = max(al_hr + wage_trend(it,ij), alfgrid(2))
-							do ali_hr = nal,2,-1
-								if(alfgrid(ali_hr)<ali_hr) exit
-							enddo
-							ali_hr = min( max(ali_hr,2 ),nal-1 )
-							if( (alfgrid( min(ali_hr+1,nal) )-al_hr < al_hr-alfgrid(ali_hr)) .and. (ali_hr <nal) ) ali_hr = ali_hr+1
-						endif
-						if(it==1 ) then
-							pialf_conddist = ergpialf
-						else
-							pialf_conddist = pialf(ali_hr,:)
-						endif
-						do idi = 1,ndi ! expectation over delta and alpha
-						do ali = 1,nal
-							if(zj_contin .eqv. .true.) then
-								j_val_ij(i,ij) =( ziwt    * vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,zi_hr,age_hr) &
-										&	+	 (1.-ziwt)* vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr,ziH  ,age_hr) ) &
-										&	*  delwt(idi,ij)*pialf_conddist(ali) + j_val_ij(i,ij)
-							else
-								j_val_ij(i,ij) = vfs%V((ij-1)*ntr+tri,(idi-1)*nal+ali,d_hr,ei_hr,ai_hr, &
-											& hst%z_jt_macroint(it),age_hr)*delwt(idi,ij)*pialf_conddist(ali) + j_val_ij(i,ij)
-							endif
-						enddo
-						enddo
-					enddo
-				endif !born
-			enddo !do i
-		enddo !do it
-
-		!iterate on shift_k to solve for it
-		do iter=1,maxiter*nj
-			distshift = 0._dp
-			do ij=1,nj
-				jshift_prratio = 0.
-				do i =1,Nsim
-					if(j_val_ij(i,ij) > -1.e9_dp) then
-						cumval = 0.
-						do ik=1,nj
-							cumval = dexp( (j_val_ij(i,ik)+jshift0(ik))/(amenityscale*vscale) ) + cumval
-						enddo
-						jshift_prratio = dexp(j_val_ij(i,ij)/(amenityscale*vscale))/cumval + jshift_prratio
-					endif
-				enddo
-				jshift_prratio = probj_in(ij)/jshift_prratio*nborn
-				jshift_out(ij) = dlog(jshift_prratio)*amenityscale*vscale
-				distshift = dabs(jshift_out(ij) - jshift0(ij)) + distshift
-				jshift0(ij) = updjscale*jshift_out(ij) + (1._dp - updjscale)*jshift0(ij)
-			enddo
-			if (distshift<1.e-5_dp) then
-				exit
-			endif
-		enddo
-		call vec2csv(jshift0,"jshift0.csv")
-
-		deallocate(j_val_ij)
-
-	end subroutine jshift_sol
-
-
 	subroutine comp_ustats(hst,shk,urt,Efrt,Esrt)
 
 		type(shocks_struct) :: shk
@@ -5016,7 +4860,6 @@ module find_params
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
 		type(moments_struct):: moments_sim
-		real(dp) :: jshift_hr(nj)
 		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app,napp_t,nu1,nu0
 		real(dp) :: fndgrid0(nl,nz),sepgrid0(nl,nz)
 		integer :: ij=1,t0tT(2),it,i
@@ -5047,35 +4890,6 @@ module find_params
 
 		if(verbose >2) print *, "Solving the model"
 		call sol(vfs,pfs)
-
-		if(j_rand .eqv. .false.) then
-			call vscale_set(vfs, hst, shk, vscale)
-			if(dabs(vscale)<1) then
-				vscale = 1.
-				if( verbose >1 ) print *, "reset vscale to 1"
-			endif
-			t0tT = (/1,1/)
-			call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
-			if(j_regimes .eqv. .true.) then
-				do it=2,Tsim
-					if( mod(it,itlen*2)== 0 ) then
-						t0tT = (/ it-itlen*2+1,   it/)
-						call jshift_sol(vfs, hst,shk, occpr_trend(it,:) , t0tT,jshift_hr)
-						do i=0,(itlen*2-1)
-							do ij=1,nj
-								jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
-							enddo
-						enddo
-					endif
-				enddo
-			else
-				do it=2,Tsim
-					jshift(:,it) = jshift(:,1)
-				enddo
-			endif
-
-			if(print_lev>=1) call mat2csv(jshift,"jshift.csv")
-		endif
 
 		!I only want to iterate on the wage trend if I have a good set of parameters
 		if( cal_on_iter_wgtrend .eqv. .true. )  then
@@ -5653,7 +5467,7 @@ program V0main
 	! Other
 	!************************************************************************************************!
 		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app,cumpid(nd,nd+1,ndi,TT-1)
-		real(dp)	:: jshift_hr(nj),wage_coef_0chng(size(wage_coef))
+		real(dp)	:: wage_coef_0chng(size(wage_coef))
 		real(dp), allocatable :: tr_hist_vec(:),wg_hist_vec(:)
 		real(dp) :: xsec_PrDageDel(nd,TT,ndi)
 	!************************************************************************************************!
@@ -5874,40 +5688,9 @@ program V0main
 		if(verbose >1) print *, "Solving the model"
 		call sol(vfs,pfs)
 
-		if(j_rand .eqv. .false.) then
-			call vscale_set(vfs, hst, shk, vscale)
-			if(dabs(vscale)<1) then
-				if( verbose >1 ) then
-					print *, "reset vscale to 1, vscale was ", vscale
-				endif
-				vscale = 1.
-			endif
-			if(verbose >2) print *, "solve for initial shift"
-			t0tT= (/1,1/)
-			call jshift_sol(vfs, hst,shk, occsz0, t0tT, jshift(:,1)) !jshift_sol(vfs, hst, shk, probj_in, t0tT,jshift_out)
-			if(verbose >2) print *, "solve for second shift"
-			if(j_regimes .eqv. .true.) then
-				do it=2,Tsim
-					if( mod(it,itlen*2)== 0 ) then
-						t0tT = (/ it-itlen*2+1,   it/)
-						call jshift_sol(vfs, hst,shk, occpr_trend(it,:) , t0tT,jshift_hr)
-						do i=0,(itlen*2-1)
-							do ij=1,nj
-								jshift(ij,it-i) = jshift_hr(ij)*(1.- dble(i)/(tlen*2.-1)) + jshift(ij,it-itlen*2)*dble(i)/(tlen*2.-1)
-							enddo
-						enddo
-					endif
-				enddo
-			else
-				do it=2,Tsim
-					jshift(:,it) = jshift(:,1)
-				enddo
-			endif
-			if(print_lev>=1) call mat2csv(jshift,"jshift"//trim(caselabel)//".csv")
-		endif
 ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! THIS IS AN ENGINEERING FIX AND SHOULD BE REPLACED
-		call sim(vfs, pfs, hst,shk,.false.) !---- lingering issue that 1st stage seems to have correlated results
+!		call sim(vfs, pfs, hst,shk,.false.) !---- lingering issue that 1st stage seems to have correlated results
 		xsec_PrDageDel = 0._dp
 		do i=1,Nsim
 			do it=100,Tsim !totally ad hoc to start at 100
@@ -5944,7 +5727,8 @@ program V0main
 			enddo
 			wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
 			wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
-		endif
+		endif ! dbg_skip == F
+		
 		if(print_lev>1) then
 			call vec2csv(wc_guess_lev,"wc_guess_lev.csv")
 			call vec2csv(wc_guess_nolev,"wc_guess_nolev.csv")
@@ -6039,7 +5823,7 @@ program V0main
 	! enddo
 	! enddo
 
-	if( run_cal .eqv. .true. ) then
+	if( (run_cal .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
 		call system_clock(count_rate=cr)
 		call system_clock(count_max=cm)
 		call system_clock(c1)
@@ -6086,27 +5870,30 @@ program V0main
 		read(fread,*) wmean
 	close(fread)
 
-	cal_on_iter_wgtrend = .false.
-	parvec = (/nu,xizd23coef, xizd1coef/xizd23coef/)
-	call gen_new_wgtrend(wage_trend,wage_coef)
+	if (dbg_skip .eqv. .false.) then
+		cal_on_iter_wgtrend = .false.
+		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef/)
+		call gen_new_wgtrend(wage_trend,wage_coef)
 
-	caselabel = ""
- 	print *, caselabel, " ---------------------------------------------------"
-	occ_dat = .true.
-	wtr_by_occ = .true.
-	demog_dat = .true.
+		caselabel = ""
+	 	print *, caselabel, " ---------------------------------------------------"
+		occ_dat = .true.
+		wtr_by_occ = .true.
+		demog_dat = .true.
 
-	call cal_dist(parvec,err0,shk)
- 	print *, "error in iniital", err0(1), err0(2), err0(3)
-	print *, "---------------------------------------------------"
-	! do i=1,10
-	! 	print *, "RUNNING IT AGAIN-----------------------------------"
-	! 	call cal_dist(parvec,err0,shk)
-	!  	print *, "error in iniital", err0(1), err0(2), err0(3)
-	! 	print *, "---------------------------------------------------"
-	! enddo
+		print_lev = 2
+		call cal_dist(parvec,err0,shk)
+	 	print *, "error in iniital", err0(1), err0(2), err0(3)
+		print *, "---------------------------------------------------"
+		! do i=1,10
+		! 	print *, "RUNNING IT AGAIN-----------------------------------"
+		! 	call cal_dist(parvec,err0,shk)
+		!  	print *, "error in iniital", err0(1), err0(2), err0(3)
+		! 	print *, "---------------------------------------------------"
+		! enddo
+	endif
 
-	if((nodei == 0) .and. (run_experiments .eqv. .true.)) then
+	if((nodei == 0) .and. (run_experiments .eqv. .true.) .and. (dbg_skip .eqv. .false.)) then
 
    	 	wage_coef_0chng = wage_coef
    		do i=(1+NTpolyT),size(wage_coef) !only turn off the occupation-specific trends
@@ -6122,6 +5909,7 @@ program V0main
 	 	occ_dat = .false.
 	 	demog_dat  = .false.
 		verbose = 1
+		print_lev = 2
 		print *, "---------------------------------------------------"
 		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
