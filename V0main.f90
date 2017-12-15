@@ -1012,7 +1012,7 @@ module model_data
 						endif
 					elseif( hst%status_hist(i,it) == 3 ) then
 						moments_sim%init_di= moments_sim%init_di+dicont_hr*hst%di_prob_hist(i,it)
-						if(hst%app_dif_hist(i,it) >=0 ) moments_sim%init_diaward = moments_sim%init_diaward+hst%di_prob_hist(i,it) !moments_sim%init_diaward+dicont_hr*hst%di_prob_hist(i,it)
+						if(hst%app_dif_hist(i,it) >=0 ) moments_sim%init_diaward = hst%di_prob_hist(i,it) + moments_sim%init_diaward !moments_sim%init_diaward+dicont_hr*hst%di_prob_hist(i,it)
 					endif
 				endif
 			enddo
@@ -3160,6 +3160,7 @@ module sim_hists
 		if(print_lev > 1 .and. caselabel == "") then
 			call mat2csv(shk%jshock_ij,"jshock_ij_hist"//trim(caselabel)//".csv")
 			call vec2csv(shk%del_i_draw,"del_i_draw_hist"//trim(caselabel)//".csv")
+			call veci2csv(shk%del_i_int,"del_i_int_hist"//trim(caselabel)//".csv")
 			call veci2csv(shk%j_i,"j_i_hist"//trim(caselabel)//".csv")
 			call mat2csv(shk%al_hist,"al_it_hist"//trim(caselabel)//".csv")
 			call vec2csv(shk%z_jt_innov,"z_jt_innov_hist"//trim(caselabel)//".csv")
@@ -3333,7 +3334,7 @@ module sim_hists
 					&   triwt=1., ewt=0.
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1, ai_hr=1,api_hr=1,ei_hr=1,triH=1,eiH=1, &
-			& tri=1, tri_hr=1,fnd_hr(nz),sep_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0,slice_len=1, brn_yr_hr=1, interp_i
+			& tri=1, tri_hr=1,fndi_hr(nz),sepi_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0,slice_len=1, brn_yr_hr=1, interp_i
 
 		logical :: w_strchng_old = .false., final_iter = .false.,occaggs_hr =.true., converged = .false.
 
@@ -3576,7 +3577,7 @@ module sim_hists
 
 			!$OMP  parallel do &
 			!$OMP& private(i,interp_i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,tri_hr,apc_hr,ep_hr, &
-			!$OMP& ewt, eiH, iiH, iiwt, ziwt,ziH,triwt,triH,il,fnd_hr, sep_hr, il_hr,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr, &
+			!$OMP& ewt, eiH, iiH, iiwt, ziwt,ziH,triwt,triH,il,fndi_hr, sepi_hr, il_hr,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr, &
 			!$OMP& hlthprob,ii,drawi,drawt,sepi,fndi,invol_un,dead,status_tmrw,brn_yr_hr)
 			do i=1,Nsim
 				!fixed traits
@@ -3584,9 +3585,9 @@ module sim_hists
 				!set a j to correspond to the probabilities.  This will get overwritten if born
 				j_hr = j_i(i)
 				del_hr = del_i_int(i)
-				fnd_hr = fndsep_i_int(i,1,:)
-				sep_hr = fndsep_i_int(i,2,:)
-				il_hr = fnd_hr(2)
+				fndi_hr = fndsep_i_int(i,1,:)
+				sepi_hr = fndsep_i_int(i,2,:)
+				il_hr = fndi_hr(2)
 				!initialize stuff
 				it = 1
 				it_old = 1
@@ -3603,26 +3604,11 @@ module sim_hists
 					! draw state from distribution of age 1
 						age_hr	= 1
 						brn_yr_hr = it
-						! do d_hr=1,nd
-						! 	if(health_it_innov(i,it) < cumPrDageDel(d_hr+1,age_hr,del_hr)) &
-						! 		& exit
-						! enddo
+
 						d_hr = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
-						if(iter ==1) then
-							brn_drawi_drawt(i,it,:) = (/i,it /)
-							a_hr 	= minval(agrid)
-							ei_hr	= 1
-							e_hr 	= minval(egrid)
-							ai_hr 	= 1
-							status_hr = 1
-							d_it(i,it) = d_hr
-							a_it(i,it) = minval(agrid)
-							e_it(i,it) = 0.
-							e_it_int(i,it) = 1
-							a_it_int(i,it) = 1
-							status_it(i,it) = 1
-						else
-							do ii=1,Ncol
+						do ii=1,Ncol
+							if(ii<Ncol .and. iter>1) then
+
 								drawi = drawi_ititer(i,ii)  !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
 								drawt = drawt_ititer(i,ii)  !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
 								if((age_it(drawi,drawt) .eq. 1 ).and. (d_it(drawi,drawt) .eq. d_hr) &
@@ -3641,25 +3627,28 @@ module sim_hists
 									ai_hr  = a_it_int(drawi,drawt)
 									status_hr = status_it(drawi,drawt)
 									exit
-								elseif(ii==Ncol) then
-									brn_drawi_drawt(i,it,1) = i
-									brn_drawi_drawt(i,it,2) = it
-									a_hr 	= minval(agrid)
-									ei_hr	= 1
-									e_hr 	= minval(egrid)
-									ai_hr 	= 1
-									status_hr = 1
-									d_it(i,it) = d_hr
-									a_it(i,it) = minval(agrid)
-									e_it(i,it) = 0.
-									e_it_int(i,it) = 1
-									a_it_int(i,it) = 1
-									status_it(i,it) = 1
-									nomatch = nomatch+1
 								endif
-							enddo
-						endif !iter ==1
-
+							else
+								brn_drawi_drawt(i,it,1) = i
+								brn_drawi_drawt(i,it,2) = it
+								a_hr 	= minval(agrid)
+								ei_hr	= 1
+								e_hr 	= minval(egrid)
+								ai_hr 	= 1
+								status_hr = 1
+								d_it(i,it) = d_hr
+								a_it(i,it) = minval(agrid)
+								e_it(i,it) = 0.
+								e_it_int(i,it) = 1
+								a_it_int(i,it) = 1
+								status_it(i,it) = 1
+								if(ii>=Ncol) then
+									nomatch = nomatch+1
+									print *, "missed at d_hr: " d_hr, "t= ", it, "al_int ", al_init_it(i,it), "del_i_int ",del_i_int(i,it)
+								endif
+								exit
+							endif
+						enddo
 					else !already born, just load state - may have been set earlier in the iteration if they're born in the 1st period
 						age_hr	= age_it(i,it)
 						d_hr	= d_it(i,it)
@@ -3700,6 +3689,7 @@ module sim_hists
 					if(zj_contin .eqv. .false.) then
 						zi_hr	= z_jt_macroint(it)
 						z_hr	= zgrid(zi_hr,j_hr)
+						il_hr = fndi_hr(z_hr)
 					else
 						z_hr	= z_jt_panel(it,j_hr)
 						do zi_hr = nz,1,-1
@@ -3722,7 +3712,7 @@ module sim_hists
 							invol_un = 1
 							al_last_invol = al_it(drawi,drawt) ! have to set this to something. Given persistence, it's likely true
 							! status_hr = 2
-							! if( status_it_innov(drawi,drawt)<1._dp - (1._dp - fnd_hr(2))**6 ) then
+							! if( status_it_innov(drawi,drawt)<1._dp - (1._dp - fndi_hr(2))**6 ) then
 							! 	status_hr = 3
 							! endif
 						endif
@@ -3813,11 +3803,11 @@ module sim_hists
 
 							!draws for exog find and sep
 							if( zj_contin .eqv. .true.) then
-								fndi = ziwt*fndgrid(fnd_hr(zi_hr),zi_hr) + (1.-ziwt)*fndgrid(fnd_hr(ziH),ziH)
-								sepi = ziwt*sepgrid(sep_hr(zi_hr),zi_hr) + (1.-ziwt)*sepgrid(sep_hr(zi_hr),zi_hr)
+								fndi = ziwt*fndgrid(fndi_hr(zi_hr),zi_hr) + (1.-ziwt)*fndgrid(fndi_hr(ziH),ziH)
+								sepi = ziwt*sepgrid(sepi_hr(zi_hr),zi_hr) + (1.-ziwt)*sepgrid(sepi_hr(zi_hr),zi_hr)
 							else
-								fndi = fndgrid(fnd_hr(zi_hr),zi_hr) !fndrate(zi_hr,j_hr)
-								sepi = sepgrid(sep_hr(zi_hr),zi_hr)!seprisk(zi_hr,j_hr)
+								fndi = fndgrid(fndi_hr(zi_hr),zi_hr) !fndrate(zi_hr,j_hr)
+								sepi = sepgrid(sepi_hr(zi_hr),zi_hr)!seprisk(zi_hr,j_hr)
 							endif
 
 
@@ -5156,79 +5146,6 @@ module find_params
 
 	end subroutine cal_dist
 
-	subroutine cal_dist_nloptwrap(fval, nparam, paramvec, gradvec, need_grad, shk)
-
-		integer :: nparam,need_grad
-		real(8) :: fval, paramvec(nparam),gradvec(nparam)
-		type(shocks_struct) :: shk
-		real(8) :: errvec(nparam),paramwt(nparam),paramvecH(nparam),errvecH(nparam),paramvecL(nparam),errvecL(nparam),gradstep(nparam), fvalH,fvalL
-		integer :: i, ii,print_lev_old, verbose_old
-		logical :: save_iter_wgtrend
-
-		print_lev_old = print_lev
-		verbose_old = verbose
-		print_lev = 0
-		verbose = 1
-		!if(smth_dicont .le. 20._dp) smth_dicont = smth_dicont*1.05_dp
-
-		if(verbose_old >=1) print *, "test parameter vector ", paramvec
-		if(print_lev_old >=1) then
-			open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
-			write(fcallog,*) "test parameter vector ", paramvec
-			close(unit=fcallog)
-		endif
-
-		call cal_dist(paramvec, errvec,shk)
-
-		if(verbose_old >=1) print *, "         error vector ", errvec
-		if(print_lev_old >=1) then
-			open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
-			write(fcallog,*)  "         error vector ", errvec
-			close(unit=fcallog)
-		endif
-
-
-		paramwt = 1./dble(nparam)		! equal weight
-		paramwt(1) = 1.0_dp
-		paramwt(2) = 1.0_dp
-		fval = 0.
-		do i = 1,nparam
-			fval = errvec(i)**2*paramwt(i) + fval
-		enddo
-		if( need_grad .ne. 0) then
-			cal_on_grad = .true.
-			save_iter_wgtrend = cal_on_iter_wgtrend
-			cal_on_iter_wgtrend = .false.
-			do i=1,nparam
-				gradstep (i) = min( dabs( paramvec(i)*(5.e-4_dp) ) ,5.e-4_dp)
-				paramvecH(i) = paramvec(i) + gradstep(i)
-				call cal_dist(paramvecH, errvecH,shk)
-				paramvecL(i) = paramvec(i) - gradstep(i)
-				call cal_dist(paramvecL, errvecL,shk)
-				fvalH = 0.
-				fvalL = 0.
-				do ii =1,nparam
-					fvalH = paramwt(ii)*errvecH(ii)**2 + fvalH
-					fvalL = paramwt(ii)*errvecL(ii)**2 + fvalL
-				enddo
-				gradvec(i) =  (fvalH - fvalL)/(2._dp * gradstep(i))
-			enddo
-			if(verbose_old >=1) print *, "             gradient ", gradvec
-			if(print_lev_old >=1) then
-				open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
-				write(fcallog,*) "             gradient ", gradvec
-				close(unit=fcallog)
-			endif
-			cal_on_iter_wgtrend = save_iter_wgtrend
-			cal_on_grad = .false.
-		endif
-		print_lev = print_lev_old
-		verbose = verbose_old
-
-		cal_obj = fval
-
-	end subroutine cal_dist_nloptwrap
-
 	subroutine cal_mlsl( fval, xopt, nopt, xl, xu, shk)
 
 		real(dp), intent(out) :: fval
@@ -5283,7 +5200,7 @@ module find_params
 		allocate(world_internalopt(  nnode*nstartpn*ninternalopt))
 		dfbols_nuxi_trproc = 1
 
-		rhobeg = minval( xu - xl )/dble(max(nnode,2))
+		rhobeg = minval( xu - xl )/dble(max(nnode/2,2))
 		rhoend = rhobeg/100._dp
 
 		fval = 0._dp
@@ -5397,6 +5314,7 @@ module find_params
 					call vec2csv( (/nu, xizd1coef,xizd23coef,wmean/)  , "nuxiw_opt"// rank_str //".csv")
 				endif
 			enddo ! dd = 1,nstartpn
+			!pull together all of the optimization arguments
 			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, world_fopts,&
 			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
 			call mpi_allgather( node_xopts, nopt*nstartpn, MPI_DOUBLE, world_xopts,&
@@ -5484,6 +5402,80 @@ module find_params
 		deallocate(seedhr)
 		deallocate(sepgrid0,fndgrid0)
 	end subroutine cal_mlsl
+
+
+	subroutine cal_dist_nloptwrap(fval, nparam, paramvec, gradvec, need_grad, shk)
+
+		integer :: nparam,need_grad
+		real(8) :: fval, paramvec(nparam),gradvec(nparam)
+		type(shocks_struct) :: shk
+		real(8) :: errvec(nparam),paramwt(nparam),paramvecH(nparam),errvecH(nparam),paramvecL(nparam),errvecL(nparam),gradstep(nparam), fvalH,fvalL
+		integer :: i, ii,print_lev_old, verbose_old
+		logical :: save_iter_wgtrend
+
+		print_lev_old = print_lev
+		verbose_old = verbose
+		print_lev = 0
+		verbose = 1
+		!if(smth_dicont .le. 20._dp) smth_dicont = smth_dicont*1.05_dp
+
+		if(verbose_old >=1) print *, "test parameter vector ", paramvec
+		if(print_lev_old >=1) then
+			open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
+			write(fcallog,*) "test parameter vector ", paramvec
+			close(unit=fcallog)
+		endif
+
+		call cal_dist(paramvec, errvec,shk)
+
+		if(verbose_old >=1) print *, "         error vector ", errvec
+		if(print_lev_old >=1) then
+			open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
+			write(fcallog,*)  "         error vector ", errvec
+			close(unit=fcallog)
+		endif
+
+
+		paramwt = 1./dble(nparam)		! equal weight
+		paramwt(1) = 1.0_dp
+		paramwt(2) = 1.0_dp
+		fval = 0.
+		do i = 1,nparam
+			fval = errvec(i)**2*paramwt(i) + fval
+		enddo
+		if( need_grad .ne. 0) then
+			cal_on_grad = .true.
+			save_iter_wgtrend = cal_on_iter_wgtrend
+			cal_on_iter_wgtrend = .false.
+			do i=1,nparam
+				gradstep (i) = min( dabs( paramvec(i)*(5.e-4_dp) ) ,5.e-4_dp)
+				paramvecH(i) = paramvec(i) + gradstep(i)
+				call cal_dist(paramvecH, errvecH,shk)
+				paramvecL(i) = paramvec(i) - gradstep(i)
+				call cal_dist(paramvecL, errvecL,shk)
+				fvalH = 0.
+				fvalL = 0.
+				do ii =1,nparam
+					fvalH = paramwt(ii)*errvecH(ii)**2 + fvalH
+					fvalL = paramwt(ii)*errvecL(ii)**2 + fvalL
+				enddo
+				gradvec(i) =  (fvalH - fvalL)/(2._dp * gradstep(i))
+			enddo
+			if(verbose_old >=1) print *, "             gradient ", gradvec
+			if(print_lev_old >=1) then
+				open(unit=fcallog, file=callog ,ACCESS='APPEND', POSITION='APPEND')
+				write(fcallog,*) "             gradient ", gradvec
+				close(unit=fcallog)
+			endif
+			cal_on_iter_wgtrend = save_iter_wgtrend
+			cal_on_grad = .false.
+		endif
+		print_lev = print_lev_old
+		verbose = verbose_old
+
+		cal_obj = fval
+
+	end subroutine cal_dist_nloptwrap
 
 
 end module find_params
@@ -6021,7 +6013,7 @@ program V0main
 	! xizcoef = 0.123992114316186
 
 	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp/)
-	ub = (/ 2.00_dp, 0.750_dp, 0.500_dp /)
+	ub = (/ 2.00_dp, 0.990_dp, 0.500_dp /)
 
 	!set up the grid over which to check derivatives
 	! open(unit=fcallog, file="cal_square.csv")
