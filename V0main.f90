@@ -228,15 +228,8 @@ module helper_funs
 
 		!stage 1-3
 		xifunH = xi_d(idin)
-		!adjsut for time aggregation in first stage?
+		!adjust for time aggregation in first stage?
 		xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
-
-		!prevent non-wage trend from getting an advantage?
-		if(wtr_by_occ .eqv. .false.) then
-			trhr = max(trin,0._dp)
-		else
-			trhr = trin
-		endif
 
 		!vocational stages 4-5
 		trqtl_L = max(locate(tr_decls,trhr),1)
@@ -3522,10 +3515,7 @@ module sim_hists
 				del_hr = del_i_int(i)
 				if(age_hr>0) then
 					!use status_it_innov(i,Tsim) to identify the d state, along with age of this guy
-					!do d_hr=1,nd
-					!	if(health_it_innov(i,it) < cumPrDageDel(d_hr+1,age_hr,del_hr)) &
-					!		& exit
-					!enddo
+
 					d_hr = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
 
 					if((iter>1) ) then
@@ -3644,7 +3634,7 @@ module sim_hists
 								status_it(i,it) = 1
 								if(ii>=Ncol) then
 									nomatch = nomatch+1
-									print *, "missed at d_hr: ", d_hr, "t= ", it, "al_int ", al_int_it(i,it), "del_i_int ",del_i_int(i)
+									print *, "missed at d_hr: ", d_hr, "t= ", it, "al_int ", al_int_it(i,it), "del_i_int ",del_i_int(i), " j_i= ", j_hr
 								endif
 								exit
 							endif
@@ -3781,11 +3771,6 @@ module sim_hists
 										&	    (1.-iiwt)*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) )+ &
 										& (1.-ewt)* (iiwt*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,eiH,ai_hr,zi_hr,age_hr ) + &
 										&	    (1.-iiwt)*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,eiH,ai_hr,zi_hr,age_hr ))
-							elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .true.) .and. (w_strchng .eqv. .false.)) then
-								work_dif_hr = ziwt    * iiwt    *gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-										&	  ziwt    *(1.-iiwt)*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-										&	 (1.-ziwt)* iiwt    *gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
-										&	 (1.-ziwt)*(1.-iiwt)*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr )
 							elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.)) then
 								work_dif_hr = ewt*(triwt    * iiwt    *gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 										&	       triwt    *(1.-iiwt)*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
@@ -3796,7 +3781,7 @@ module sim_hists
 										&	 	   (1.-triwt)* iiwt    *gwork_dif( (il_hr-1)*ntr + triH  ,(del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
 										&		   (1.-triwt)*(1.-iiwt)*gwork_dif( (il_hr-1)*ntr + triH  ,(del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ))
 
-							else!if(al_contin .eqv. .false. ) then
+							else  !if(al_contin .eqv. .false. ) then
 								work_dif_hr = gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							endif
 							work_dif_it(i,it) = work_dif_hr
@@ -3903,11 +3888,6 @@ module sim_hists
 											&(1.-ewt)*(iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
 											&		  (1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ))
 
-								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .true.) .and. (w_strchng .eqv. .false.) ) then
-									app_dif_hr = ziwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	 ziwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-ziwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
-											&	(1.-ziwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr )
 								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
 									app_dif_hr =   ewt*(triwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
 											&	 	    triwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
@@ -3917,7 +3897,7 @@ module sim_hists
 											&	 	    triwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
 											&		   (1.-triwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
 											&		   (1.-triwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ))
-								else! if ((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
+								else ! if ((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
 									app_dif_hr = gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 								endif
 
@@ -3975,7 +3955,7 @@ module sim_hists
 											&	 	    triwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
 											&		   (1.-triwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
 											&		   (1.-triwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ))
-								else! if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
+								else ! if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
 									app_dif_hr = gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 								endif
 
@@ -4009,6 +3989,7 @@ module sim_hists
 						else
 							do interp_i = 1,2
 								if( interp_i ==2) then
+									ii = ei_hr
 									ei_hr = min(ei_hr+1,ne)
 								endif
 								!INTERPOLATE!!!!!
@@ -4023,39 +4004,22 @@ module sim_hists
 										apc_hr = iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
 											&	(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
 									endif
-								elseif((al_contin .eqv. .true.)  .and. (zj_contin .eqv. .true.) .and. (w_strchng .eqv. .false.)) then
-									if(status_hr .eq. 1) then
-										apc_hr = ziwt    * iiwt    *agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-											&	 ziwt    *(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-											&	(1.-ziwt)* iiwt    *agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr  )) +&
-											&	(1.-ziwt)*(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr  ))
-									elseif(status_hr .eq. 2) then
-										apc_hr = ziwt    * iiwt    *agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-											&	 ziwt    *(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-											&   (1.-ziwt)* iiwt    *agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr )) +&
-											&	(1.-ziwt)*(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ))
-									elseif(status_hr .eq. 3) then
-										apc_hr = ziwt    * iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-											&	 ziwt    *(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-											&   (1.-ziwt)* iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr )) +&
-											&	(1.-ziwt)*(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr ))
-									endif
 								elseif((al_contin .eqv. .true.)  .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.)) then
 									if(status_hr .eq. 1) then
 										apc_hr = triwt    * iiwt    *agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
 											&	 triwt    *(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-											&	(1.-triwt)* iiwt    *agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
-											&	(1.-triwt)*(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ))
+											&	(1.-triwt)* iiwt    *agrid( aw( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr  )) +&
+											&	(1.-triwt)*(1.-iiwt)*agrid( aw( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr  ))
 									elseif(status_hr .eq. 2) then
 										apc_hr = triwt    * iiwt    *agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
 											&	 triwt    *(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-											&   (1.-triwt)* iiwt    *agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-											&	(1.-triwt)*(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
+											&   (1.-triwt)* iiwt    *agrid( aU( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+											&	(1.-triwt)*(1.-iiwt)*agrid( aU( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
 									elseif(status_hr .eq. 3) then
 										apc_hr = triwt    * iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
 											&	 triwt    *(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-											&   (1.-triwt)* iiwt    *agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
-											&	(1.-triwt)*(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
+											&   (1.-triwt)* iiwt    *agrid( aN( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) +&
+											&	(1.-triwt)*(1.-iiwt)*agrid( aN( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))
 									endif
 								else !if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.)) then
 									if(status_hr .eq. 1) then
@@ -4072,7 +4036,7 @@ module sim_hists
 									junk = apc_hr
 								else
 									apc_hr = ewt*junk+(1.-ewt)*junk
-									if ((ewt > 0.) .and. (ewt <1.) .and. (ei_hr > 1)) ei_hr = ei_hr-1
+									ei_hr = ii
 								endif
 							enddo !do interp_i
 							api_hr=1
@@ -4153,7 +4117,7 @@ module sim_hists
 							e_it(i,it) = e_it(i,it+1)
 						endif
 						!push forward d
-						if(age_hr .lt. 6)  then
+						if(age_hr .lt. TT)  then
 							do ii=1,nd
 								if(health_it_innov(i,it) < cumpid(d_hr,ii+1,del_hr,age_hr) ) then
 									d_it(i,it+1) = ii
@@ -4163,14 +4127,6 @@ module sim_hists
 						else
 							d_it(i,it+1) = d_hr
 						endif
-						!if( (brn_yr_hr == 1) .and. (age_it(i,it)<age_it(i,it+1)) )then !correct for health/aging by alive in first period:
-						!	do ii=1,nd
-						!		if( cumPrDageDel(ii+1,age_it(i,it+1),del_hr)> health_it_innov(i,it) ) then
-						!			d_it(i,it+1) = ii
-						!			exit
-						!		endif
-						!	enddo
-						!endif
 
 					endif !t<Tsim
 				else !age_it(i,it) <= 0, they've not been born or they are dead
@@ -4339,36 +4295,36 @@ module sim_hists
 				occsize_jt(:,it) = occsize_hr/Nworkt
 			enddo
 			!$omp end parallel do
+		endif
 
-			if(print_lev > 1)then
-					if( caselabel == "") then
-						call mat2csv (ewt_it,"ewt_it_hist.csv")
-						call mati2csv(e_it_int,"e_int_it_hist"//trim(caselabel)//".csv")
-						call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
-						call mati2csv(brn_drawi_drawt(:,:,1),"brn_drawi_drawt.csv",0)
-						call mati2csv(brn_drawi_drawt(:,:,2),"brn_drawi_drawt.csv",1)
-						call mat2csv (occsize_jt,"occsize_jt_hist"//trim(caselabel)//".csv")
-						call mat2csv (occgrow_jt,"occgrow_jt_hist"//trim(caselabel)//".csv")
-						call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
-					endif
-					call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (wtr_it,"wtr_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (trX_it,"transfer_it_hist"//trim(caselabel)//".csv")
-					call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
-					call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
-					call mati2csv(status_it,"status_it_hist"//trim(caselabel)//".csv")
-					call mati2csv(d_it,"d_it_hist"//trim(caselabel)//".csv")
-					call mati2csv(shk%age_hist,"age_it_hist"//trim(caselabel)//".csv")
-					call veci2csv(j_i,"j_i_hist"//trim(caselabel)//".csv")
-					call veci2csv(z_jt_macroint,"z_jt_hist"//trim(caselabel)//".csv")
-					call mat2csv (hst%wage_hist,"wage_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (hst%app_dif_hist,"app_dif_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (hst%di_prob_hist,"di_prob_it_hist"//trim(caselabel)//".csv")
-					call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
-					call mati2csv(hst%hlth_voc_hist,"hlth_voc_hist"//trim(caselabel)//".csv")
-					call mat2csv (hst%hlthprob_hist,"hlthprob_hist"//trim(caselabel)//".csv")
-			endif
+		if(print_lev > 1) then
+				if( caselabel == "") then
+					call mat2csv (ewt_it,"ewt_it_hist.csv")
+					call mati2csv(e_it_int,"e_int_it_hist"//trim(caselabel)//".csv")
+					call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
+					call mati2csv(brn_drawi_drawt(:,:,1),"brn_drawi_drawt.csv",0)
+					call mati2csv(brn_drawi_drawt(:,:,2),"brn_drawi_drawt.csv",1)
+					call mat2csv (occsize_jt,"occsize_jt_hist"//trim(caselabel)//".csv")
+					call mat2csv (occgrow_jt,"occgrow_jt_hist"//trim(caselabel)//".csv")
+					call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
+				endif
+				call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (wtr_it,"wtr_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (trX_it,"transfer_it_hist"//trim(caselabel)//".csv")
+				call mati2csv(al_int_it_endog,"al_int_endog_hist"//trim(caselabel)//".csv")
+				call mat2csv (al_it_endog,"al_endog_hist"//trim(caselabel)//".csv")
+				call mati2csv(status_it,"status_it_hist"//trim(caselabel)//".csv")
+				call mati2csv(d_it,"d_it_hist"//trim(caselabel)//".csv")
+				call mati2csv(shk%age_hist,"age_it_hist"//trim(caselabel)//".csv")
+				call veci2csv(j_i,"j_i_hist"//trim(caselabel)//".csv")
+				call veci2csv(z_jt_macroint,"z_jt_hist"//trim(caselabel)//".csv")
+				call mat2csv (hst%wage_hist,"wage_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (hst%app_dif_hist,"app_dif_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (hst%di_prob_hist,"di_prob_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (hst%work_dif_hist,"work_dif_it_hist"//trim(caselabel)//".csv")
+				call mati2csv(hst%hlth_voc_hist,"hlth_voc_hist"//trim(caselabel)//".csv")
+				call mat2csv (hst%hlthprob_hist,"hlthprob_hist"//trim(caselabel)//".csv")
 		endif
 
 		deallocate(al_int_it_endog,al_it_endog)
@@ -4882,7 +4838,7 @@ module find_params
 
 		fndgrid0 = fndgrid
 		sepgrid0 = sepgrid
-
+		if(print_lev .ge. 2) call mat2csv(fndgrid0,"fndgrid0"//trim(caselabel)//".csv")
 		if(verbose >2) print *, "In the calibration"
 
 		! set up economy and solve it
@@ -4899,12 +4855,6 @@ module find_params
 		fndgrid = fndrt_mul*fndgrid0
 		sepgrid = seprt_mul*sepgrid0
 
-		!did I need to rescale? I don't think so
-	! 	if( (wtr_by_occ .eqv. .true.) ) then !.and. &
-	! !	&	(minval(tr_decls)<minval(wage_trend) .or. maxval(tr_decls)>maxval(wage_trend)) )
-	! 	tr_decls = ( (tr_decls-minval(tr_decls))/(maxval(tr_decls)-minval(tr_decls)) &
-	! 			& ) * ( maxval(wage_trend)-minval(wage_trend)) + minval(wage_trend)
-	! 	endif
 
 		if(verbose >2) print *, "Simulating the model"
 		call sim(vfs, pfs, hst,shk,.false.)
@@ -5014,8 +4964,8 @@ module find_params
 		allocate(world_internalopt(  nnode*nstartpn*ninternalopt))
 		dfbols_nuxi_trproc = 1
 
-		rhobeg = minval( xu - xl )/dble(max(nnode/2,2))
-		rhoend = rhobeg/100._dp
+		rhobeg = minval( (xu - xl)/dble(max(nnode/2,2)))
+		rhoend = rhobeg/1.e4_dp
 
 		fval = 0._dp
 		xopt = 0._dp
@@ -5690,7 +5640,7 @@ program V0main
 
 ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! THIS IS AN ENGINEERING FIX AND SHOULD BE REPLACED
-!		call sim(vfs, pfs, hst,shk,.false.) !---- lingering issue that 1st stage seems to have correlated results
+		call sim(vfs, pfs, hst,shk,.false.) !---- lingering issue that 1st stage seems to have correlated results
 		xsec_PrDageDel = 0._dp
 		do i=1,Nsim
 			do it=100,Tsim !totally ad hoc to start at 100
@@ -5728,7 +5678,7 @@ program V0main
 			wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
 			wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
 		endif ! dbg_skip == F
-		
+
 		if(print_lev>1) then
 			call vec2csv(wc_guess_lev,"wc_guess_lev.csv")
 			call vec2csv(wc_guess_nolev,"wc_guess_nolev.csv")
@@ -5904,7 +5854,7 @@ program V0main
 		caselabel = "all0"
 	 	print *, caselabel, " ---------------------------------------------------"
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
-		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
+		if(print_lev .gt. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
 	 	wtr_by_occ = .false.
 	 	occ_dat = .false.
 	 	demog_dat  = .false.
@@ -5942,7 +5892,7 @@ program V0main
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "---------------------------------------------------"
 
-	 	! without the correlation between delta and occupation
+	 	! without the change in occupation composition
 		occ_dat = .false.
 	 	wtr_by_occ = .true.
 	 	demog_dat = .true.
@@ -5952,7 +5902,7 @@ program V0main
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-
+		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
 		print *, "---------------------------------------------------"
