@@ -3261,7 +3261,8 @@ module sim_hists
 		logical, optional :: occaggs
 
 		integer :: i=1, ii=1, iter=1, it=1, it_old=1, ij=1,il=1, idi=1, id=1, Tret=1,wo=1, &
-			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5,Ncol=100,nomatch=0
+			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5,Ncol=100,nomatch=0, &
+			&  ndets=5, nregobs
 
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
@@ -3275,7 +3276,7 @@ module sim_hists
 		! because the actual alpha is endgoenous to unemployment and trend
 		real(dp), allocatable :: al_it_endog(:,:)
 		integer, allocatable  :: al_int_it_endog(:,:)
-		real(dp), allocatable :: wtr_it(:,:),trX_it(:,:)
+		real(dp), allocatable :: wtr_it(:,:),trX_it(:,:),Xdets(:,:),coefdets(:)
 
 		! write to hst, get from shk
 		real(dp), pointer    :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
@@ -3420,7 +3421,8 @@ module sim_hists
 			ptrsuccess = associated(V,vfs%V)
 			if(ptrsuccess .eqv. .false. ) print *, "failed to associate V"
 		endif
-
+		ndets = 3+nd+ndi+(oldN+1)+nal!status dummies (WUN), d dummies (123), age dummies (1+oldN), del dummies (12), al_int_dummies.
+		nregobs = 0
 
 		hst%wage_hist    = 0.
 		Tret = (Longev - youngD - oldD*oldN)*tlen
@@ -3675,6 +3677,9 @@ module sim_hists
 							cycle
 						!	exit
 					endif
+					nregobs = nregobs+1
+
+
 					!figure out where to evaluate z
 					if(zj_contin .eqv. .false.) then
 						zi_hr	= z_jt_macroint(it)
@@ -3764,7 +3769,28 @@ module sim_hists
 					if(age_hr < TT) then
 						!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 						! evalutate gwork and gapp to figure out lom of status
-						if(status_hr .le. 3) then !in the labor force
+						if(status_hr <= 4) then
+							!evaluate application choice for diagnostics (would the workers want to apply? even if they can't)
+							if((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
+								app_dif_hr =  ewt*(iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&		  (1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) + &
+										&(1.-ewt)*(iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+										&		  (1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ))
+							elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.)) then
+								app_dif_hr = ewt*  (triwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&	 	    triwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&		   (1.-triwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+										&		   (1.-triwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))+ &
+										& (1.-ewt)*(triwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+										&	 	    triwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+										&		   (1.-triwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+										&		   (1.-triwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ))
+							else ! if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
+								app_dif_hr = gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+							endif
+
+							app_dif_it(i,it) = app_dif_hr
+
 							!check for rest unemployment
 							if((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
 								work_dif_hr= ewt*   (iiwt*gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
@@ -3786,6 +3812,12 @@ module sim_hists
 							endif
 							work_dif_it(i,it) = work_dif_hr
 
+							!store the disability probability for the first group
+							if( (age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))) then
+								di_prob_it(i,it) = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)
+							elseif( age_hr ==1)  then
+								di_prob_it(i,it) = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)*eligY
+							endif
 							!draws for exog find and sep
 							if( zj_contin .eqv. .true.) then
 								fndi = ziwt*fndgrid(fndi_hr(zi_hr),zi_hr) + (1.-ziwt)*fndgrid(fndi_hr(ziH),ziH)
@@ -3794,6 +3826,10 @@ module sim_hists
 								fndi = fndgrid(fndi_hr(zi_hr),zi_hr) !fndrate(zi_hr,j_hr)
 								sepi = sepgrid(sepi_hr(zi_hr),zi_hr)!seprisk(zi_hr,j_hr)
 							endif
+						endif ! status<=4
+
+						! evalutate gwork and gapp to figure out lom of status
+						if(status_hr .le. 3) then !in the labor force
 
 
 							! figure out status transition and involuntary unemployment
@@ -3822,15 +3858,6 @@ module sim_hists
 								if(status_it_innov(i,it) <=pphi) then
 									status_tmrw = 3
 									status_it(i,it) = 2
-									! if( invol_un ==1 ) then
-									! 	ali_hr = 1
-									! 	al_hr = alfgrid(ali_hr)
-									! 	iiwt = 1.
-									! 	iiH = 2
-									! else
-									! 	ali_hr	= al_int_it(i,it)
-									! 	al_hr = al_it(i,it)
-									! endif
 								elseif( (invol_un == 1)  .and. (fndarrive_draw(i,it) > fndi)) then
 								!voluntary or involuntary?
 									! ali_hr = 1
@@ -3881,6 +3908,7 @@ module sim_hists
 									status_tmrw =3
 								endif
 
+								!CAN I DROP THIS?
 								!evaluate application choice
 								if((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
 									app_dif_hr = ewt* (iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
@@ -3900,6 +3928,7 @@ module sim_hists
 								else ! if ((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
 									app_dif_hr = gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 								endif
+								!DROP TO HERE?
 
 								app_dif_it(i,it) = app_dif_hr
 
@@ -3934,40 +3963,6 @@ module sim_hists
 								endif
 							end select
 
-							if((status_hr <= 2) .or. (status_hr == 4)) then
-								!evaluate application choice for diagnostics (would the workers want to apply? even if they can't)
-								if((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
-									app_dif_hr =  ewt*(iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&		  (1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) + &
-											&(1.-ewt)*(iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
-											&		  (1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ))
-								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .true.) .and. (w_strchng .eqv. .false.)) then
-									app_dif_hr = ziwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	 ziwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	(1.-ziwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,ziH  ,age_hr ) + &
-											&	(1.-ziwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,ziH  ,age_hr )
-								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.)) then
-									app_dif_hr = ewt*  (triwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&	 	    triwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&		   (1.-triwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
-											&		   (1.-triwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ))+ &
-											& (1.-ewt)*(triwt    * iiwt    *gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
-											&	 	    triwt    *(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
-											&		   (1.-triwt)*  iiwt   *gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
-											&		   (1.-triwt)*(1.-iiwt)*gapp_dif( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+iiH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ))
-								else ! if((al_contin .eqv. .false.) .and. (zj_contin .eqv. .false.) ) then
-									app_dif_hr = gapp_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
-								endif
-
-								app_dif_it(i,it) = app_dif_hr
-								!store the disability probability for the first group
-								if( (age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))) then
-									di_prob_it(i,it) = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)
-								elseif( age_hr ==1)  then
-									di_prob_it(i,it) = xifun(d_hr,wtr_it(i,it),age_hr,hlthprob)*eligY
-								endif
-
-							endif
 						elseif(status_hr > 3 ) then !absorbing states of D,R
 							status_tmrw = status_hr
 							! just to fill in values
