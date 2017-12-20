@@ -3522,7 +3522,7 @@ module sim_hists
 				call OLS(Xdets(1:nregobs,:),edep(1:nregobs),ecoef,cov_coef,hatsig2,status)
 				call vec2csv(acoef,"acoef.csv")
 				call vec2csv(ecoef,"ecoef.csv")
-				call mat2csv(Xdets,"Xdets.csv")
+!				call mat2csv(Xdets,"Xdets.csv")
 			endif
 
 			it = 1
@@ -3578,14 +3578,14 @@ module sim_hists
 
 							a_residj = a_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,acoef)
 							e_residj = e_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,ecoef)
-							if( (d_it(drawi,drawt) .eq. d_hr) .and. (status_it(drawi,drawt)>0) .and. (status_it(drawi,drawt)<4) ) then
+							if( (status_it(drawi,drawt)>0) .and. (status_it(drawi,drawt)<4) ) then
 								brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
 								status_it(i,it) = status_it(drawi,drawt)
-								d_it(i,it) = d_it(drawi,drawt)
-								a_it(i,it) = a_it(drawi,drawt)
-								e_it(i,it) = e_it(drawi,drawt)
-								e_it_int(i,it) = e_it_int(drawi,drawt)
-								a_it_int(i,it) = a_it_int(drawi,drawt)
+								d_it(i,it) = d_hr
+								a_it(i,it) = dot_product(xidets,acoef) + a_residj
+								e_it(i,it) = dot_product(xidets,ecoef) + e_residj
+								e_it_int(i,it) = locate(egrid,e_it(i,it))
+								a_it_int(i,it) = locate(agrid,a_it(i,it))
 								exit
 							elseif(ii==Ncol) then
 								nomatch = nomatch+1
@@ -3654,34 +3654,61 @@ module sim_hists
 						d_hr = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
 						do ii=1,Ncol
 							if(ii<Ncol .and. iter>1) then
+								drawi = drawi_ititer(i,ii) !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
+								drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
+								!ndets = 3-1+nd-1+(oldN+1-1)+ndi-1+nal-1 !status dummies (WUN), d dummies, age dummies (1+oldN), del dummies (12), al_int dummies.
+								xidets = 0._dp
+								xjdets = 0._dp
+								m=1
+								do il=2,3
+									if(status_it(drawi,drawt) == il) xidets(m) = 1._dp
+									if(status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+									m = m+1
+								enddo
+								do id=2,nd
+									if(d_it(drawi,drawt)== id) xidets(m) = 1._dp
+									if(d_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == id) xjdets(m) = 1._dp
+									m = m+1
+								enddo
+								do il=2,(oldN+1)
+									if(age_it(drawi,drawt) == il) xidets(m) = 1._dp
+									if(age_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+									m=m+1
+								enddo
+								do  idi=2,ndi
+									if(del_i_int(drawi)==idi) xidets(m)= 1._dp
+									if(del_i_int(drawi_ititer(i,ii+1))==idi) xjdets(m)= 1._dp
+									m=m+1
+								enddo
+								do  ial=1,nal
+									if(ial .ne. 3)then
+										if(al_int_it_endog(drawi,drawt)==ial) xidets(m)= 1._dp
+										if(al_int_it_endog(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1))==ial) xjdets(m)= 1._dp
+										m=m+1
+									endif
+								enddo
+								xidets(m)= 1._dp
+								xjdets(m)= 1._dp
 
-								drawi = drawi_ititer(i,ii)  !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
-								drawt = drawt_ititer(i,ii)  !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
-								if((age_it(drawi,drawt) .eq. 1 ).and. (d_it(drawi,drawt) .eq. d_hr) &
-								&	.and. (status_it(drawi,drawt) .gt. 0) .and. (status_it(drawi,drawt) .le. 3) ) then
+								a_residj = a_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,acoef)
+								e_residj = e_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,ecoef)
+								if((age_it(drawi,drawt) .eq. 1 ) .and. &
+								&  (status_it(drawi,drawt) .gt. 0) .and. (status_it(drawi,drawt) .le. 3) ) then
 									brn_drawi_drawt(i,it,:) = (/drawi, drawt /)
-									d_it(i,it)		= d_hr
-									a_it(i,it)      = a_it(drawi,drawt)
-									e_it(i,it)      = e_it(drawi,drawt)
-									e_it_int(i,it)  = e_it_int(drawi,drawt)
-									a_it_int(i,it)  = a_it_int(drawi,drawt)
 									status_it(i,it) = status_it(drawi,drawt)
+									d_it(i,it)		= d_hr
+									a_it(i,it)		= dot_product(xidets,acoef) + a_residj
+									a_it(i,it)      = min(max(a_it(i,it),minval(agrid)),maxval(agrid))
+									e_it(i,it)      = dot_product(xidets,ecoef) + e_residj
+									e_it(i,it)      = min(max(e_it(i,it),minval(egrid)),maxval(egrid))
+									e_it_int(i,it)  = locate(egrid,e_it(i,it))
+									a_it_int(i,it)  = locate(agrid,a_it(i,it))
 
-									a_hr  = a_it(drawi,drawt)
-									e_hr  = e_it(drawi,drawt)
-									ei_hr = e_it_int(drawi,drawt)
-									ai_hr  = a_it_int(drawi,drawt)
-									status_hr = status_it(drawi,drawt)
 									exit
 								endif
 							else
 								brn_drawi_drawt(i,it,1) = i
 								brn_drawi_drawt(i,it,2) = it
-								a_hr 	= minval(agrid)
-								ei_hr	= 1
-								e_hr 	= minval(egrid)
-								ai_hr 	= 1
-								status_hr = 1
 								d_it(i,it) = d_hr
 								a_it(i,it) = minval(agrid)
 								e_it(i,it) = 0.
@@ -3695,15 +3722,15 @@ module sim_hists
 								exit
 							endif
 						enddo
-					else !already born, just load state - may have been set earlier in the iteration if they're born in the 1st period
-						age_hr	= age_it(i,it)
-						d_hr	= d_it(i,it)
-						a_hr 	= a_it(i,it)
-						ei_hr	= e_it_int(i,it)
-						e_hr 	= e_it(i,it)
-						ai_hr 	= a_it_int(i,it)
-						status_hr = status_it(i,it)
 					endif !if make decisions when first born?
+					! load state - may have been set earlier in the iteration if they're born in the 1st period
+					age_hr	= age_it(i,it)
+					d_hr	= d_it(i,it)
+					a_hr 	= a_it(i,it)
+					ei_hr	= e_it_int(i,it)
+					e_hr 	= e_it(i,it)
+					ai_hr 	= a_it_int(i,it)
+					status_hr = status_it(i,it)
 
 					! get set to kill off old (i.e. age_hr ==TT only for Longev - youngD - oldD*oldN )
 					if((age_hr .eq. TT) ) then !
