@@ -537,7 +537,7 @@ module helper_funs
 				call dgemv('T', nX, nK, 1._dp, XX, nX, Y, 1, 0., coefs, 1)
 				call dpotrs('U',nK,1,XpX_fac,nK,coefs,Nk,regstatus)
 			else
-				if(verbose >0 ) print *, "cannot factor XX"
+				if(verbose >0 ) print *, "cannot factor XX, error ",regstatus
 			endif
 		endif
 
@@ -3268,21 +3268,23 @@ module sim_hists
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
 !		integer, allocatable :: hlthvocSSDI(:,:) ! got into ssdi on health or vocational considerations, 0= no ssdi, 1=health, 2=vocation
-		real(dp), allocatable :: e_it(:,:), median_wage(:,:)
+		real(dp), allocatable :: e_it(:,:)
 		integer, allocatable :: brn_drawi_drawt(:,:,:)
 
 		! FOR DEBUGGING
 		real(dp), allocatable :: val_hr_it(:),ewt_it(:,:)
 		! because the actual alpha is endgoenous to unemployment and trend
+
 		real(dp), allocatable :: al_it_endog(:,:)
 		integer, allocatable  :: al_int_it_endog(:,:)
-		real(dp), allocatable :: wtr_it(:,:),trX_it(:,:),Xdets(:,:),coefdets(:)
+		real(dp), allocatable :: wtr_it(:,:),trX_it(:,:),Xdets(:,:),xidets(:),xjdets(:), &
+								& acoef(:),ecoef(:),adep(:),edep(:),&
+								& cov_coef(:,:)
 
 		! write to hst, get from shk
 		real(dp), pointer    :: work_dif_it(:,:), app_dif_it(:,:) !choose work or not, apply or not -- latent value
 		real(dp), pointer	 :: di_prob_it(:,:)
 		integer, pointer     :: born_it(:,:) ! born status, drawn randomly
-		real(dp), pointer	 ::	del_i_draw(:)
 		integer, pointer     :: del_i_int(:)  ! integer valued shocks
 		integer, pointer     :: fndsep_i_int(:,:,:)  ! integer valued shocks
 		integer, pointer     :: status_it(:,:)	!track W,U,N,D,R : 1,2,3,4,5
@@ -3325,9 +3327,9 @@ module sim_hists
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., iiwt=1., ziwt=1., jwt=1., cumval=1., &
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,&
-					&   triwt=1., ewt=0.
+					&   triwt=1., ewt=0.,hatsig2,a_residj,e_residj
 
-		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1, ai_hr=1,api_hr=1,ei_hr=1,triH=1,eiH=1, &
+		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1,ial=1, ai_hr=1,api_hr=1,ei_hr=1,triH=1,eiH=1, &
 			& tri=1, tri_hr=1,fndi_hr(nz),sepi_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0,slice_len=1, brn_yr_hr=1, interp_i
 
 		logical :: w_strchng_old = .false., final_iter = .false.,occaggs_hr =.true., converged = .false.
@@ -3359,7 +3361,6 @@ module sim_hists
 		allocate(brn_drawi_drawt(Nsim,Tsim,2))
 !		allocate(hlthvocSSDI(Nsim,Tsim))
 
-
 		!!!!!!!!!!!!!!! DEBUGGING
 		allocate(val_hr_it(Nsim))
 		allocate(ewt_it(Nsim,Tsim))
@@ -3386,7 +3387,6 @@ module sim_hists
 		z_jt_select => shk%z_jt_select
 		del_i_int   => shk%del_i_int
 		fndsep_i_int   => shk%fndsep_i_int
-		del_i_draw  => shk%del_i_draw
 		dead_draw   => shk%dead_draw
 		j_i         => shk%j_i
 		al_it       => shk%al_hist
@@ -3421,8 +3421,18 @@ module sim_hists
 			ptrsuccess = associated(V,vfs%V)
 			if(ptrsuccess .eqv. .false. ) print *, "failed to associate V"
 		endif
-		ndets = 3+nd+ndi+(oldN+1)+nal!status dummies (WUN), d dummies (123), age dummies (1+oldN), del dummies (12), al_int_dummies.
+		ndets = 2 + nd-1 + oldN+1-1 + ndi-1 + nal-1+1 !status dummies (WUN), d dummies (nd), age dummies (1+oldN), del dummies (ndi), al_int_dummies(nal).
+		nregobs = nint(dble(Nsim*Tsim)/10._dp)
+		allocate(cov_coef(ndets,ndets))
+		allocate(acoef(ndets))
+		allocate(ecoef(ndets))
+		allocate(Xdets(nregobs,ndets))
+		allocate(adep(nregobs))
+		allocate(edep(nregobs))
+		allocate(xidets(ndets))
+		allocate(xjdets(ndets))
 		nregobs = 0
+
 
 		hst%wage_hist    = 0.
 		Tret = (Longev - youngD - oldD*oldN)*tlen
@@ -3507,6 +3517,14 @@ module sim_hists
 			hst%hlthprob_hist = 0.
 			hst%hlth_voc_hist= 0
 
+			if(iter>1 ) then
+				call OLS(Xdets(1:nregobs,:),adep(1:nregobs),acoef,cov_coef,hatsig2,status)
+				call OLS(Xdets(1:nregobs,:),edep(1:nregobs),ecoef,cov_coef,hatsig2,status)
+				call vec2csv(acoef,"acoef.csv")
+				call vec2csv(ecoef,"ecoef.csv")
+				call mat2csv(Xdets,"Xdets.csv")
+			endif
+
 			it = 1
 			nomatch = 0
 			junk =0.
@@ -3521,9 +3539,45 @@ module sim_hists
 					d_hr = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
 
 					if((iter>1) ) then
-						do ii=1,Ncol
+						do ii=1,(Ncol-1)
 							drawi = drawi_ititer(i,ii) !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
 							drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
+							!ndets = 3-1+nd-1+(oldN+1-1)+ndi-1+nal-1 !status dummies (WUN), d dummies, age dummies (1+oldN), del dummies (12), al_int dummies.
+							xidets = 0._dp
+							xjdets = 0._dp
+							m=1
+							do il=2,3
+								if(status_it(drawi,drawt) == il) xidets(m) = 1._dp
+								if(status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+								m = m+1
+							enddo
+							do id=2,nd
+								if(d_it(drawi,drawt)== id) xidets(m) = 1._dp
+								if(d_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == id) xjdets(m) = 1._dp
+								m = m+1
+							enddo
+							do il=2,(oldN+1)
+								if(age_it(drawi,drawt) == il) xidets(m) = 1._dp
+								if(age_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+								m=m+1
+							enddo
+							do  idi=2,ndi
+								if(del_i_int(drawi)==idi) xidets(m)= 1._dp
+								if(del_i_int(drawi_ititer(i,ii+1))==idi) xjdets(m)= 1._dp
+								m=m+1
+							enddo
+							do  ial=1,nal
+								if(ial .ne. 3)then
+									if(al_int_it_endog(drawi,drawt)==ial) xidets(m)= 1._dp
+									if(al_int_it_endog(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1))==ial) xjdets(m)= 1._dp
+									m=m+1
+								endif
+							enddo
+							xidets(m)= 1._dp
+							xjdets(m)= 1._dp
+
+							a_residj = a_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,acoef)
+							e_residj = e_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,ecoef)
 							if( (d_it(drawi,drawt) .eq. d_hr) .and. (status_it(drawi,drawt)>0) .and. (status_it(drawi,drawt)<4) ) then
 								brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
 								status_it(i,it) = status_it(drawi,drawt)
@@ -3677,8 +3731,6 @@ module sim_hists
 							cycle
 						!	exit
 					endif
-					nregobs = nregobs+1
-
 
 					!figure out where to evaluate z
 					if(zj_contin .eqv. .false.) then
@@ -4136,13 +4188,46 @@ module sim_hists
 			enddo! 1,Nsim
 			!$OMP  end parallel do
 
-			junk = 0._dp
+			!	ndets = 3+nd+ndi+(oldN+1)+nal!status dummies (WUN), d dummies (123), age dummies (1+oldN), del dummies (12), al_int_dummies.
+			Xdets = 0._dp
+			edep = 0._dp
+			adep = 0._dp
+			ii = 1
 			do i=1,Nsim
+				if( mod(i,10)==0) then !sample 1/10
 				do it=1,Tsim
-					if( (al_int_it_endog(i,it) == 1) .and. (status_it(i,it) == 1) ) &
-					&	junk = junk+1._dp
+					if(  (status_it(i,it) < 4) .and. (status_it(i,it)>0) ) then
+						m = 1
+						do il=2,3
+							if(status_it(i,it)==il) Xdets(ii,m) = 1._dp
+							m=m+1
+						enddo
+						do id=2,nd
+							if(d_it(i,it)==id) Xdets(ii,m) = 1._dp
+							m = m + 1
+						enddo
+						do il=2,(oldN+1)
+							if(age_it(i,it)==il) Xdets(ii,m) = 1._dp
+							m = m + 1
+						enddo
+						do idi=2,ndi
+							if(del_i_int(i)==idi) Xdets(ii,m) = 1._dp
+							m = m + 1
+						enddo
+						do ial=2,nal
+							if(al_int_it_endog(i,it)==ial) Xdets(ii,m) = 1._dp
+							m = m + 1
+						enddo
+						Xdets(ii,m) = 1._dp
+						adep(ii) = a_it_int(i,it)
+						edep(ii) = e_it_int(i,it)
+
+						ii = ii+1
+					endif
 				enddo
+				endif
 			enddo
+			nregobs = ii-1
 
 			if(print_lev >=3)then
 				call vec2csv(val_hr_it,"val_hr.csv")
@@ -4331,6 +4416,11 @@ module sim_hists
 		deallocate(wtr_it)
 		deallocate(trX_it)
 		deallocate(brn_drawi_drawt)
+		deallocate(Xdets)
+		deallocate(xidets,xjdets)
+		deallocate(adep,edep)
+		deallocate(acoef,ecoef)
+		deallocate(cov_coef)
 		!deallocate(hlthvocSSDI)
 		!deallocate(status_it_innov)
 		!deallocate(drawi_ititer,drawt_ititer)
