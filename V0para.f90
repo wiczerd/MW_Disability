@@ -71,7 +71,8 @@ logical            :: al_contin  = .true.,&		!make alpha draws continuous or sta
 					  ineligNoNu = .false.,&	!do young ineligable also pay the nu cost when they are ineligable?
 					  dieyoung   = .true.,&		!do the young die (rate associated with health state)
 					  w_strchng	 = .true.,&     ! w gets fed a structural change sequence
-					  wglev_0	 = .false.  	!should the initial wage level be 0 for all occupations
+					  wglev_0	 = .false.,&  	!should the initial wage level be 0 for all occupations
+					  readshocks = .false.		!readshocks from disk?
 
 
 ! these relate to what's changing over the simulation/across occupation
@@ -998,7 +999,7 @@ subroutine setparams()
 			do t=1,nd
 				vr(:,t) = vr(:,t)*wr(t)**(1._dp/tlen)
 			enddo
-			call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0., pid(:,:,j,i), nd)
+			call dgemm('N', 'N', nd, nd, nd, 1._dp, vr, nd, vl, nd, 0._dp, pid(:,:,j,i), nd)
 
 			do t=1,nd
 				summy = sum(pid(t,:,j,i) )
