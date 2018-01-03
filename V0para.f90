@@ -54,7 +54,7 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			NKpolyT = 1,&			!polynomial order for time trend for occupation
 			NTpolyT = 2,& 			!polynomial order for time trend overall
 			maxiter = 2000, &		!Tolerance parameter
-			Nsim = 60000,&!5000*nj	!how many agents to draw
+			Nsim = 20000,&!5000*nj	!how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
 			init_yrs = 4,&			!how many years for calibration to initial state of things
 			init0_yrs= 1,&			!how many years buffer before calibration to initial state of things
@@ -1034,11 +1034,7 @@ subroutine settfp()
 
 	external dgemm
 
-	if(z_regimes .eqv. .true.) then
-		nzblock = nz/2
-	else
-		nzblock = nz
-	endif
+	nzblock = nz
 
 	allocate(piblock(nzblock,nzblock))
 	allocate(ergpi1(nzblock,nzblock))
@@ -1057,9 +1053,7 @@ subroutine settfp()
 		enddo
 	enddo
 
-
-
-	if( nz>2 ) then !just taking nber probabilities then
+	if( nz>2 ) then !using z process
 
 		zrhot = zrho**(1./tlen)
 		zsigt = zsig**(1/tlen)
@@ -1067,49 +1061,18 @@ subroutine settfp()
 		zcondsigt = ((zsigt**2)*(1.-zrhot**2))**(0.5)
 		!first set transition probabilities at an annual basis
 		call rouwenhorst(nzblock,zmu,zrho,zcondsig,zgrid(1:nzblock,1),piz(1:nzblock,1:nzblock))
-
-		if(z_regimes .eqv. .true.) then
-			!adjust the mean for after the transition
-			do j=2,nj
-				zgrid(1:nz/2,j) = zgrid(1:nz/2,1)
-			enddo
-			do j=1,nj
-				do i=(nz/2+1),nz
-					zgrid(i,j) = zshift(j) + zgrid(i-nz/2,j)
-				enddo
-			enddo
-			!adjust transition probabilities to come only ever tlen periods
-			do i=1,nz/2
-				piz(i,i) = piz(i,i)**(1./tlen)
-				do k=1,nz/2
-					if(k /= i) piz(i,k) = 1.-(1.-piz(i,k))**(1./tlen)
-				enddo
-				summy = sum(piz(i,1:nzblock))
-				if(summy /= 1) piz(i,1:nzblock) = piz(i,1:nzblock)/summy !this is correcting numerical error
-			enddo
-
-			piz(nz/2+1:nz,nz/2+1:nz)= piz(1:nz/2,1:nz/2)
-			piz(1:nz/2,nz/2+1:nz) 	= 1./(dble(Tblock_exp)*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! struct change
-			piz(1:nz/2,1:nz/2) = (1.-1./(dble(Tblock_exp)*tlen))*piz(1:nz/2,1:nz/2) ! make it markov
-			piz(nz/2+1:nz,1:nz/2) = 1./(dble(Tblock_exp)*tlen)*piz(nz/2+1:nz,nz/2+1:nz) ! go back
-			piz(nz/2+1:nz,1+nz/2:nz) = (1.-1./(dble(Tblock_exp)*tlen))*piz(nz/2+1:nz,1+nz/2:nz) ! go back
-
-			piblock = piz(1:nz/2,1:nz/2)
-
-		else
-			piblock= piz(1:nzblock,1:nzblock)
-			Zzgrid = zgrid(:,1)
-			do j=1,nj
-				zgrid(:,j) = Zzgrid*zscale(j)
-			enddo
-		endif
+		piblock= piz(1:nzblock,1:nzblock)
+		Zzgrid = zgrid(:,1)
+		do j=1,nj
+			zgrid(:,j) = Zzgrid*zscale(j)
+		enddo
 		!DGEMM('N','N',  M,  N,    K, ALPHA,  A,     M,    B,       K,  BETA,     C,       M)
 		call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, piblock, nzblock, 0._dp, ergpi1,nzblock)
 		do i=1,10000
 				call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, ergpi1, nzblock, 0._dp, ergpi2,nzblock)
 				ergpi1 = ergpi2
 		enddo
-	else !nz=2
+	else !nz=2, taking nber probabilities
 		! probability of entering recession  4/(58+12+92+120+73) = 0.011267606
 		piz(2,1) = 4./(58.+12.+92.+120.+73.)
 		! probability of exit from recession 4/(6+16+8+8+18) = 0.071428571
@@ -1118,25 +1081,22 @@ subroutine settfp()
 		piz(2,2) = 1.-piz(2,1)
 		piblock = piz
 		if( z_flowrts .eqv. .true.) then
-			Zzgrid = 0.
-			zgrid  = 0.
+			forall(i=1:nz) Zzgrid(i) = dble(i)
+			do j=1,nj
+				forall(i=1:nz) zgrid(i,j) = dble(i)
+			enddo
 		else
 			Zzgrid  = (/ zmu-zsig, zmu+zsig/)
 			do j=1,nj
 					zgrid(:,j) = Zzgrid*zscale(j)
 			enddo
 		endif
-		ergpi1 = 0.5_dp
+		ergpi1(1,:) = (/0.136253, 0.863747 /)
+		ergpi1(2,:) = (/0.136253, 0.863747 /)
 	endif
 
-	if(z_regimes .eqv. .true.) then
-		do i=1,nz/2
-			ergpiz(i) = ergpi1(1,i)
-			ergpiz(i+nz/2) = ergpi1(1,i)
-		enddo
-	else
-		ergpiz = ergpi1(1,:)
-	endif
+	ergpiz = ergpi1(1,:)
+
 	deallocate(ergpi1,ergpi2,piblock)
 
 end subroutine settfp
