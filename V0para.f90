@@ -54,7 +54,7 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			NKpolyT = 1,&			!polynomial order for time trend for occupation
 			NTpolyT = 2,& 			!polynomial order for time trend overall
 			maxiter = 2000, &		!Tolerance parameter
-			Nsim = 20000,&!5000*nj	!how many agents to draw
+			Nsim = 60000,&!5000*nj	!how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
 			init_yrs = 4,&			!how many years for calibration to initial state of things
 			init0_yrs= 1,&			!how many years buffer before calibration to initial state of things
@@ -65,7 +65,6 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 
 ! thse relate to how we compute it. Mostly for debugging purposes
 logical            :: al_contin  = .true.,&		!make alpha draws continuous or stay on the grid
-					  z_flowrts	 = .true.,&		!make zj just control flow rates and not productivity (makes the next irrelevant)
 					  zj_contin	 = .false.,&	!make zj draws continous
 					  z_regimes	 = .false.,&	!different z regimes?
 					  ineligNoNu = .false.,&	!do young ineligable also pay the nu cost when they are ineligable?
@@ -1072,7 +1071,7 @@ subroutine settfp()
 				call dgemm('n','n',nzblock,nzblock,nzblock,1._dp,piblock,nzblock, ergpi1, nzblock, 0._dp, ergpi2,nzblock)
 				ergpi1 = ergpi2
 		enddo
-	else !nz=2, taking nber probabilities
+	else !nz=2 => taking nber probabilities
 		! probability of entering recession  4/(58+12+92+120+73) = 0.011267606
 		piz(2,1) = 4./(58.+12.+92.+120.+73.)
 		! probability of exit from recession 4/(6+16+8+8+18) = 0.071428571
@@ -1080,17 +1079,10 @@ subroutine settfp()
 		piz(1,1) = 1.-piz(1,2)
 		piz(2,2) = 1.-piz(2,1)
 		piblock = piz
-		if( z_flowrts .eqv. .true.) then
-			forall(i=1:nz) Zzgrid(i) = dble(i)
-			do j=1,nj
-				forall(i=1:nz) zgrid(i,j) = dble(i)
-			enddo
-		else
-			Zzgrid  = (/ zmu-zsig, zmu+zsig/)
-			do j=1,nj
-					zgrid(:,j) = Zzgrid*zscale(j)
-			enddo
-		endif
+		forall(i=1:nz) Zzgrid(i) = dble(i)
+		do j=1,nj
+			forall(i=1:nz) zgrid(i,j) = dble(i)
+		enddo
 		ergpi1(1,:) = (/0.136253, 0.863747 /)
 		ergpi1(2,:) = (/0.136253, 0.863747 /)
 	endif

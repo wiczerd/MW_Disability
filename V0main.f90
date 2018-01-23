@@ -220,6 +220,11 @@ module helper_funs
 	!--------------------
 	function xifun(idin,trin,itin,hlthprob)
 
+		!idin is the health (integer)
+		!trin is the wage trend, as realized by the change in returns to skills (real)
+		!itin is the age
+		!hlthprob is an output, that is the fraction of the acceptance probability associated with health (not vocational)
+
 		real(dp), intent(in):: trin
 		integer, intent(in):: idin,itin
 		real(dp), optional :: hlthprob
@@ -276,19 +281,11 @@ module helper_funs
 		real(dp)			:: util
 
 
-		! if ((wkin .gt. 1) .or. (din .gt. 1)) then
-			if(gam> 1+1e-5_dp .or. gam < 1-1e-5_dp) then
-				util = ((cin*dexp(theta*dble(din-1)+eta*dble(wkin-1)))**(1._dp-gam) )/(1._dp-gam)
-			else
-				util = dlog(cin*dexp(theta*dble(din-1)+eta*dble(wkin-1)))
-			endif
-		! else
-		! 	if(gam> 1._dp+1e-5_dp .or. gam < 1_dp-1e-5_dp) then
-		! 		util = (cin**(1._dp-gam))/(1._dp-gam)
-		! 	else
-		! 		util = dlog(cin)
-		! 	endif
-		! endif
+		if(gam> 1+1e-5_dp .or. gam < 1-1e-5_dp) then
+			util = ((cin*dexp(theta*dble(din-1)+eta*dble(wkin-1)))**(1._dp-gam) )/(1._dp-gam)
+		else
+			util = dlog(cin*dexp(theta*dble(din-1)+eta*dble(wkin-1)))
+		endif
 		util = util + util_const
 
 	end function
@@ -313,17 +310,19 @@ module helper_funs
 	!------------------------------------------------------------------------
 	! 6) Wage Function
 	!--------------------
-	function wage(levin,aiin,din,zin,tin)
+	function wage(levin,aiin,din,tin)
 	!--------------------
 
-		real(dp), intent(in)	:: levin, aiin, zin
+		!levin is the level/trend that is occupation specific
+		!aiin is the alpha idiosyncratic shock
+		!din is integer representing the health state
+		!tin is the age integer, which determines where in the age profile (wtau)
+
+		real(dp), intent(in)	:: levin, aiin
 		integer, intent(in)	:: din, tin
 		real(dp)			:: wage
-		if( z_flowrts .eqv. .true.) then
-			wage = dexp( levin + aiin+wd(din)+wtau(tin) )
-		else
-			wage = dexp( levin + aiin+wd(din)+wtau(tin) + zin )
-		endif
+
+		wage = dexp( levin + aiin+wd(din)+wtau(tin) )
 
 	end function
 
@@ -1364,7 +1363,7 @@ module sol_val
 
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *Vc1
 					if(iaa == iaa0) then
-						Ewage = Ewage+     piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *wage(trgrid(itr),alfgrid(ialal),idd,zgrid(izz,1),it)
+						Ewage = Ewage+     piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *wage(trgrid(itr),alfgrid(ialal),idd,it)
 						EVD   = EVD + beta*piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *VDhr
 					endif
 				enddo
@@ -2093,7 +2092,7 @@ module sol_val
 					itr= mod(ipara-1,nz*ne*nd*ntr)/(nz*ne*nd) +1
 					ial= mod(ipara-1,nz*ne*nd*ntr*nal)/(nz*ne*nd*ntr)+1
 
-					wagehere = wage(trgrid(itr),alfgrid(ial),id,zgrid(iz,1),it) !<-zgrid should be parameterized by ij if z_flowrts = .false.
+					wagehere = wage(trgrid(itr),alfgrid(ial),id,it)
 					!----------------------------------------------------------------
 					!Loop over current state: assets
 					iaN=0
@@ -2221,7 +2220,7 @@ module sol_val
 					ial= mod(ipara-1,nz*ne*nd*ntr*nal)/(nz*ne*nd*ntr)+1
 
 					!Earnings evolution independent of choices.
-					wagehere = wage(trgrid(itr),alfgrid(ial),id,zgrid(iz,1),it) !<- zgrid should be index by ij
+					wagehere = wage(trgrid(itr),alfgrid(ial),id,it)
 					eprime = Hearn(it,ie,wagehere)
 					!linear interpolate for the portion that blocks off bounds on assets
 					if((eprime > emin) .and. (eprime < emax)) then  ! this should be the same as if(eprime > minval(egrid) .and. eprime < maxval(egrid))
@@ -3258,7 +3257,7 @@ module sim_hists
 		real(dp) ::  cumergpi(nz+1)
 
 		integer :: it,ij,iz,izp, zi_jt_t , nzblock
-		real(8) :: muhere, Zz_t
+		real(8) :: muhere=0._dp, Zz_t=0._dp
 
 		if( z_regimes .eqv. .true.) then
 			nzblock = nz/2
@@ -3269,8 +3268,8 @@ module sim_hists
 		call settfp() ! sets values for piz
 
 
-		cumpi_z = 0.
-		cumergpi = 0.
+		cumpi_z = 0._dp
+		cumergpi = 0._dp
 		! for random transitions of time block or if z_regimes .eqv. .false.
 		do iz=1,nz
 			do izp=1,nz
@@ -3285,7 +3284,7 @@ module sim_hists
 			Zz_t = zsig*shk%z_jt_innov(it)
 			forall (ij = 1:nj)	z_jt_panel(ij,it) = Zz_t*zscale(ij)
 		else
-			z_jt_panel(ij,it) = zgrid(zi_jt_t,ij)
+			forall (ij = 1:nj) z_jt_panel(ij,it) = zgrid(zi_jt_t,ij)
 		endif
 
 		do it= 2,Tsim
@@ -3296,7 +3295,7 @@ module sim_hists
 			z_jt_macroint(it) = zi_jt_t
 
 
-			Zz_t = (1.-zrho) * zmu + zsig*shk%z_jt_innov(it) + zrho*Zz_t
+			if( zj_contin .eqv. .true.) Zz_t = (1.-zrho) * zmu + zsig*shk%z_jt_innov(it) + zrho*Zz_t
 			do ij=1,nj
 				muhere = 0.
 				if( zj_contin .eqv. .true.) then
@@ -3916,10 +3915,10 @@ module sim_hists
 					junk = 0._dp
 					if(w_strchng .eqv. .true.) junk = wtr_it(i,it)
 					if(junk == 1000._dp) print *, "big wage trend!"
-					wage_hr	= wage(wage_lev(j_hr)+junk,al_hr,d_hr,z_hr,age_hr)
+					wage_hr	= wage(wage_lev(j_hr)+junk,al_hr,d_hr,age_hr)
 					if(invol_un ==1) then
 						if(al_last_invol == al_hr/2.) print *, "Lower alpha"
-						wage_hr	= wage(wage_lev(j_hr)+junk,al_last_invol,d_hr,z_hr,age_hr)
+						wage_hr	= wage(wage_lev(j_hr)+junk,al_last_invol,d_hr,age_hr)
 					endif
 					hst%wage_hist(i,it) = wage_hr
 
@@ -3993,9 +3992,9 @@ module sim_hists
 							case(1) ! working
 								if( status_it_innov(i,it) < sepi .or. work_dif_hr<0 ) then !separate?
 									al_last_invol = al_hr
-									wage_hr	= wage(wage_lev(j_hr),al_last_invol,d_hr,z_hr,age_hr)
+									wage_hr	= wage(wage_lev(j_hr),al_last_invol,d_hr,age_hr)
 									if(w_strchng .eqv. .true.) &
-										& wage_hr	= wage(wage_lev(j_hr) + wtr_it(i,it),al_last_invol,d_hr,z_hr,age_hr)
+										& wage_hr	= wage(wage_lev(j_hr) + wtr_it(i,it),al_last_invol,d_hr,age_hr)
 									if(status_it_innov(i,it) < sepi) then !separated involunarily
 										ali_hr = 1
 										invol_un = 1
@@ -4555,7 +4554,7 @@ module find_params
 	type(shocks_struct), pointer :: mod_shk
 	integer :: dfbols_nuxi_trproc = 2 !indicator for whether dfovec should solve for nuxi or for the zprocess
 	real(dp) :: mod_prob_target
-
+	real(dp), allocatable :: mod_xl(:),mod_xu(:)
 
 	contains
 
@@ -4822,8 +4821,6 @@ module find_params
 		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter), sep_fnd_mul(maxiter,2)
 		real(dp) :: wage_trend_hr
 		integer  :: i,ii,ij,it, iter,iout,plO,vO, ik, ip,ri
-		real(dp) :: coH, coL,coM, stepa,der2a,stepb,der2b
-		real(dp) :: avg_convergence, sep_implied
 		integer  :: miniter = 3, status, maxiter_hr,print_lev_bobyqa
 		integer  :: Ncoef,Ncoef_active,sd_estpts=8,Nobj_estpts,Nobj
 
@@ -4861,13 +4858,13 @@ module find_params
 
 		step_derwgcoef = 1e-4
 		noise_coef = 0._dp
+		wksp_dfbols = 0._dp
 
 		plO = print_lev
 		if(plO<4) print_lev = 1
 		vO = verbose
 		if(vO<4) verbose=0
-		!call mat2csv(wage_trend,"wage_trend_0.csv")
-		avg_convergence = 1.
+
 
 		!put useful solving stuff in global scope
 		mod_vfs => vfs
@@ -4937,6 +4934,7 @@ module find_params
 			rhoend = rhobeg/1000._dp
 			maxiter_hr = 200
 		endif
+		!maxiter_hr = 3
 		print_lev_bobyqa = plO !set this to printlev (plO)
 		call bobyqa_h(Nobj,Nobj_estpts,wc0,wcL,wcU,rhobeg,rhoend,print_lev_bobyqa,maxiter_hr,wksp_dfbols,Nobj)
 
@@ -4997,8 +4995,6 @@ module find_params
 		integer :: ij=1,t0tT(2),it,i
 		integer :: rank_hr,ierr,fcal_eval
 		character(2) :: rank_str
-
-
 
 		cal_niter = cal_niter + 1
 		nu   = paramvec(1)
@@ -5107,12 +5103,21 @@ module find_params
 		integer :: fcal_eval,print_lev_old,verbose_old
 		integer :: c1=1,c2=1,cr=1,cm=1
 		real(dp) :: t1=1.,t2=1.
+		real(dp) :: zeros(size(xl)),ones(size(xu))
 
 		external dfovec
 		call random_seed(size = iprint)
 		allocate( seedhr(iprint) )
 		allocate(sepgrid0(size(sepgrid,1),size(sepgrid,2)))
 		allocate(fndgrid0(size(fndgrid,1),size(fndgrid,2)))
+
+		allocate(mod_xl(nopt))
+		allocate(mod_xu(nopt))
+		mod_xl = xl ! this is so bounds are available in dfovec
+		mod_xu = xu
+		zeros  = 0._dp
+		ones   = 1._dp
+
 		ndraw = size(x0hist,2)
 		ninterppt = 2*nopt+1
 		ninternalopt = size(wage_coef) + 2 !wage coefficients, fmul smul
@@ -5130,6 +5135,9 @@ module find_params
 		call mpi_comm_size(mpi_comm_world,nnode,ierr)
 		call mpi_comm_rank(mpi_comm_world,rank,ierr)
 
+		!set ndraw to do it only once:
+		ndraw = nnode*nstartpn
+
 		allocate(wspace((ninterppt+5)*(ninterppt+nopt)+3*nopt*(nopt+5)/2))
 		allocate(node_fopts(               nstartpn))
 		allocate(node_xopts(               nstartpn*nopt))
@@ -5140,7 +5148,7 @@ module find_params
 		allocate(world_internalopt(  nnode*nstartpn*ninternalopt))
 		dfbols_nuxi_trproc = 1
 
-		rhobeg = minval( (xu - xl)/dble(max(nnode/2,2)))
+		rhobeg = 0.1_dp !trust region starting size is
 		rhoend = rhobeg/1.e4_dp
 
 		fval = 0._dp
@@ -5176,8 +5184,8 @@ module find_params
 		seedhr = rank+671984
 		call random_seed(put = seedhr)
 		!loop/distribute stating points for random restarts
-		!do d =1,(ndraw/nnode/nstartpn)
-		do d=1,1
+		do d =1,(ndraw/nnode/nstartpn)
+		!do d=1,1
 			do dd= 1,nstartpn
 				call system_clock(count_rate=cr)
 				call system_clock(count_max=cm)
@@ -5193,7 +5201,7 @@ module find_params
 					!test it for being too far away:
 					!call random_number(v_err(1))
 					!call random_number(v_err(2))
-					call dfovec(nopt,nopt,x0,v_err)
+					call dfovec(nopt,nopt,(x0-xl)/(xu-xl)  ,v_err) !note that dfovec takes the normalized values between 0,1 for x
 					if( (abs(v_err(1)) > 4._dp) .or. (abs(v_err(2))>0.99_dp) ) then
 						! exit
 						call random_number(junk) !burn one
@@ -5223,10 +5231,10 @@ module find_params
 						iprint = 1
 						xopt = x0
 						cal_on_iter_wgtrend = .false.
-						call bobyqa_h(nopt,ninterppt,xopt,xl,xu, &
+						call bobyqa_h(nopt,ninterppt,xopt,zeros,ones, &
 						&	rhobeg,rhoend,iprint,100,wspace,nopt)
 
-						call dfovec(nopt,nopt,xopt,v_err)
+						call dfovec(nopt,nopt,(xopt-xl)/(xu-xl),v_err)
 						cal_on_iter_wgtrend = .true.
 						exit
 					endif
@@ -5261,8 +5269,8 @@ module find_params
 			&		nopt*nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
 			call mpi_allgather( node_internalopt, ninternalopt*nstartpn, MPI_DOUBLE, world_internalopt,&
 			&		ninternalopt*nstartpn, MPI_DOUBLE,mpi_comm_world, ierr )
-			!this is inefficient to have a block here. It might be uneccesary
-			call mpi_barrier(mpi_comm_world,ierr)
+
+
 			nstarts = (d-1)*(nnode*nstartpn)
 			fopt_hist(nstarts + 1:nstarts + nnode*nstartpn) = world_fopts
 			do j =1,(nnode*nstartpn)
@@ -5341,6 +5349,8 @@ module find_params
 		deallocate(world_internalopt,node_internalopt)
 		deallocate(seedhr)
 		deallocate(sepgrid0,fndgrid0)
+		deallocate(mod_xl,mod_xu)
+
 	end subroutine cal_mlsl
 
 
@@ -5545,7 +5555,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 
 		!nu = theta0(1)
 		!xizcoef = theta0(1)
-		paramvec = theta0
+		paramvec = theta0*(mod_xu-mod_xl)+mod_xl
 		!if(smth_dicont .le. 20._dp) smth_dicont = smth_dicont*1.05_dp
 		call cal_dist(paramvec, errvec,mod_shk)
 
@@ -5600,7 +5610,7 @@ program V0main
 	! Structure to communicate everything
 		type(val_struct), target :: vfs
 		type(pol_struct), target :: pfs
-		type(hist_struct):: hst
+		type(hist_struct), target:: hst
 		type(shocks_struct) :: shk
 		type(moments_struct):: moments_sim
 		type(val_pol_shocks_struct) :: vfs_pfs_shk
@@ -5722,11 +5732,11 @@ program V0main
 		do it = 1,TT-1
 			do ial =1,nal
 				do id = 1,nd-1
-					wagehere = wage(0._dp,alfgrid(ial),id,zgrid(iz,ij),it)
+					wagehere = wage(0._dp,alfgrid(ial),id,it)
 					write(1, "(G20.12)", advance='no') wagehere
 				enddo
 				id = nd
-				wagehere = wage(0._dp,alfgrid(ial),id,zgrid(iz,ij),it)
+				wagehere = wage(0._dp,alfgrid(ial),id,it)
 				write(1,*) wagehere
 			enddo
 			write(1,*) " "! trailing space
@@ -5763,7 +5773,7 @@ program V0main
 		do it = 1,TT-1
 			do ial =1,nal
 				do id = 1,nd-1
-					wagehere = wage(0._dp,alfgrid(ial),id,zgrid(iz,ij),it)
+					wagehere = wage(0._dp,alfgrid(ial),id,it)
 					utilhere = util(wagehere,id,1)
 					write(1, "(G20.12)", advance='no') utilhere
 					junk = utilhere + junk
@@ -5812,7 +5822,7 @@ program V0main
 		cal_niter = 0
 		wc_guess_lev = 0._dp
 		wc_guess_nolev = 0._dp
-
+		call vec2csv(shk%z_jt_innov,"z_jt_innov_hist_2.csv")
 		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
 
 		if(verbose >1) print *, "Solving the model"
@@ -5919,6 +5929,8 @@ program V0main
 		print *, "error 2: ",	(moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
 		print *, "error 3: ",	(moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
 
+		call dealloc_econ(vfs,pfs,hst)
+
 	endif !sol_once
 
 	!parameters from the 7/23/2017 calibration
@@ -5973,6 +5985,7 @@ program V0main
 	!fndgrid <- "fndgrid_opt.csv")
 	!sepgrid <- "sepgrid_opt.csv")
 
+	print *, "about to read everything "
 	open(unit = fread, file= "wage_coef_opt.csv")
 	do i=1,size(occwg_datcoef)
 		read(fread, *) wage_coef(i)
@@ -6000,13 +6013,7 @@ program V0main
 		read(fread,*) wmean
 	close(fread)
 
-	!!!!!!!!!!!!!!!!!!!!REMOVE BELOW !!!!!!!!!!!!!!!!!
-	wage_coef_0chng = wage_coef
-	do i=(1+NTpolyT),size(wage_coef) !only turn off the occupation-specific trends
-		wage_coef_0chng(i)= 0._dp
-	enddo
-	call gen_new_wgtrend(wage_trend,wage_coef_0chng)
-	!!!!!!!!!!!!!!!!!!!!REMOVE ABOVE!!!!!!!!!!!!!!!!!
+	print *, "read everything"
 
 	if (dbg_skip .eqv. .false.) then
 		cal_on_iter_wgtrend = .false.
@@ -6024,6 +6031,7 @@ program V0main
 	 	print *, "error in initial", err0(1), err0(2), err0(3)
 		print *, "---------------------------------------------------"
 	endif
+	print *, "ran it"
 
 	if((nodei == 0) .and. (run_experiments .eqv. .true.) .and. (dbg_skip .eqv. .false.)) then
 
