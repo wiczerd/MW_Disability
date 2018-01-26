@@ -31,7 +31,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		Longev = 82.- 30.,&	!Median longevity
 		UIrr = 0.4, &		!Replacement Rate in UI
 		eligY  = 0.834,&	!Fraction young who are eligable
-		R =1.,&!dexp(.02/tlen),&	!People can save in the backyard
+		R =1.,& !dexp(.02/tlen),&	!People can save in the backyard
 		upd_zscl = 0.1,&		! rate at which to update zshift
 		upd_wgtrnd = 0.01		! rate at which update wage_trend
 
@@ -54,7 +54,7 @@ integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
 			NKpolyT = 1,&			!polynomial order for time trend for occupation
 			NTpolyT = 2,& 			!polynomial order for time trend overall
 			maxiter = 2000, &		!Tolerance parameter
-			Nsim = 60000,&!5000*nj	!how many agents to draw
+			Nsim = 20000,&!5000*nj	!how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
 			init_yrs = 4,&			!how many years for calibration to initial state of things
 			init0_yrs= 1,&			!how many years buffer before calibration to initial state of things
@@ -142,14 +142,11 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
 		occ_onet(nj,Nskill),&!physical and 3 KSA
-		occwg_coefs(Nskill+1,NKpolyT+1),& !coefficients for wage regression. also includes 0-order and time-only
+		occwg_datcoef_sqr(Nskill+1,NKpolyT+1),& !Only used with NKpolyT>=2. Then these are the data coefficients for wage regression. also includes 0-order and time-only
 		occwg_datcoef(Nskill*2+NTpolyT+5),& !!coefficients for wage regression. First is cubic in time, then linear in skill dimension. Then 2 for age profile, 2 for health dummies, 1 const
-		occwg_trend(Tsim,nj),& !trend in occupation wage
-		occwg_lev(nj),&		!level of occupation wage
+		occwg_dattrend(Tsim,nj),& !trend in occupation wage
+		occwg_datlev(nj),&		!level of occupation wage
 
-		step_derwgcoef(Nskill*2+NTpolyT+5),&	! the step size for derivatives in wage coefficients. Will set this optimally later.
-		noise_coef( Nskill*2+NTpolyT+5 ),&	!the noise associated with
-!
 		occsz0(nj),&		   !Fraction in each occupation
 		occpr_trend(Tsim,nj) !trend in occupation choice
 
@@ -157,7 +154,7 @@ integer :: 	dgrid(nd)	! just enumerate the d states
 real(8)	::	agegrid(TT)		! the mid points of the ages
 
 !***preferences and technologies that may change
-real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (5% annual discount rate to start)
+real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (10% annual discount rate to start)
 		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential payout
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income process
@@ -192,9 +189,9 @@ real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (5% annual discount rat
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
 
-		DItest1 = 1.0, &	!Earnings Index threshold 1 (These change based on the average wage)
-		DItest2 = 1.5, &	!Earnings Index threshold 2
-		DItest3 = 2.0, & 	!Earnings Index threshold 3
+		DItest1 = 0.285, &	!Earnings Index threshold 1 (These change based on the average wage)
+		DItest2 = 1.002, &	!Earnings Index threshold 2
+		DItest3 = 1.719, & 	!Earnings Index threshold 3
 		smth_dicont = 1.	!Smoothing for the di application value
 !
 
@@ -479,18 +476,18 @@ subroutine setparams()
 	enddo
 
 	occwg_datcoef = 0._dp
-	occwg_coefs   = 0._dp
+	occwg_datcoef_sqr   = 0._dp
 	if(NKpolyT >= 2) then
 		t=6
 		do j=1,(NKpolyT+1)
 			do k=1,(Nskill+1)
 				if(k > 1 .or. j > 1) then
-					if(NKpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read(t)
-					if(NKpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read(t)
+					if(NKpolyT == 2)	occwg_datcoef_sqr(k,j) = wage_coef_O2_read(t)
+					if(NKpolyT == 3)	occwg_datcoef_sqr(k,j) = wage_coef_O3_read(t)
 					t = t+1
 				else
-					if(NKpolyT == 2)	occwg_coefs(k,j) = wage_coef_O2_read( (NKpolyT+1)*(Nskill+1) +5 )
-					if(NKpolyT == 3)	occwg_coefs(k,j) = wage_coef_O3_read( (NKpolyT+1)*(Nskill+1) +5 )
+					if(NKpolyT == 2)	occwg_datcoef_sqr(k,j) = wage_coef_O2_read( (NKpolyT+1)*(Nskill+1) +5 )
+					if(NKpolyT == 3)	occwg_datcoef_sqr(k,j) = wage_coef_O3_read( (NKpolyT+1)*(Nskill+1) +5 )
 				endif
 			enddo
 		enddo
@@ -508,15 +505,15 @@ subroutine setparams()
 	endif
 
 
-	!use the coefficients:
+	!use the coefficients to set the trends (stored in occwg_dattrend):
 	if(NKpolyT>=2) then
 		do i=1,nj
 			do t=1,Tsim
-				occwg_trend(t,i) = 0._dp
+				occwg_dattrend(t,i) = 0._dp
 				do j =1,(NKpolyT+1)
-					occwg_trend(t,i) =     (dble(t)/tlen)**(j-1)*occwg_coefs(1,j)                 + occwg_trend(t,i)
+					occwg_dattrend(t,i) =     (dble(t)/tlen)**(j-1)*occwg_datcoef_sqr(1,j)                 + occwg_dattrend(t,i)
 					do k=1,Nskill
-						occwg_trend(t,i) = (dble(t)/tlen)**(j-1)*occwg_coefs(k+1,j)*occ_onet(i,k) + occwg_trend(t,i)
+						occwg_dattrend(t,i) = (dble(t)/tlen)**(j-1)*occwg_datcoef_sqr(k+1,j)*occ_onet(i,k) + occwg_dattrend(t,i)
 					enddo
 				enddo
 			enddo
@@ -524,13 +521,13 @@ subroutine setparams()
 	else
 		do i=1,nj
 			do t=1,Tsim
-				occwg_trend(t,i) = 0._dp
-				do j =1,NTpolyT
-					occwg_trend(t,i) = (dble(t)/tlen)**j*occwg_datcoef(j) + occwg_trend(t,i)
+				occwg_dattrend(t,i) = 0._dp
+				do j =1,NTpolyT !unroll time trend
+					occwg_dattrend(t,i) = (dble(t)/tlen)**j*occwg_datcoef(j) + occwg_dattrend(t,i)
 				enddo
-				do k=1,Nskill
-					occwg_trend(t,i) = (dble(t)/tlen)*occwg_datcoef(k+NTpolyT+ Nskill)*occ_onet(i,k) &
-					& + occwg_datcoef(k+NTpolyT)*occ_onet(i,k) + occwg_trend(t,i)
+				do k=1,Nskill !occupation-specific ONET prices
+					occwg_dattrend(t,i) = (dble(t)/tlen)*occwg_datcoef(k+NTpolyT+ Nskill)*occ_onet(i,k) &
+					& + occwg_datcoef(k+NTpolyT)*occ_onet(i,k) + occwg_dattrend(t,i)
 				enddo
 			enddo
 		enddo
@@ -538,20 +535,20 @@ subroutine setparams()
 
 	!initialize the input to the observed
 	do i=1,nj
-		occwg_lev(i) = occwg_trend(1,i)
-		occwg_trend(:,i) = occwg_trend(:,i) - occwg_lev(i)
+		occwg_datlev(i) = occwg_dattrend(1,i)
+		occwg_dattrend(:,i) = occwg_dattrend(:,i) - occwg_datlev(i)
 	enddo
 	if(wglev_0 .eqv. .true.) then
 		wage_lev = 0._dp
 	else
-		wage_lev = occwg_lev
+		wage_lev = occwg_datlev
 	endif
-	wage_trend = occwg_trend
+	wage_trend = occwg_dattrend
 
 	!Wage-trend grid-setup
-	trgrid(1) = minval(occwg_trend)-.2_dp*abs(minval(occwg_trend))
+	trgrid(1) = minval(wage_trend(Tsim,:)+wage_lev)*1.1_dp
 	if(ntr>1) then
-		trgrid(ntr) = maxval(occwg_trend) + .2_dp*maxval(occwg_trend)
+		trgrid(ntr) = maxval(wage_trend(Tsim,:)+wage_lev)*1.1_dp
 		do tri=2,(ntr-1)
 			trgrid(tri) = dble(tri-1)*(trgrid(ntr)-trgrid(1))/dble(ntr-1) + trgrid(1)
 		enddo
@@ -891,7 +888,7 @@ subroutine setparams()
 	!Make linear from lowest possible wage (disabled entrant, lowest types)
 	emin = dexp(alfgrid(2)+minval(wtau)+minval(wd))
 	!... to highest, maximizing over t
-	emax = dexp(maxval(alfgrid)+maxval(wtau)+maxval(wd))
+	emax = DItest3!dexp(maxval(alfgrid)+maxval(wtau)+maxval(wd))
 	step = (emax-emin)/dble(ne-1)
 	do i=1,ne
 		egrid(i) = emin+step*dble(i-1)
