@@ -2743,7 +2743,7 @@ module sim_hists
 		integer, dimension(:,:) :: al_int_it
 		integer :: ss=1, Ndraw, alfgrid_int, t,m,i,k
 		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i,alf_i
-		real(dp) :: alfcondsig,alfrhot,alfsigt,alfcondsigt
+		real(dp) :: alfsig,alfrhot,alfsigt,alfcondsigt
 		real(dp) :: alfgrid_minE,alfgrid_maxE,alfgrid_Uval !min max value while employed and val of unemp
 		integer, allocatable :: bdayseed(:)
 		real(dp), allocatable :: cumpi_al(:,:)
@@ -2763,7 +2763,7 @@ module sim_hists
 		Ndraw = size(al_it,1)
 
 		alfrhot = alfrho**(1./tlen)
-		alfcondsig = (alfsig**2*(1-alfrho**2))**0.5
+		alfsig = (alfcondsig**2/(1-alfrho**2))**0.5
 		alfsigt = (alfsig**2/tlen)**0.5
 		alfcondsigt = (alfsigt**2*(1-alfrhot**2))**0.5
 
@@ -4164,7 +4164,7 @@ module sim_hists
 									endif
 									apc_hr = agrid(api_hr)
 								endif
-
+								apc_hr = min(max( apc_hr, minval(agrid)),maxval(agrid))
 								if(interp_i == 1) then
 									junk = apc_hr
 								else

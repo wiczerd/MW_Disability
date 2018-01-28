@@ -41,7 +41,7 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 5,  &!5		!Number of individual alpha types
+integer, parameter ::	nal = 6,  &!5		!Number of individual alpha types
 			ntr = 7,    &!7	        !Number of occupation trend points
 			ndi = 2,    &		    !Number of individual disability risk types
 			nl	= 2,    &			!Number of finding/separation rates
@@ -87,7 +87,7 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 logical			  ::  run_experiments = .false., &
 					  run_cal = .false.
 
-real(8), parameter ::  amax 	 = 20.0,   &	!Max on Asset Grid
+real(8), parameter ::  amax 	 = 24.0,   &	!Max on Asset Grid
 					   amin = 0.0	   	!Min on Asset Grid
 
 
@@ -155,12 +155,12 @@ real(8)	::	agegrid(TT)		! the mid points of the ages
 
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (10% annual discount rate to start)
-		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential payout
+		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential wage
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income process
 		alfrho = 0.988, &	!Peristence of Alpha_i type
 		alfmu = 0.0,&		!Mean of Alpha_i type
-		alfsig = 0.015**0.5,&	!Unconditional StdDev of Alpha_i type (Normal)
+		alfcondsig = 0.015**0.5,&	!Conditional StdDev of Alpha_i type (Normal)
 		b = 0.05,&		!Home production income
 		lrho = 0.5,&		!Discount in the probability of finding a job when long-term unemployed (David)
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
@@ -189,9 +189,9 @@ real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (10% annual discount ra
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
 
-		DItest1 = 0.285, &	!Earnings Index threshold 1 (These change based on the average wage)
-		DItest2 = 1.002, &	!Earnings Index threshold 2
-		DItest3 = 1.719, & 	!Earnings Index threshold 3
+		DItest1 = 0.3076, &	!Earnings Index threshold 1 (These change based on the average wage)
+		DItest2 = 1.8570, &	!Earnings Index threshold 2
+		DItest3 = 3.4093,&  !Earnings Index threshold 3
 		smth_dicont = 1.	!Smoothing for the di application value
 !
 
@@ -244,7 +244,7 @@ subroutine setparams()
 	logical, parameter :: lower= .FALSE.
 	integer:: i, j, k, t,tri,iter
 	real(8):: summy, emin, emax, step, &
-		   alfcondsig,alfcondsigt,alfrhot,alfsigt, &
+		   alfsig,alfcondsigt,alfrhot,alfsigt, &
 		  mean_uloss,sd_uloss
 
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
@@ -423,7 +423,7 @@ subroutine setparams()
 
 	!Individual Wage component (alpha)- grid= 2 std. deviations
 	alfrhot = alfrho**(1./tlen)
-	alfcondsig = (alfsig**2*(1-alfrho**2))**0.5
+	alfsig = (alfcondsig**2/(1-alfrho**2))**0.5
 	alfsigt = (alfsig**2/tlen)**0.5
 	alfcondsigt = (alfsigt**2*(1-alfrhot**2))**0.5
 	call rouwenhorst(nal-1,alfmu,alfrho,alfcondsig,alfgrid(2:nal),pialf(2:nal,2:nal))
@@ -436,7 +436,7 @@ subroutine setparams()
 		summy = sum(pialf(i,2:nal))
 		if(summy /=1 ) pialf(i,2:nal)=pialf(i,2:nal)/summy !this is just numerical error
 	enddo
-	alfgrid(1) = alfmu - 4*alfsig !aribtrary... meant to be small
+	alfgrid(1) = log(b) !aribtrary... meant to be small
 
 	ergpialf = 0.
 	ergpialf(1) = 0.
