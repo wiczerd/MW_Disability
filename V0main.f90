@@ -97,7 +97,6 @@ module helper_funs
 		real(dp), allocatable :: z_jt_panel(:,:)
 		! a bunch of explanitory variables to be stacked on each other
 		integer, allocatable :: status_hist(:,:) !status: W,U,N,D,R (1:5)
-		integer, allocatable :: d_hist(:,:)
 		real(dp), allocatable :: a_hist(:,:)
 		real(dp), allocatable :: occgrow_jt(:,:)
 		real(dp), allocatable :: occshrink_jt(:,:)
@@ -110,6 +109,7 @@ module helper_funs
 		integer, allocatable :: j_i(:)
 		real(dp), allocatable :: z_jt_select(:), z_jt_innov(:)
 		integer, allocatable :: al_int_hist(:,:)
+		integer, allocatable :: d_hist(:,:)
 		integer, allocatable :: age_hist(:,:), born_hist(:,:), del_i_int(:), fndsep_i_int(:,:,:)
 		real(dp), allocatable:: age_draw(:,:),dead_draw(:,:)
 		real(dp), allocatable :: al_hist(:,:), del_i_draw(:),fndsep_i_draw(:,:),fndarrive_draw(:,:)
@@ -649,7 +649,6 @@ module helper_funs
 		allocate(hst%hlth_voc_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%hlthprob_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%status_hist(Nsim,Tsim), stat=hst%alloced)
-		allocate(hst%d_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%a_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%z_jt_macroint(Tsim), stat=hst%alloced)
 		allocate(hst%z_jt_panel(nj,Tsim), stat=hst%alloced)
@@ -670,7 +669,6 @@ module helper_funs
 		hst%hlth_voc_hist  = 0
 		hst%hlthprob_hist  = 0.
 		hst%status_hist  = 0
-		hst%d_hist  = 0
 		hst%a_hist  = 0.
 		hst%occgrow_jt  = 0.
 		hst%occshrink_jt  = 0.
@@ -725,6 +723,7 @@ module helper_funs
 		allocate(shk%al_int_hist(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%born_hist(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%del_i_int(Nsim), stat=shk%alloced)
+		allocate(shk%d_hist(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%del_i_draw(Nsim), stat=shk%alloced)
 		allocate(shk%fndsep_i_draw(Nsim,2), stat=shk%alloced)
 		allocate(shk%fndsep_i_int(Nsim,2,nz), stat=shk%alloced)
@@ -755,7 +754,6 @@ module helper_funs
 		deallocate(hst%hlth_voc_hist, stat=hst%alloced)
 		deallocate(hst%hlthprob_hist, stat=hst%alloced)
 		deallocate(hst%status_hist , stat=hst%alloced)
-		deallocate(hst%d_hist , stat=hst%alloced)
 		deallocate(hst%a_hist , stat=hst%alloced)
 		deallocate(hst%z_jt_macroint, stat=hst%alloced)
 		deallocate(hst%z_jt_panel, stat=hst%alloced)
@@ -811,6 +809,7 @@ module helper_funs
 		deallocate(shk%jshock_ij, stat=shk%alloced)
 		deallocate(shk%status_it_innov , stat=shk%alloced)
 		deallocate(shk%health_it_innov , stat=shk%alloced)
+		deallocate(shk%d_hist , stat=shk%alloced)
 		deallocate(shk%del_i_int, stat=shk%alloced)
 		deallocate(shk%del_i_draw, stat=shk%alloced)
 		deallocate(shk%fndsep_i_int, stat=shk%alloced)
@@ -901,7 +900,7 @@ module model_data
 					! savings and disability by time
 					a_t(st) = hst%a_hist(si,st) + a_t(st)
 					status_hr = hst%status_hist(si,st)
-					if(status_hr == 4) dD_t(st) = dD_t(st)+hst%d_hist(si,st)
+					if(status_hr == 4) dD_t(st) = dD_t(st)+shk%d_hist(si,st)
 
 					status_Nt(status_hr,st) = 1._dp + status_Nt(status_hr,st)
 
@@ -919,11 +918,11 @@ module model_data
 							endif
 							if(hst%status_hist(si,st) == 4) then
 								totD(age_hr) = totD(age_hr) + 1
-								dD_age(age_hr) = dD_age(age_hr)+hst%d_hist(si,st)
+								dD_age(age_hr) = dD_age(age_hr)+shk%d_hist(si,st)
 								! associate this with its shock
 								do ial = 1,nal
-									if(  (shk%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp)) &
-									&	.and. (shk%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp)) &
+									if(  (shk%al_hist(si,st) <= alfgrid(ial,shk%d_hist(si,st))) &
+									&	.and. (shk%al_hist(si,st) >= alfgrid(ial,shk%d_hist(si,st) )) &
 									&	.and. (hst%status_hist(si,st) == 4 )) &
 									&	alD_age(ial,age_hr) = 1._dp + alD_age(ial,it)
 								enddo
@@ -941,15 +940,16 @@ module model_data
 					enddo
 					if( hst%status_hist(si,st) == 3 .and. hst%app_dif_hist(si,st) >0 ) then
 						tot_apppr = tot_apppr+hst%di_prob_hist(si,st)
-						if( hst%d_hist(si,st)==1) then
+						if( shk%d_hist(si,st)==1) then
 							moments_sim%d1_diawardfrac = hst%di_prob_hist(si,st) +moments_sim%d1_diawardfrac
 						endif
 					endif
 
 					! disability and app choice by shock level
+					id = shk%d_hist(si,st)
 					do ial = 1,nal
-						if( shk%al_hist(si,st) <= alfgrid(ial)+2*epsilon(1._dp) &
-						&	.and. shk%al_hist(si,st) >= alfgrid(ial)-2*epsilon(1._dp)) then
+						if( shk%al_hist(si,st) <= alfgrid(ial,id)+2*epsilon(1._dp) &
+						&	.and. shk%al_hist(si,st) >= alfgrid(ial,id)-2*epsilon(1._dp)) then
 							if(hst%status_hist(si,st) <3) then
 								!work choice:
 								alworkdif(ial) = alworkdif(ial) + hst%work_dif_hist(si,st)
@@ -1247,7 +1247,7 @@ module sol_val
 					endif
 
 					!Vc1 = (1.-fndgrid(il,iz))*Vc1 + fndgrid(il,iz)*V0((ij-1)*ntr+itr,(idi-1)*nal+ialal,id,ie,iaa,izz,it)
-					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal)*pid_here(id,idd) *Vc1  !Probability of alpha_i X z_i draw
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal,id)*pid_here(id,idd) *Vc1  !Probability of alpha_i X z_i draw
 				enddo
 				enddo
 				enddo
@@ -1308,7 +1308,7 @@ module sol_val
 
 					Vc1 = Vc1+ptau(it)*((1-lrho*fndgrid(il,iz))*VNhr +lrho*fndgrid(il,iz)*maxVNV0)     !Don't age, might go on DI
 
-					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal)*pid_here(id,idd) *Vc1
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal,id)*pid_here(id,idd) *Vc1
 				enddo
 				enddo
 				enddo
@@ -1376,10 +1376,10 @@ module sol_val
 					Vc1 = Vc1 +	    ptau(it)*(1-xihr)*( (1-lrho*fndgrid(il,iz))*VNhr +lrho*fndgrid(il,iz)*maxVNV0 ) &
 						&     + 	ptau(it)*xihr    * VDhr     !Don't age, might go on DI
 
-					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *Vc1
+					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal,id) *pid_here(id,idd) *Vc1
 					if(iaa == iaa0) then
-						Ewage = Ewage+     piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *wage(trgrid(itr),alfgrid(ialal),idd,it)
-						EVD   = EVD + beta*piz(iz,izz)*pialf(ial,ialal) *pid_here(id,idd) *VDhr
+						Ewage = Ewage+     piz(iz,izz)*pialf(ial,ialal,id) *pid_here(id,idd) *wage(trgrid(itr),alfgrid(ialal,id),idd,it)
+						EVD   = EVD + beta*piz(iz,izz)*pialf(ial,ialal,id) *pid_here(id,idd) *VDhr
 					endif
 				enddo
 				enddo
@@ -1469,7 +1469,7 @@ module sol_val
 					!uL = VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it)
 					!uH = VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it)
 
-					Vc1 = piz(iz,izz)*pialf(ial,ialal)*pid_here(id,idd) &
+					Vc1 = piz(iz,izz)*pialf(ial,ialal,id)*pid_here(id,idd) &
 						& * (  (1.-sepgrid(il,iz))*(vH*(1._dp - iee1wt) + vL*iee1wt) &
 							+  sepgrid(il,iz)*     (uH*(1._dp - iee1wt) + uL*iee1wt) ) &
 						& + Vc1
@@ -2107,7 +2107,7 @@ module sol_val
 					itr= mod(ipara-1,nz*ne*nd*ntr)/(nz*ne*nd) +1
 					ial= mod(ipara-1,nz*ne*nd*ntr*nal)/(nz*ne*nd*ntr)+1
 
-					wagehere = wage(trgrid(itr),alfgrid(ial),id,it)
+					wagehere = wage(trgrid(itr),alfgrid(ial,id),id,it)
 					!----------------------------------------------------------------
 					!Loop over current state: assets
 					iaN=0
@@ -2235,7 +2235,7 @@ module sol_val
 					ial= mod(ipara-1,nz*ne*nd*ntr*nal)/(nz*ne*nd*ntr)+1
 
 					!Earnings evolution independent of choices.
-					wagehere = wage(trgrid(itr),alfgrid(ial),id,it)
+					wagehere = wage(trgrid(itr),alfgrid(ial,id),id,it)
 					eprime = Hearn(it,ie,wagehere)
 					!linear interpolate for the portion that blocks off bounds on assets
 					if((eprime > emin) .and. (eprime < emax)) then  ! this should be the same as if(eprime > minval(egrid) .and. eprime < maxval(egrid))
@@ -2703,13 +2703,13 @@ module sim_hists
 
 	end subroutine set_deli
 
-	subroutine draw_status_innov(status_it_innov, health_it_innov, dead_draw,seed0, success)
+	subroutine draw_status_innov(status_it_innov, dead_draw,seed0, success)
 	! draws innovations to d, will be used if working and relevant
 		implicit none
 
 		integer, intent(in) :: seed0
 		integer, intent(out) :: success
-		real(dp), dimension(:,:) :: status_it_innov, health_it_innov,dead_draw
+		real(dp), dimension(:,:) :: status_it_innov, dead_draw
 		integer :: ss=1, m,i,it
 		real(dp) :: s_innov
 		integer, allocatable :: bdayseed(:)
@@ -2724,8 +2724,6 @@ module sim_hists
 				call rand_num_closed(s_innov)
 				status_it_innov(i,it) = s_innov
 				call random_number(s_innov)
-				health_it_innov(i,it) = s_innov
-				call random_number(s_innov)
 				dead_draw(i,it) = s_innov
 			enddo
 		enddo
@@ -2733,26 +2731,29 @@ module sim_hists
 		deallocate(bdayseed)
 	end subroutine draw_status_innov
 
-	subroutine draw_alit(al_it,al_int_it, seed0, success)
+	subroutine draw_alit(al_it,al_int_it, d_it, seed0, success)
 	! draws alpha shocks and idices on the alpha grid (i.e at the discrete values)
 		implicit none
 
 		integer, intent(in) :: seed0
 		integer, intent(out),optional :: success
+		integer, intent(in), dimension(:,:) :: d_it
 		real(dp), dimension(:,:) :: al_it
 		integer, dimension(:,:) :: al_int_it
-		integer :: ss=1, Ndraw, alfgrid_int, t,m,i,k
+		integer :: ss=1, Ndraw, alfgrid_int, t,m,i,k,id
 		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i,alf_i
-		real(dp) :: alfsig,alfrhot,alfsigt,alfcondsigt
-		real(dp) :: alfgrid_minE,alfgrid_maxE,alfgrid_Uval !min max value while employed and val of unemp
+		real(dp) :: alfsig(nd),alfrhot(nd),alfsigt(nd),alfcondsigt(nd)
+		real(dp) :: alfgrid_minE(nd),alfgrid_maxE(nd),alfgrid_Uval !min max value while employed and val of unemp
 		integer, allocatable :: bdayseed(:)
-		real(dp), allocatable :: cumpi_al(:,:)
+		real(dp), allocatable :: cumpi_al(:,:,:)
 
-		allocate(cumpi_al(nal,nal+1))
+		allocate(cumpi_al(nal,nal+1,nd))
 
-		alfgrid_minE = alfgrid(2)
-		alfgrid_maxE = alfgrid(nal)
-		alfgrid_Uval = alfgrid(1)
+		do id=1,nd
+			alfgrid_minE(id) = alfgrid(2,id)
+			alfgrid_maxE(id) = alfgrid(nal,id)
+		enddo
+		alfgrid_Uval = alfgrid(1,1)
 
 		call random_seed(size = ss)
 		allocate(bdayseed(ss))
@@ -2762,14 +2763,18 @@ module sim_hists
 		cumpi_al =0.
 		Ndraw = size(al_it,1)
 
-		alfrhot = alfrho**(1./tlen)
-		alfsig = (alfcondsig**2/(1-alfrho**2))**0.5
-		alfsigt = (alfsig**2/tlen)**0.5
-		alfcondsigt = (alfsigt**2*(1-alfrhot**2))**0.5
 
-		do i=1,nal
-			do k=2,nal+1
-				cumpi_al(i,k) = pialf(i,k-1)+cumpi_al(i,k-1)
+		do id=1,nd
+
+			alfrhot(id) = alfrho(id)**(1./tlen)
+			alfsig(id) = (alfcondsig(id)**2/(1-alfrho(id)**2))**0.5
+			alfsigt(id) = (alfsig(id)**2/tlen)**0.5
+			alfcondsigt(id) = (alfsigt(id)**2*(1-alfrhot(id)**2))**0.5
+
+			do i=1,nal
+				do k=2,nal+1
+					cumpi_al(i,k,id) = pialf(i,k-1,id)+cumpi_al(i,k-1,id)
+				enddo
 			enddo
 		enddo
 
@@ -2778,48 +2783,148 @@ module sim_hists
 		do i=1,Ndraw
 
 			! draw starting values
-
+			id = 1
 			call random_normal(alf_innov) ! draw normal disturbances on 0,1
 			! transform it by the ergodic distribution for the first period:
-			alf_i = alf_innov*alfsigt + alfmu
+			alf_i = alf_innov*alfsigt(id) + alfmu(id)
 
-			if(alf_i >alfgrid_maxE .or. alf_i < alfgrid_minE) success = 1+success !count how often we truncate
+			if((alf_i >alfgrid_maxE(id)) .or. (alf_i < alfgrid_minE(id)) ) success = 1+success !count how often we truncate
 			!impose bounds
-			alf_i = max(alf_i,alfgrid_minE)
-			alf_i = min(alf_i,alfgrid_maxE)
-			alfgrid_int = finder(alfgrid,alf_i)
+			alf_i = max(alf_i,alfgrid_minE(id))
+			alf_i = min(alf_i,alfgrid_maxE(id))
+			alfgrid_int = finder(alfgrid(:,id),alf_i)
 			alfgrid_int = max(2, min(alfgrid_int,nal) )
 
 
-			! draw sequence:
+			! draw sequence (initialize with Tsim values):
 			do t=(-Tsim),Tsim
+				if(t>=1) then
+					id = d_it(i,t)
+				elseif(t<0) then
+					id = d_it(i,-t)
+					! if t==0 will just have the last value of id
+				endif
 				if(al_contin .eqv. .true.) then
 						call random_normal(alf_innov)
-						alf_i  = alfrhot*alf_i + alfcondsigt*alf_innov + alfmu*(1-alfrhot)
-						alf_i = max(alf_i,alfgrid_minE)
-						alf_i = min(alf_i,alfgrid_maxE)
+						alf_i  = alfrhot(id)*alf_i + alfcondsigt(id)*alf_innov + alfmu(id)*(1-alfrhot(id))
+						alf_i = max(alf_i,alfgrid_minE(id))
+						alf_i = min(alf_i,alfgrid_maxE(id))
 						if(t >= 1)  then
 							al_it(i,t) = alf_i  ! log of wage shock
-							if(alf_i >alfgrid_maxE .or. alf_i < alfgrid_minE) success = 1+success !count how often we truncate
+							if(alf_i >alfgrid_maxE(id) .or. alf_i < alfgrid_minE(id)) success = 1+success !count how often we truncate
 						endif
-						alfgrid_int = min(finder(alfgrid,alf_i),nal-1)
-						if( (alf_i - alfgrid(alfgrid_int))/(alfgrid(alfgrid_int+1)- alfgrid(alfgrid_int)) >0.5 ) alfgrid_int = alfgrid_int + 1
+						alfgrid_int = min(finder(alfgrid(:,id),alf_i),nal-1)
+						if( (alf_i - alfgrid(alfgrid_int,id))/(alfgrid(alfgrid_int+1,id)- alfgrid(alfgrid_int,id)) >0.5 ) alfgrid_int = alfgrid_int + 1
 						alfgrid_int = max(min(alfgrid_int,nal),2)
 				else
 					call rand_num_closed(alf_innov)
-					alfgrid_int = finder(cumpi_al(alfgrid_int,:), alf_innov )
+					alfgrid_int = finder(cumpi_al(alfgrid_int,:,id), alf_innov )
 					alfgrid_int = max(min(alfgrid_int,nal),1)
-					if(t>=1) al_it(i,t) = alfgrid(alfgrid_int) ! log of wage shock, on grid
+					if(t>=1) al_it(i,t) = alfgrid(alfgrid_int,id) ! log of wage shock, on grid
 				endif
 				if(t>=1) al_int_it(i,t) = alfgrid_int
 			enddo
 		enddo
 		if(success > 0.2*Ndraw*Tsim)  success = success
 		if(success <= 0.2*Ndraw*Tsim) success = 0
+
+
 		!call mat2csv(cumpi_al,"cumpi_al.csv")
 		deallocate(cumpi_al)
 		deallocate(bdayseed)
 	end subroutine draw_alit
+
+	subroutine draw_dit( d_it,health_it_innov, del_i, age_it, seed0,success )
+		integer, allocatable :: bdayseed(:)
+		real(dp) :: health_it_innov(:,:)
+		integer  :: d_it(:,:)
+		integer  :: del_i(:),age_it(:,:)
+		integer :: seed0
+		integer, optional :: success
+		integer :: ss,i,it,m
+		real(dp) :: health_draw
+
+		call random_seed(size = ss)
+		allocate(bdayseed(ss))
+		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
+		call random_seed(put = bdayseed(1:ss) )
+
+		do i=1,Nsim
+			do it=1,Tsim
+				call random_number(health_draw)
+				health_it_innov(i,it) = health_draw
+			enddo
+		enddo
+
+		call set_dit(d_it,health_it_innov,del_i,age_it,success)
+
+		deallocate(bdayseed)
+
+	end subroutine draw_dit
+
+	subroutine set_dit(d_it, health_it_innov, del_i, age_it,success)
+
+		real(dp) :: health_it_innov(:,:)
+		integer  :: d_it(:,:)
+		integer  :: del_i(:),age_it(:,:)
+		integer, optional :: success
+
+		real(dp) :: cumPrDage(nd+1,TT), cumPrDageDel(nd+1,TT,ndi),cumpid(nd,nd+1,ndi,TT-1)
+		integer  :: it,i,id,idi,age_hr,del_hr,d_hr
+
+
+		cumpid = 0.
+		cumPrDage = 0.
+		cumPrDageDel = 0.
+		do idi=1,ndi
+		do it =1,TT-1
+			do id =1,nd
+				do i =1,nd
+					cumpid(id,i+1,idi,it) = pid(id,i,idi,it)+cumpid(id,i,idi,it)
+				enddo
+			enddo
+		enddo
+		enddo
+
+		do it =1,TT-1
+			do id =1,nd
+				cumPrDage(id+1,it) = PrDage(id,it) +cumPrDage(id,it)
+				do idi=1,ndi
+					cumPrDageDel(id+1,it,idi) = PrDageDel(id,it,idi) + cumPrDageDel(id,it,idi)
+				enddo
+			enddo
+		enddo
+
+		it=1
+		do i=1,Nsim
+			age_hr = age_it(i,it)
+			del_hr = del_i(i)
+			if(age_hr>0) then
+				d_hr = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
+				d_it(i,it) = d_hr
+			endif
+		enddo
+
+		do i=1,Nsim
+			del_hr = del_i(i)
+			do it=2,(Tsim-1)
+				d_hr = d_it(i,it)
+				age_hr = age_it(i,it)
+				if(age_hr>0) then
+					if( age_it(i,it)>0 .and. (age_it(i,it-1)<= 0)  ) then !born
+						d_it(i,it) = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
+					endif
+					!move forward d
+					if(age_hr .lt. TT)  then
+						d_it(i,it+1) = locate(   cumpid(d_hr,:,del_hr,age_hr) ,health_it_innov(i,it))
+					else
+						d_it(i,it+1) = d_hr
+					endif
+				endif
+			enddo
+		enddo
+
+	end subroutine set_dit
 
 	subroutine draw_ji(j_i,jshock_ij,born_it,seed0, success)
 		implicit none
@@ -3203,19 +3308,21 @@ module sim_hists
 			if(verbose >2) print *, "Drawing types and shocks"
 			call draw_age_it(shk%age_hist,shk%born_hist,shk%age_draw,seed0,status)
 			seed0 = seed0 + 1
-			call draw_alit(shk%al_hist,shk%al_int_hist, seed0, status)
-			seed0 = seed0 + 1
 			call draw_ji(shk%j_i,shk%jshock_ij,shk%born_hist,seed1, status)
 			seed1 = seed1 + 1
 			call draw_deli(shk%del_i_draw, shk%del_i_int, shk%j_i, seed1, status)
+			seed0 = seed0 + 1
+			call draw_dit(shk%d_hist,shk%health_it_innov,shk%del_i_int,shk%age_hist,seed0,status)
 			seed1 = seed1 + 1
+			call draw_alit(shk%al_hist,shk%al_int_hist,shk%d_hist, seed0, status)
+			seed0 = seed0 + 1
 			call draw_fndsepi(shk%fndsep_i_draw, shk%fndsep_i_int, shk%fndarrive_draw, shk%j_i, seed0, status)
 			seed0 = seed0 + 1
 			call draw_zjt(shk%z_jt_select,shk%z_jt_innov, seed1, status)
 			seed1 = seed1 + 1
 			call draw_draw(shk%drawi_ititer, shk%drawt_ititer, shk%age_hist, shk%al_int_hist, shk%del_i_int, seed0, status)
 			seed0 = seed0 + 1
-			call draw_status_innov(shk%status_it_innov, shk%health_it_innov, shk%dead_draw,seed1, status)
+			call draw_status_innov(shk%status_it_innov, shk%dead_draw,seed1, status)
 			seed1 = seed1 + 1
 
 			shk%drawn = 1
@@ -3325,7 +3432,7 @@ module sim_hists
 	end subroutine set_zjt
 
 
-	subroutine sim(vfs, pfs,hst,shk,occaggs)
+	subroutine sim(vfs, pfs, hst, shk,occaggs)
 
 		implicit none
 
@@ -3395,8 +3502,8 @@ module sim_hists
 					gwork(:,:,:,:,:,:,:)
 
 		logical :: ptrsuccess=.false., dead = .false.
-		real(dp) :: cumpid(nd,nd+1,ndi,TT-1),pialf_conddist(nal), cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1), &
-				& d_var(TT-1),a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), cumPrDage(nd+1,TT), cumPrDageDel(nd+1,TT,ndi), &
+		real(dp) :: pialf_conddist(nal), cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1), &
+				& d_var(TT-1),a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
 				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj),PrAl1(nz),PrAl1St3(nz),totpopz(nz),&
 				& simiter_dist(maxiter),simiter_status_dist(maxiter)
 
@@ -3471,6 +3578,7 @@ module sim_hists
 		born_it	    => shk%born_hist
 		status_it_innov => shk%status_it_innov
 		health_it_innov => shk%health_it_innov
+		d_it            => shk%d_hist
 		fndarrive_draw  => shk%fndarrive_draw
 		jshock_ij  	 	=> shk%jshock_ij
 		drawi_ititer    => shk%drawi_ititer
@@ -3481,7 +3589,6 @@ module sim_hists
 		work_dif_it => hst%work_dif_hist
 		app_dif_it  => hst%app_dif_hist
 		di_prob_it 	=> hst%di_prob_hist
-		d_it        => hst%d_hist
 		z_jt_macroint  => hst%z_jt_macroint
 		z_jt_panel  => hst%z_jt_panel
 		a_it        => hst%a_hist
@@ -3489,9 +3596,9 @@ module sim_hists
 		occshrink_jt=> hst%occshrink_jt
 		occsize_jt  => hst%occsize_jt
 
-		ptrsuccess = associated(d_it,hst%d_hist)
+		ptrsuccess = associated(a_it,hst%a_hist)
 		if(verbose>1) then
-			if(ptrsuccess .eqv. .false. ) print *, "failed to associate d_it"
+			if(ptrsuccess .eqv. .false. ) print *, "failed to associate a_it"
 			ptrsuccess = associated(age_it,shk%age_hist)
 			if(ptrsuccess .eqv. .false. ) print *, "failed to associate age_it"
 			ptrsuccess = associated(V,vfs%V)
@@ -3530,31 +3637,11 @@ module sim_hists
 		enddo
 
 		!set up cumpid,cumptau
-		cumpid = 0.
 		cumptau = 0.
-		cumPrDage = 0.
-		cumPrDageDel = 0.
-		do idi=1,ndi
-		do it =1,TT-1
-			do id =1,nd
-				do i =1,nd
-					cumpid(id,i+1,idi,it) = pid(id,i,idi,it)+cumpid(id,i,idi,it)
-				enddo
-			enddo
-		enddo
-		enddo
 		it = 1
 		cumptau(it+1)=cumptau(it)
 		do it =2,TT
 			cumptau(it+1) = cumptau(it)+ptau(it)
-		enddo
-		do it =1,TT-1
-			do id =1,nd
-				cumPrDage(id+1,it) = PrDage(id,it) +cumPrDage(id,it)
-				do idi=1,ndi
-					cumPrDageDel(id+1,it,idi) = PrDageDel(id,it,idi) + cumPrDageDel(id,it,idi)
-				enddo
-			enddo
 		enddo
 
 		! will draw these from endogenous distributions the second time around
@@ -3613,7 +3700,7 @@ module sim_hists
 				if(age_hr>0) then
 					!use status_it_innov(i,Tsim) to identify the d state, along with age of this guy
 
-					d_hr = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
+					d_hr = d_it(i,it)
 
 					if((iter>1) ) then
 						do ii=1,(Ncol-1)
@@ -3687,7 +3774,7 @@ module sim_hists
 							& ((al_int_it(i,it) ==1) .and. (status_it_innov(i,it)<0.2_dp)) ) & !about 1/5 of these are LTU
 							&	status_it(i,it) = 3
 						endif
-						d_it(i,it) = d_hr
+						d_hr = d_it(i,it)
 						brn_drawi_drawt(i,it,:) = (/i,it/)
 						if(age_it(i,it)==1) then
 							a_it_int(i,it) = 1
@@ -3721,7 +3808,6 @@ module sim_hists
 				sepi_hr = fndsep_i_int(i,2,:)
 				il_hr = fndi_hr(2)
 				!initialize stuff
-				it = 1
 				it_old = 1
 				invol_un = 0
 				dead = .false.
@@ -3737,7 +3823,7 @@ module sim_hists
 						age_hr	= 1
 						brn_yr_hr = it
 
-						d_hr = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
+						d_hr = d_it(i,it)
 						do ii=1,(Ncol-1)
 							if(ii<(Ncol-1) .and. iter>1) then
 								drawi = drawi_ititer(i,ii) !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
@@ -3792,7 +3878,6 @@ module sim_hists
 									! e_it(i,it)      = min(max(e_it(i,it),minval(egrid)),maxval(egrid))
 									! e_it_int(i,it)  = locate(egrid,e_it(i,it))
 									! a_it_int(i,it)  = locate(agrid,a_it(i,it))
-									d_it(i,it)		= d_hr
 									a_it(i,it)      = a_it(drawi,drawt)
 									e_it(i,it)      = e_it(drawi,drawt)
 									e_it_int(i,it)  = e_it_int(drawi,drawt)
@@ -3844,7 +3929,6 @@ module sim_hists
 					if(dead .eqv. .true.) then
 							a_it(i,it) = 0.
 							a_it_int(i,it) = 1
-							d_it(i,it) = 1
 							app_dif_it(i,it) = 0.
 							work_dif_it(i,it) = 0.
 							status_it(i,it) = -1
@@ -3886,7 +3970,7 @@ module sim_hists
 						endif
 					endif
 					if((invol_un .eq. 1) .and. (status_hr .ne. 1))then !have already been born
-						al_hr	= alfgrid(1)
+						al_hr	= alfgrid(1,d_hr)
 						ali_hr	= 1
 					else
 						al_hr	= al_it(i,it)
@@ -3913,7 +3997,7 @@ module sim_hists
 					if(al_contin .eqv. .true.) then
 						iiH  = max(1, min(ali_hr+1,nal))
 						if((ali_hr>1) .and. (ali_hr .ne. iiH)) then
-							iiwt = (alfgrid(iiH)- al_hr)/( alfgrid(iiH) -   alfgrid(ali_hr) )
+							iiwt = (alfgrid(iiH,d_hr)- al_hr)/( alfgrid(iiH,d_hr) -   alfgrid(ali_hr,d_hr) )
 						else !unemp
 							iiwt = 1._dp
 						endif
@@ -4014,7 +4098,7 @@ module sim_hists
 										invol_un = 1
 										iiwt = 1.
 										iiH = 2
-										al_hr = alfgrid(ali_hr)
+										al_hr = alfgrid(ali_hr,d_hr)
 									endif
 									status_tmrw = 2
 									status_it(i,it) = 2
@@ -4109,7 +4193,7 @@ module sim_hists
 							if(status_hr==4) di_prob_it(i,it) = 1.
 							if( invol_un == 1) then
 								ali_hr = 1
-								al_hr = alfgrid(ali_hr)
+								al_hr = alfgrid(ali_hr,d_hr)
 							endif
 						endif
 						!evaluate the asset policy
@@ -4254,22 +4338,21 @@ module sim_hists
 							e_it(i,it) = e_it(i,it+1)
 						endif
 						!push forward d
-						if(age_hr .lt. TT)  then
-							do ii=1,nd
-								if(health_it_innov(i,it) < cumpid(d_hr,ii+1,del_hr,age_hr) ) then
-									d_it(i,it+1) = ii
-									exit
-								endif
-							enddo
-						else
-							d_it(i,it+1) = d_hr
-						endif
-
+						if(it<Tsim) d_hr = d_it(i,it+1)
+						! if(age_hr .lt. TT)  then
+						! 	do ii=1,nd
+						! 		if(health_it_innov(i,it) < cumpid(d_hr,ii+1,del_hr,age_hr) ) then
+						! 			d_it(i,it+1) = ii
+						! 			exit
+						! 		endif
+						! 	enddo
+						! else
+						! 	d_it(i,it+1) = d_hr
+						! endif
 					endif !t<Tsim
 				else !age_it(i,it) <= 0, they've not been born or they are dead
 					a_it(i,it) = 0.
 					a_it_int(i,it) = 1
-					d_it(i,it) = 1
 					app_dif_it(i,it) = 0.
 					work_dif_it(i,it) = 0.
 					status_it(i,it) = -1
@@ -4674,7 +4757,7 @@ module find_params
 					!add in health dummies
 					do ip=2,nd
 						ri = ri+1
-						if( hst%d_hist(i,it) == ip ) then
+						if( shk%d_hist(i,it) == ip ) then
 							XX(ii,ri) = 1._dp
 						else
 							XX(ii,ri) = 0._dp
@@ -5663,16 +5746,20 @@ program V0main
 	if(print_lev >= 2) then
 		! plot out a bunch of arrays for analyzing VFs, etc
 		wo = 0
+		do id=1,nd
+			call vec2csv(alfgrid(:,id),'alfgrid.csv',wo)
+			call mat2csv(pialf(:,:,id),"pial.csv",wo)
+			wo=1
+		enddo
+		wo=0
 		call vec2csv(agrid,"agrid.csv",wo)
 		call vec2csv(delgrid,'delgrid.csv',wo)
-		call vec2csv(alfgrid,'alfgrid.csv',wo)
 		call vec2csv(trgrid,'trgrid.csv',wo)
 		call vec2csv(egrid,'egrid.csv',wo)
 		call mat2csv(zgrid,'zgrid.csv',wo)
 		call veci2csv(dgrid,'dgrid.csv',wo)
 		call vec2csv(agegrid,'agegrid.csv',wo)
 		call mat2csv(piz(:,:),"piz.csv",wo)
-		call mat2csv(pialf,"pial.csv",wo)
 		call mat2csv(PrDeath,"PrDeath.csv",wo)
 		call mat2csv(PrDage,"PrDage.csv",wo)
 		call mat2csv(PrDageDel(:,:,1),"PrDageDelL.csv",wo)
@@ -5721,11 +5808,11 @@ program V0main
 		do it = 1,TT-1
 			do ial =1,nal
 				do id = 1,nd-1
-					wagehere = wage(0._dp,alfgrid(ial),id,it)
+					wagehere = wage(0._dp,alfgrid(ial,id),id,it)
 					write(1, "(G20.12)", advance='no') wagehere
 				enddo
 				id = nd
-				wagehere = wage(0._dp,alfgrid(ial),id,it)
+				wagehere = wage(0._dp,alfgrid(ial,id),id,it)
 				write(1,*) wagehere
 			enddo
 			write(1,*) " "! trailing space
@@ -5762,7 +5849,7 @@ program V0main
 		do it = 1,TT-1
 			do ial =1,nal
 				do id = 1,nd-1
-					wagehere = wage(0._dp,alfgrid(ial),id,it)
+					wagehere = wage(0._dp,alfgrid(ial,id),id,it)
 					utilhere = util(wagehere,id,1)
 					write(1, "(G20.12)", advance='no') utilhere
 					junk = utilhere + junk
@@ -5824,8 +5911,8 @@ program V0main
 		do i=1,Nsim
 			do it=100,Tsim !totally ad hoc to start at 100
 				if(shk%age_hist(i,it)>0 .and. hst%status_hist(i,it)>0) then
-					xsec_PrDageDel( hst%d_hist(i,it),shk%age_hist(i,it), shk%del_i_int(i) ) = 1._dp &
-						& + xsec_PrDageDel( hst%d_hist(i,it), shk%age_hist(i,it), shk%del_i_int(i) )
+					xsec_PrDageDel( shk%d_hist(i,it),shk%age_hist(i,it), shk%del_i_int(i) ) = 1._dp &
+						& + xsec_PrDageDel( shk%d_hist(i,it), shk%age_hist(i,it), shk%del_i_int(i) )
 				endif
 			enddo
 		enddo
@@ -5838,6 +5925,7 @@ program V0main
 		call mat2csv( xsec_PrDageDel(:,:,1),"xsec_PrDageDelL.csv")
 		call mat2csv( xsec_PrDageDel(:,:,ndi),"xsec_PrDageDelH.csv")
 		PrDageDel = xsec_PrDageDel
+		call set_dit(shk%d_hist,shk%health_it_innov,shk%del_i_int,shk%age_hist)
 ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
 			if(verbose>1) print *, "iterating to find wage trend"

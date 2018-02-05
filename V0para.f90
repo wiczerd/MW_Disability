@@ -92,7 +92,7 @@ real(8), parameter ::  amax 	 = 24.0,   &	!Max on Asset Grid
 
 
 !**To build***************************!
-real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
+real(8) :: 	alfgrid(nal,nd), &	!Alpha_i grid- individual wage type parameter
 		trgrid(ntr), &		!Wage trend grid- individual wage type parameter
 		wtau(TT-1), &		!Age-specific wage parameter
 		wd(nd),   &		!Disability-specific wage parameter
@@ -109,7 +109,7 @@ real(8) :: 	alfgrid(nal), &		!Alpha_i grid- individual wage type parameter
 		xi_d(nd),&			!1st round DI acceptance probability
 		agrid(na),&			!Assets grid
 		egrid(ne),&			!Earnings Index Grid
-		pialf(nal,nal),&	!Alpha_i transition matrix
+		pialf(nal,nal,nd),&	!Alpha_i transition matrix
 		ergpialf(nal),&		!Alpha_i ergodic distribution
 		piz(nz,nz),&		!TFP transition matrix
 		ergpiz(nz),& 		!ergodic TFP distribution
@@ -158,9 +158,10 @@ real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (10% annual discount ra
 		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential wage
 		util_const = 0.,&	!Give life some value
 !	Idiosyncratic income process
-		alfrho = 0.988, &	!Peristence of Alpha_i type
-		alfmu = 0.0,&		!Mean of Alpha_i type
-		alfcondsig = 0.015**0.5,&	!Conditional StdDev of Alpha_i type (Normal)
+		alfrho(nd) = 0.988, &	!Peristence of Alpha_i type
+		alfmu(nd) = 0.0,&		!Mean of Alpha_i type
+		alfcondsig(nd) = 0.015**0.5,&	!Conditional StdDev of Alpha_i type (Normal)
+
 		b = 0.05,&		!Home production income
 		lrho = 0.5,&		!Discount in the probability of finding a job when long-term unemployed (David)
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
@@ -242,9 +243,9 @@ contains
 subroutine setparams()
 
 	logical, parameter :: lower= .FALSE.
-	integer:: i, j, k, t,tri,iter
+	integer:: i, j, k, t,d, tri,iter
 	real(8):: summy, emin, emax, step, &
-		   alfsig,alfcondsigt,alfrhot,alfsigt, &
+		   alfsig(nd),alfcondsigt(nd),alfrhot(nd),alfsigt(nd), &
 		  mean_uloss,sd_uloss
 
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
@@ -421,51 +422,60 @@ subroutine setparams()
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!Earnings
 
+	!values from GMM with Heckit residuals
+!	alfrho = (/ 0.82484, 0.74916, 0.68215/)	!Peristence of Alpha_i type
+!	alfmu = 0.0	!Mean of Alpha_i type
+!	alfcondsig = (/0.3686**0.5,0.4592**0.5,0.5293**0.5/) !Conditional StdDev of Alpha_i type (Normal)
+
+
+
 	!Individual Wage component (alpha)- grid= 2 std. deviations
-	alfrhot = alfrho**(1./tlen)
-	alfsig = (alfcondsig**2/(1-alfrho**2))**0.5
-	alfsigt = (alfsig**2/tlen)**0.5
-	alfcondsigt = (alfsigt**2*(1-alfrhot**2))**0.5
-	call rouwenhorst(nal-1,alfmu,alfrho,alfcondsig,alfgrid(2:nal),pialf(2:nal,2:nal))
-	! this is the transformation if I use the annual-frequency shocks and experience them ever 1/tlen periods
-	do i=2,nal
-		pialf(i,i) = pialf(i,i)**(1./tlen)
-		do k=2,nal
-			if(k /= i) pialf(i,k) = 1. - (1.-pialf(i,k))**(1./tlen)
+	do d = 1,nd
+		alfrhot(d) = alfrho(d)**(1./tlen)
+		alfsig(d) = (alfcondsig(d)**2/(1-alfrho(d)**2))**0.5
+		alfcondsigt(d) = (alfsigt(d)**2*(1-alfrhot(d)**2))**0.5
+		alfsigt(d) = (alfsig(d)**2/tlen)**0.5
+		call rouwenhorst(nal-1,alfmu(d),alfrho(d),alfcondsig(d),alfgrid(2:nal,d),pialf(2:nal,2:nal,d))
+		! this is the transformation if I use the annual-frequency shocks and experience them ever 1/tlen periods
+		do i=2,nal
+			pialf(i,i,d) = pialf(i,i,d)**(1./tlen)
+			do k=2,nal
+				if(k /= i) pialf(i,k,d) = 1. - (1.-pialf(i,k,d))**(1./tlen)
+			enddo
+			summy = sum(pialf(i,2:nal,d))
+			if(summy /=1 ) pialf(i,2:nal,d)=pialf(i,2:nal,d)/summy !this is just numerical error
 		enddo
-		summy = sum(pialf(i,2:nal))
-		if(summy /=1 ) pialf(i,2:nal)=pialf(i,2:nal)/summy !this is just numerical error
+		alfgrid(1,d) = log(b) !aribtrary... meant to be small
+
+		! ergpialf = 0.
+		! ergpialf(1) = 0.
+		! ergpialf(2) = alnorm( ((alfgrid(3)+alfgrid(2))/2.-alfmu) /alfsig,.false.)
+		! if( nal > 3) then
+		! 	do i=3,(nal-1)
+		! 		ergpialf(i) = ( &
+		! 			&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.-alfmu) /alfsig,.false.)- &
+		! 			&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.-alfmu) /alfsig,.false.) )
+		! 	enddo
+		! endif
+		! ergpialf(nal) = 1.-sum(ergpialf(2:(nal-1)))
+
+		! the probabilities associated with going into the alpha term that is unemployment go to zero.
+		pialf(1,1,d) = 0.
+		mean_uloss = -0.154996
+		!this comes from the SIPP, code in CVW: DTall[ lfstat_wave==1 & seam==T, mean(wavewage,na.rm = T)] - DTall[ lfstat_wave==1 & seam==T & shift(EU_wave,type="lag")==T, mean(wavewage,na.rm = T)]
+		sd_uloss   = (0.5888828)**0.5
+
+		pialf(1,2,d) = alnorm( ((alfgrid(1,d)+alfgrid(2,d))/2.-mean_uloss) /sd_uloss,.false.)
+		if( nal > 3) then
+			do i= 3,(nal-1)
+				pialf(1,i,d) = ( &
+						&	alnorm( ((alfgrid(i+1,d)+alfgrid(i,d))/2.- mean_uloss ) /sd_uloss,.false.)- &
+						&	alnorm( ((alfgrid(i-1,d)+alfgrid(i,d))/2.- mean_uloss ) /sd_uloss,.false.) )
+			enddo
+		endif
+		pialf(1,nal,d) = 1.-sum(pialf(1,2:(nal-1) ,d))
+		pialf(2:nal,1,d) = 0. !exogenous separation is not built into alpha transitions
 	enddo
-	alfgrid(1) = log(b) !aribtrary... meant to be small
-
-	ergpialf = 0.
-	ergpialf(1) = 0.
-	ergpialf(2) = alnorm( ((alfgrid(3)+alfgrid(2))/2.-alfmu) /alfsig,.false.)
-	if( nal > 3) then
-		do i=3,(nal-1)
-			ergpialf(i) = ( &
-				&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.-alfmu) /alfsig,.false.)- &
-				&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.-alfmu) /alfsig,.false.) )
-		enddo
-	endif
-	ergpialf(nal) = 1.-sum(ergpialf(2:(nal-1)))
-
-	! the probabilities associated with going into the alpha term that is unemployment go to zero.
-	pialf(1,1) = 0.
-	mean_uloss = -0.154996
-	!this comes from the SIPP, code in CVW: DTall[ lfstat_wave==1 & seam==T, mean(wavewage,na.rm = T)] - DTall[ lfstat_wave==1 & seam==T & shift(EU_wave,type="lag")==T, mean(wavewage,na.rm = T)]
-	sd_uloss   = (0.5888828)**0.5
-
-	pialf(1,2) = alnorm( ((alfgrid(1)+alfgrid(2))/2.-mean_uloss) /sd_uloss,.false.)
-	if( nal > 3) then
-		do i= 3,(nal-1)
-			pialf(1,i) = ( &
-					&	alnorm( ((alfgrid(i+1)+alfgrid(i))/2.- mean_uloss ) /sd_uloss,.false.)- &
-					&	alnorm( ((alfgrid(i-1)+alfgrid(i))/2.- mean_uloss ) /sd_uloss,.false.) )
-		enddo
-	endif
-	pialf(1,nal) = 1.-sum(pialf(1,2:(nal-1) ))
-	pialf(2:nal,1) = 0. !exogenous separation is not built into alpha transitions
 
 	!~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	! Occupation wage component
@@ -881,12 +891,9 @@ subroutine setparams()
 !!!!!!!!!!!!!!!!!!!!!!!!!!
 ! 	Asset/SSDI wealth things:
 
-	!set alfgrid(1) now that everything else is known, -1 just for good measure, so they really don't want to work
-	alfgrid(1) = (minval(zgrid)+(alfgrid(2))+wtau(1)+wd(nd))-1.
-
 	!Earnings Grid
 	!Make linear from lowest possible wage (disabled entrant, lowest types)
-	emin = dexp(alfgrid(2)+minval(wtau)+minval(wd))
+	emin = dexp(alfgrid(2,1)+minval(wtau)+minval(wd))
 	!... to highest, maximizing over t
 	emax = DItest3!dexp(maxval(alfgrid)+maxval(wtau)+maxval(wd))
 	step = (emax-emin)/dble(ne-1)
