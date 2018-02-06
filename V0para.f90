@@ -22,7 +22,7 @@ integer           :: fcallog = 7
 integer, parameter:: dp=kind(0.d0) ! double precision
 
 
-logical :: dbg_skip = .false. !skip stuff for a minimal debug
+logical :: dbg_skip = .true. !skip stuff for a minimal debug
 
 !**Environmental Parameters**********************************************************************!
 real(8), parameter ::	youngD = 15., &	!Length of initial young period
