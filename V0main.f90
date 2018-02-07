@@ -2781,54 +2781,56 @@ module sim_hists
 		success =0
 
 		al_it = 0._dp
-		al_int_it = (nal+1)/2
-		! do i=1,Ndraw
-		!
-		! 	! draw starting values
-		! 	id = 1
-		! 	call random_normal(alf_innov) ! draw normal disturbances on 0,1
-		! 	! transform it by the ergodic distribution for the first period:
-		! 	alf_i = alf_innov*alfsigt(id) + alfmu(id)
-		!
-		! 	if((alf_i >alfgrid_maxE(id)) .or. (alf_i < alfgrid_minE(id)) ) success = 1+success !count how often we truncate
-		! 	!impose bounds
-		! 	alf_i = max(alf_i,alfgrid_minE(id))
-		! 	alf_i = min(alf_i,alfgrid_maxE(id))
-		! 	alfgrid_int = finder(alfgrid(:,id),alf_i)
-		! 	alfgrid_int = max(2, min(alfgrid_int,nal) )
-		!
-		!
-		! 	! draw sequence (initialize with Tsim values):
-		! 	do t=(-Tsim),Tsim
-		! 		if(t>=1) then
-		! 			id = d_it(i,t)
-		! 		elseif(t<=0) then
-		! 			id = 1
-		! 		endif
-		! 		if(al_contin .eqv. .true.) then
-		! 				call random_normal(alf_innov)
-		! 				alf_i  = alfrhot(id)*alf_i + alfcondsigt(id)*alf_innov + alfmu(id)*(1-alfrhot(id))
-		! 				alf_i = max(alf_i,alfgrid_minE(id))
-		! 				alf_i = min(alf_i,alfgrid_maxE(id))
-		! 				if(t >= 1)  then
-		! 					al_it(i,t) = alf_i  ! log of wage shock
-		! 					if(alf_i >alfgrid_maxE(id) .or. alf_i < alfgrid_minE(id)) success = 1+success !count how often we truncate
-		! 				endif
-		! 				alfgrid_int = min(finder(alfgrid(:,id),alf_i),nal-1)
-		! 				if( (alf_i - alfgrid(alfgrid_int,id))/(alfgrid(alfgrid_int+1,id)- alfgrid(alfgrid_int,id)) >0.5 ) alfgrid_int = alfgrid_int + 1
-		! 				alfgrid_int = max(min(alfgrid_int,nal),2)
-		! 		else
-		! 			call rand_num_closed(alf_innov)
-		! 			alfgrid_int = finder(cumpi_al(alfgrid_int,:,id), alf_innov )
-		! 			alfgrid_int = max(min(alfgrid_int,nal),1)
-		! 			if(t>=1) al_it(i,t) = alfgrid(alfgrid_int,id) ! log of wage shock, on grid
-		! 		endif
-		! 		if(t>=1) al_int_it(i,t) = alfgrid_int
-		! 	enddo
-		! enddo
-		! if(success > 0.2*Ndraw*Tsim)  success = success
-		! if(success <= 0.2*Ndraw*Tsim) success = 0
+		al_int_it = nal/2+1
+		do i=1,Ndraw
 
+			! draw starting values
+			id = 1
+			call random_normal(alf_innov) ! draw normal disturbances on 0,1
+			! transform it by the ergodic distribution for the first period:
+			alf_i = alf_innov*alfsigt(id) + alfmu(id)
+
+			if((alf_i >alfgrid_maxE(id)) .or. (alf_i < alfgrid_minE(id)) ) success = 1+success !count how often we truncate
+			!impose bounds
+			alf_i = max(alf_i,alfgrid_minE(id))
+			alf_i = min(alf_i,alfgrid_maxE(id))
+			alfgrid_int = finder(alfgrid(:,id),alf_i)
+			alfgrid_int = max(2, min(alfgrid_int,nal) )
+
+
+			! draw sequence (initialize with Tsim values):
+			do t=(-Tsim),Tsim
+				if(t>=1) then
+					id = d_it(i,t)
+					if(id<1) id =1 !if they're not born, id is initialized to 0. This causes havok.
+				elseif(t<=0) then
+					id = 1
+				endif
+				if(al_contin .eqv. .true.) then
+						call random_normal(alf_innov)
+						alf_i  = alfrhot(id)*alf_i + alfcondsigt(id)*alf_innov + alfmu(id)*(1-alfrhot(id))
+						alf_i = max(alf_i,alfgrid_minE(id))
+						alf_i = min(alf_i,alfgrid_maxE(id))
+						if(t >= 1)  then
+							al_it(i,t) = alf_i  ! log of wage shock
+							if(alf_i >alfgrid_maxE(id) .or. alf_i < alfgrid_minE(id)) success = 1+success !count how often we truncate
+						endif
+						alfgrid_int = min(finder(alfgrid(:,id),alf_i),nal-1)
+						if( (alf_i - alfgrid(alfgrid_int,id))/(alfgrid(alfgrid_int+1,id)- alfgrid(alfgrid_int,id)) >0.5 ) alfgrid_int = alfgrid_int + 1
+						alfgrid_int = max(min(alfgrid_int,nal),2)
+				else
+					call rand_num_closed(alf_innov)
+					alfgrid_int = finder(cumpi_al(alfgrid_int,:,id), alf_innov )
+					alfgrid_int = max(min(alfgrid_int,nal),1)
+					if(t>=1) al_it(i,t) = alfgrid(alfgrid_int,id) ! log of wage shock, on grid
+				endif
+				if(t>=1) al_int_it(i,t) = alfgrid_int
+			enddo
+		enddo
+		if(success > 0.2*Ndraw*Tsim)  success = success
+		if(success <= 0.2*Ndraw*Tsim) success = 0
+
+		call mat2csv(al_it,"drawn_al_it.csv")
 
 		!call mat2csv(cumpi_al,"cumpi_al.csv")
 		deallocate(cumpi_al)
@@ -2910,7 +2912,7 @@ module sim_hists
 
 		do i=1,Nsim
 			del_hr = del_i(i)
-			do it=2,(Tsim-1)
+			do it=1,(Tsim-1)
 				d_hr = d_it(i,it)
 				age_hr = age_it(i,it)
 				if(age_hr>0) then
