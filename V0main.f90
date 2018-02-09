@@ -2799,7 +2799,7 @@ module sim_hists
 
 
 			! draw sequence (initialize with Tsim values):
-			do t=(-Tsim),Tsim
+			do t=(-2*Tsim),Tsim
 				if(t>=1) then
 					id = d_it(i,t)
 					if(id<1) id =1 !if they're not born, id is initialized to 0. This causes havok.
@@ -5276,9 +5276,7 @@ module find_params
 				do j=1,5
 
 					cal_niter = 0
-					!test it for being too far away:
-					!call random_number(v_err(1))
-					!call random_number(v_err(2))
+
 					call dfovec(nopt,nopt,(x0-xl)/(xu-xl)  ,v_err) !note that dfovec takes the normalized values between 0,1 for x
 					if( (abs(v_err(1)) > 4._dp) .or. (abs(v_err(2))>0.99_dp) ) then
 						! exit
@@ -5307,21 +5305,21 @@ module find_params
 						print *, "Computing from: ",  x0(1), x0(2), x0(3)," on node: ", rank, "after ", j, " tries"
 						cal_niter = 1
 						iprint = 1
-						xopt = x0
+						xopt = (x0-xl)/(xu-xl) !convert x0 draw into normalized (0,1) units
 						cal_on_iter_wgtrend = .false.
 						call bobyqa_h(nopt,ninterppt,xopt,zeros,ones, &
 						&	rhobeg,rhoend,iprint,100,wspace,nopt)
 
-						call dfovec(nopt,nopt,(xopt-xl)/(xu-xl),v_err)
+						call dfovec(nopt,nopt,xopt,v_err)
 						cal_on_iter_wgtrend = .true.
 						exit
 					endif
 				enddo !j=1,5 to loop over starting points
-				attraction_size = sum(dabs(xopt - x0))/dble(nopt)
+				attraction_size = sum(dabs(xopt - (x0-xl)/(xu-xl)))/dble(nopt)
 
 				err0 = sum( v_err**2 )
 				node_fopts(dd) = err0
-				node_xopts(((dd-1)*nopt+1):(dd*nopt)) = xopt
+				node_xopts(((dd-1)*nopt+1):(dd*nopt)) = xopt*(xu-xl)+xl
 				node_internalopt( ((dd - 1)*ninternalopt+1):(dd - 1)*ninternalopt + size(wage_coef) ) = wage_coef
 				node_internalopt( ((dd - 1)*ninternalopt+1+ size(wage_coef)):dd*ninternalopt ) = (/ fndrt_mul, seprt_mul /) !are these available globally?
 				print *, "Found min ", err0, "at ", xopt," on node: ", rank, "attraction basin: ", attraction_size

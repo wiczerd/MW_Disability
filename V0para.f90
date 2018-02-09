@@ -70,7 +70,7 @@ logical            :: al_contin  = .true.,&		!make alpha draws continuous or sta
 					  ineligNoNu = .false.,&	!do young ineligable also pay the nu cost when they are ineligable?
 					  dieyoung   = .true.,&		!do the young die (rate associated with health state)
 					  w_strchng	 = .true.,&     ! w gets fed a structural change sequence
-					  wglev_0	 = .false.,&  	!should the initial wage level be 0 for all occupations
+					  wglev_0	 = .false. ,&  	!should the initial wage level be 0 for all occupations
 					  readshocks = .false.		!readshocks from disk?
 
 
@@ -423,9 +423,9 @@ subroutine setparams()
 	!Earnings
 
 	!values from GMM with Heckit residuals
-!	alfrho = (/ 0.82484, 0.74916, 0.68215/)	!Peristence of Alpha_i type
-!	alfmu = 0.0	!Mean of Alpha_i type
-!	alfcondsig = (/0.3686**0.5,0.4592**0.5,0.5293**0.5/) !Conditional StdDev of Alpha_i type (Normal)
+	alfrho = (/ 0.95260904 ,0.93609776 ,0.93609776 /)	!Peristence of Alpha_i type
+	alfmu = 0.0	!Mean of Alpha_i type
+	alfcondsig = (/0.01446509**0.5, 0.02344495**0.5, 0.02344495**0.5/) !Conditional StdDev of Alpha_i type (Normal)
 
 
 
@@ -435,7 +435,12 @@ subroutine setparams()
 		alfsig(d) = (alfcondsig(d)**2/(1-alfrho(d)**2))**0.5
 		alfcondsigt(d) = (alfsigt(d)**2*(1-alfrhot(d)**2))**0.5
 		alfsigt(d) = (alfsig(d)**2/tlen)**0.5
-		call rouwenhorst(nal-1,alfmu(d),alfrho(d),alfcondsig(d),alfgrid(2:nal,d),pialf(2:nal,2:nal,d))
+		if(d==1) then
+			call rouwenhorst(nal-1,alfmu(d),alfrho(d),alfcondsig(d),alfgrid(2:nal,d),pialf(2:nal,2:nal,d))
+		else
+			alfgrid(2:nal,d)=alfgrid(2:nal,1)
+			call tauchen(nal-1,alfmu(d) , alfrho(d),alfcondsig(d),alfgrid(2:nal,d) ,pialf(2:nal,2:nal,d) ,readzvec=.true.)
+		endif
 		! this is the transformation if I use the annual-frequency shocks and experience them ever 1/tlen periods
 		do i=2,nal
 			pialf(i,i,d) = pialf(i,i,d)**(1./tlen)
@@ -679,8 +684,6 @@ subroutine setparams()
 		enddo
 		PrDage_tp1(i,TT-1) = PrDage(i,TT-1)*(1.d0+ (1.d0-(1.d0-PrDeath(i,TT-1))**tlen))
 	enddo
-
-
 
 	!age structure extrapolate over periods
 	age_read(:,1) = age_read(:,1)-age_read(1,1)
@@ -1155,7 +1158,45 @@ subroutine rouwenhorst(N,mu,rho,sigma,grid,PP)
 end subroutine rouwenhorst
 
 
+subroutine tauchen(N, mu_eps, rho, sigma_eps, zvect, Pmat,readzvec)
 
+    implicit none
+
+    real(8), intent(in):: rho, mu_eps, sigma_eps
+    integer, intent(in):: N
+    real(8)            :: zvect(N)
+    real(8), intent(out):: Pmat(N,N)
+	logical, optional   :: readzvec
+
+    real(8) mu_z, sigma_z, sigma_zcond
+    real(8) w, m
+    integer i,j
+
+    mu_z = mu_eps/(1-rho)
+    sigma_z = sigma_eps/sqrt(1-rho**2)
+    sigma_zcond = sigma_eps
+
+	m = 3.
+	if(present(readzvec) .eqv. .false.) readzvec = .false.
+	if(readzvec .eqv. .false. ) then
+		do i=1,N
+    		zvect(i) = dble(i-1)/dble(N-1)*(m*sigma_z+m*sigma_z)+ mu_z-m*sigma_z
+		enddo
+	endif
+
+    do i=1,N
+		w = (zvect(2)-zvect(1))/2
+		Pmat(i,1) = alnorm((zvect(1) + w - rho*zvect(i) - mu_eps)/sigma_eps, .false. )
+        do j=2,N-1
+			w = (zvect(j+1)-zvect(j))/2
+        	Pmat(i,j) = alnorm((zvect(j) + w- rho*zvect(i) - mu_eps)/sigma_eps, .false.) - &
+            	alnorm((zvect(j) - w- rho*zvect(i) - mu_eps)/sigma_eps, .false.)
+        end do
+		w = (zvect(N)-zvect(N-1))/2
+        Pmat(i,N) = 1 - alnorm((zvect(N) - w - rho*zvect(i) - mu_eps)/sigma_eps, .false.)
+    end do
+
+end subroutine tauchen
 
 subroutine invmat(A, invA)
 	real(dp), dimension(:,:), intent(in) :: A
