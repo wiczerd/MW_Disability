@@ -79,6 +79,7 @@ module helper_funs
 	type moments_struct
 		real(dp) :: work_coefs(Nk), di_coefs(Nk),ts_emp_coefs(nj+1)
 		real(dp) :: di_rate(TT-1), work_rate(TT-1), accept_rate(TT-1) !by age
+		real(dp) :: di_rateD(nd), work_rateD(nd), accept_rateD(nd) !by age
 		integer :: alloced
 		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+1,nj+1)
 		real(dp) :: s2,avg_di,init_di
@@ -860,6 +861,7 @@ module model_data
 		real(dp) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
 				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1), &
 				& status_Nt(5,Tsim),DIatriskpop,napp_t,ninsur_app, dicont_hr=0.,init_diaward_discr,tot_apppr
+		real(dp) :: di_rateD_denom(nd) ,work_rateD_denom(nd),accept_rateD_denom(nd)
 
 		if(hst%alloced /= 0) then
 			if(verbose >= 1) print *, "not correctly passing hists_struct to moments"
@@ -891,6 +893,12 @@ module model_data
 		moments_sim%hlth_acc_rt = 0._dp
 		moments_sim%avg_hlth_acc = 0._dp
 		moments_sim%d1_diawardfrac = 0._dp
+		moments_sim%di_rateD = 0._dp
+		moments_sim%work_rateD = 0._dp
+		moments_sim%accept_rateD = 0._dp
+		di_rateD_denom = 0._dp
+		work_rateD_denom = 0._dp
+		accept_rateD_denom = 0._dp
 
 		do si = 1,Nsim
 			do st = 1,Tsim
@@ -903,6 +911,21 @@ module model_data
 					if(status_hr == 4) dD_t(st) = dD_t(st)+shk%d_hist(si,st)
 
 					status_Nt(status_hr,st) = 1._dp + status_Nt(status_hr,st)
+
+					do id=1,nd
+						if( shk%d_hist(si,st)==id ) then
+							if( status_hr<=4 )then
+								work_rateD_denom(id) = work_rateD_denom(id)+1._dp
+								di_rateD_denom(id) = di_rateD_denom(id)+1._dp
+								if(status_hr ==1) moments_sim%work_rateD(id) = moments_sim%work_rateD(id)+1._dp
+								if(status_hr ==4) moments_sim%di_rateD(id) = moments_sim%di_rateD(id)+1._dp
+							endif
+							if( status_hr==3 .and. hst%app_dif_hist(si,st) >=0.) then
+								accept_rateD_denom =accept_rateD_denom + 1._dp
+								moments_sim%accept_rateD = moments_sim%accept_rateD +hst%di_prob_hist(si,st)
+							endif
+						endif
+					enddo
 
 					! disability by age and age X shock
 					do it = 1,TT-1
@@ -966,6 +989,10 @@ module model_data
 				endif !status(si,st) >0
 			enddo!st = 1,Tsim
 		enddo ! si=1,Nsim
+
+		moments_sim%di_rateD   = moments_sim%di_rateD/di_rateD_denom
+		moments_sim%work_rateD   = moments_sim%work_rateD/work_rateD_denom
+		moments_sim%accept_rateD = moments_sim%accept_rateD/accept_rateD_denom
 
 		!overall disability rate (the money stat)
 		DIatriskpop =0._dp
@@ -1048,7 +1075,7 @@ module model_data
 							dicont_hr = dexp(smth_dicont*hst%app_dif_hist(i,it))/(1._dp+dexp(smth_dicont*hst%app_dif_hist(i,it)))
 						endif
 
-						if( hst%app_dif_hist(i,it) >=0 .and. hst%di_prob_hist(i,it)>0) then
+						if( hst%app_dif_hist(i,it) >=0. .and. hst%di_prob_hist(i,it)>0.) then
 							napp_t = napp_t+1._dp
 							moments_sim%init_hlth_acc = hst%hlthprob_hist(i,it)/(hst%di_prob_hist(i,it)) + moments_sim%init_hlth_acc
 						endif
@@ -1285,11 +1312,11 @@ module sol_val
 		Vtest1 = -1e6
 		apol = iaa0
 		do iaa = iaa0,iaaA
-			if(agrid(ia)<2.*wmean) then
+			!if(agrid(ia)<2.*wmean) then
 				chere = b+R*agrid(ia)-agrid(iaa)
-			else
-				chere = R*agrid(ia)-agrid(iaa)
-			endif
+			!else
+				!chere = R*agrid(ia)-agrid(iaa)
+			!endif
 			if(chere >0.) then
 				Vtest2 = 0.
 				!Continuation if do not apply for DI
@@ -1348,11 +1375,11 @@ module sol_val
 		EVD = 0._dp
 		Ewage = 0._dp
 		do iaa = iaa0,iaaA
-			if(agrid(ia)<2.*wmean) then
+			!if(agrid(ia)<2.*wmean) then
 				chere = b+R*agrid(ia)-agrid(iaa)
-			else
-				chere = R*agrid(ia)-agrid(iaa)
-			endif
+			!else
+				!chere = R*agrid(ia)-agrid(iaa)
+			!endif
 			if(chere >0.) then
 				Vtest2 = 0.
 				!Continuation if apply for DI
@@ -1476,7 +1503,7 @@ module sol_val
 				enddo
 				enddo
 				enddo
-				utilhere = util(chere,id,iw)
+				utilhere = util(chere,id,iw) - Fd(id)
 				Vtest2 = utilhere + beta*Vc1 ! flow utility
 
 				if (Vtest2>Vtest1 .or. iaa .eq. iaa0 ) then  !always replace on the first, or best
@@ -4009,7 +4036,7 @@ module sim_hists
 						endif
 					endif
 					!where to evaluate e
-					eiH  = max(1, min(ei_hr+1,ne))
+					eiH  = min(ei_hr+1,ne)
 					if(ei_hr .ne. eiH) then
 						ewt = (egrid(iiH)- e_hr)/( egrid(eiH) -   egrid(ei_hr) )
 					else !unemp
@@ -4328,7 +4355,7 @@ module sim_hists
 							endif
 							ep_hr = max(min( ep_hr,egrid(ne) ),egrid(1))
 							e_it(i,it+1) = ep_hr
-							! assign to grid points by floor rule
+							! assign to grid points by floor rule (will later interpolate)
 							do ei_hr = ne,1,-1
 								if( ep_hr > egrid(ei_hr) ) exit
 							enddo
@@ -4343,18 +4370,9 @@ module sim_hists
 							e_it_int(i,it) = e_it_int(i,it+1)
 							e_it(i,it) = e_it(i,it+1)
 						endif
-						!push forward d
+						!push forward d from already drawn d_it
 						if(it<Tsim) d_hr = d_it(i,it+1)
-						! if(age_hr .lt. TT)  then
-						! 	do ii=1,nd
-						! 		if(health_it_innov(i,it) < cumpid(d_hr,ii+1,del_hr,age_hr) ) then
-						! 			d_it(i,it+1) = ii
-						! 			exit
-						! 		endif
-						! 	enddo
-						! else
-						! 	d_it(i,it+1) = d_hr
-						! endif
+
 					endif !t<Tsim
 				else !age_it(i,it) <= 0, they've not been born or they are dead
 					a_it(i,it) = 0.
@@ -5054,11 +5072,7 @@ module find_params
 
 	subroutine cal_dist(paramvec, errvec,shk)
 		! the inputs are the values of parameters we're moving in paramvec
-		! the outputs are deviations from targets
-		! 1/ persistence of occupation productivity shock
-		! 2/ standard deviation of occupation productivity shock
-		! 3/ dispersion of gumbel shock - amenityscale
-		!
+		! the outputs in errvec are deviations from targets
 
 		real(dp), intent(in) :: paramvec(:)
 		real(dp), intent(out) :: errvec(:)
@@ -5082,6 +5096,10 @@ module find_params
 		else
 			xizd1coef  = paramvec(2)*paramvec(3)
 			xizd23coef = paramvec(2)
+		endif
+		if( size(paramvec) > 3) then
+			Fd(2) = paramvec(4)*paramvec(5)
+			Fd(3) = paramvec(5)
 		endif
 
 		call alloc_econ(vfs,pfs,hst)
@@ -5131,24 +5149,29 @@ module find_params
 		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
 		if(size(errvec)>2) &
 		&	errvec(3) = (moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
-
+		if(size(errvec)>3) &
+		&	errvec(4) = (moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/p1d2_target
+		if(size(errvec)>4) &
+		&	errvec(5) = (moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/p1d3_target
 
 		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
 		write(rank_str, '(I2.2)') rank_hr
 		fcal_eval = rank_hr+100
 		open(unit=fcal_eval, file = "cal_dist_"//trim(rank_str)//".csv" ,ACCESS='APPEND', POSITION='APPEND')
-		write(fcal_eval, "(G20.12)", advance='no')  paramvec(1)
-		write(fcal_eval, "(G20.12)", advance='no')  paramvec(2)
-		write(fcal_eval, "(G20.12)", advance='no')  paramvec(3)
-		write(fcal_eval, "(G20.12)", advance='no')  moments_sim%avg_di
+		do i=1,size(paramvec)
+			write(fcal_eval, "(G20.12)", advance='no')  paramvec(i)
+		enddo
+		do i=1,size(errvec)
+			write(fcal_eval, "(G20.12)", advance='no') errvec(i)
+		enddo
+		!some diagnostics to print
 		if( moments_sim%init_diaward_discr >0._dp ) then
 			write(fcal_eval, "(G20.12)", advance='no')  moments_sim%init_diaward/moments_sim%init_diaward_discr
 		else
 			write(fcal_eval, "(G20.12)", advance='no')  0._dp
 		endif
-		write(fcal_eval, "(G20.12)", advance='no') errvec(1)
-		write(fcal_eval, "(G20.12)", advance='no') errvec(2)
-		write(fcal_eval, "(G20.12)", advance='yes') errvec(3)
+		write(fcal_eval, "(G20.12)", advance='yes')  moments_sim%avg_di
+
 		close(unit=fcal_eval)
 		cal_obj = sum( errvec**2 )
 
@@ -5181,7 +5204,7 @@ module find_params
 		integer :: fcal_eval,print_lev_old,verbose_old
 		integer :: c1=1,c2=1,cr=1,cm=1
 		real(dp) :: t1=1.,t2=1.
-		real(dp) :: zeros(size(xl)),ones(size(xu))
+		real(dp) :: zeros(nopt),ones(nopt)
 
 		external dfovec
 		call random_seed(size = iprint)
@@ -5226,8 +5249,8 @@ module find_params
 		allocate(world_internalopt(  nnode*nstartpn*ninternalopt))
 		dfbols_nuxi_trproc = 1
 
-		rhobeg = 0.1_dp !trust region starting size is
-		rhoend = rhobeg/1.e4_dp
+		rhobeg = 0.5_dp !trust region starting size is
+		rhoend = rhobeg/1.e6_dp
 
 		fval = 0._dp
 		xopt = 0._dp
@@ -5302,7 +5325,11 @@ module find_params
 						wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
 						wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
 						! only do BOBYQA if the starting point is good
-						print *, "Computing from: ",  x0(1), x0(2), x0(3)," on node: ", rank, "after ", j, " tries"
+						if(nopt >=5) then
+							print *, "Computing from: ",  x0(1), x0(2), x0(3),x0(4), x0(5)," on node: ", rank, "after ", j, " tries"
+						else
+							print *, "Computing from: ",  x0(1), x0(2), x0(3)," on node: ", rank, "after ", j, " tries"
+						endif
 						cal_niter = 1
 						iprint = 1
 						xopt = (x0-xl)/(xu-xl) !convert x0 draw into normalized (0,1) units
@@ -5400,8 +5427,10 @@ module find_params
 					call vec2csv(wage_coef, "wage_coef_opt.csv")
 					if(nopt==2) then
 						call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt.csv")
-					else
+					elseif(nopt==3) then
 						call vec2csv( (/nu, xizd1coef,xizd23coef,wmean/)  , "nuxiw_opt.csv")
+					elseif(nopt==5) then
+						call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt.csv")
 					endif
 					call mat2csv(fndgrid, "fndgrid_opt.csv")
 					call mat2csv(sepgrid, "sepgrid_opt.csv")
@@ -5463,7 +5492,7 @@ module find_params
 
 
 		paramwt = 1./dble(nparam)		! equal weight
-		paramwt(1) = 1.0_dp
+		paramwt(1) = 2.0_dp
 		paramwt(2) = 1.0_dp
 		fval = 0.
 		do i = 1,nparam
@@ -5696,8 +5725,8 @@ program V0main
 		logical :: sol_once = .true.
 	! NLopt stuff
 		integer(8) :: calopt=0,ires=0, calopt_loc=0,ires_loc=0
-		real(dp) :: lb(3),ub(3),parvec(3), ervec(3), erval, param0(3)=1.,err0(3)=1.,lb_1(1),ub_1(1),parvec_1(1),ervec_1(1)
-		integer  :: nodei,ierr
+		real(dp) :: lb(5),ub(5),parvec(5), ervec(5), erval, param0(5)=1.,err0(5)=1.,lb_1(1),ub_1(1),parvec_1(1),ervec_1(1)
+		integer  :: nodei,nnode,ierr
 !		external :: cal_dist_nloptwrap
 		real(dp) :: X1(5,3),X2(5,3),X3(3,3)
 
@@ -5709,6 +5738,10 @@ program V0main
 
 	call mpi_init(ierr)
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
+	call mpi_comm_size(mpi_comm_world,nnode,ierr)
+
+
+	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
 
@@ -6010,6 +6043,8 @@ program V0main
 		print *, "error 1: ",	(moments_sim%init_diaward - diaward_target)/diaward_target
 		print *, "error 2: ",	(moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
 		print *, "error 3: ",	(moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
+		print *, "error 4: ",	(moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/p1d2_target
+		print *, "error 5: ",	(moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/p1d3_target
 
 		call dealloc_econ(vfs,pfs,hst)
 
@@ -6020,8 +6055,10 @@ program V0main
 	! nu = 0.812298608310627
 	! xizcoef = 0.123992114316186
 
-	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp/)
-	ub = (/ 2.00_dp, 0.990_dp, 0.500_dp /)
+	!bounds for paramvec:
+	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3)
+	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp, 0.001_dp, 0.001_dp/)
+	ub = (/ 1.00_dp, 0.990_dp, 0.750_dp, 0.750_dp, 3.000_dp/)
 
 	!set up the grid over which to check derivatives
 	! open(unit=fcallog, file="cal_square.csv")
@@ -6051,8 +6088,14 @@ program V0main
 		call system_clock(count_rate=cr)
 		call system_clock(count_max=cm)
 		call system_clock(c1)
+		parvec = 0._dp !will store the optimal values. Will be over-written
+		call cal_mlsl( erval, parvec, 5, lb, ub, shk)
 
-		call cal_mlsl( erval, parvec, 3, lb, ub, shk)
+		nu         = parvec(1)
+		xizd23coef = parvec(2)
+		xizd1coef  = parvec(3)*xizd23coef
+		Fd(2)      = parvec(4)*parvec(5)
+		Fd(3)      = parvec(5)
 
 		call system_clock(c2)
 		if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
@@ -6092,12 +6135,16 @@ program V0main
 	!	read(fread,*) xizcoef
 		read(fread,*) xizd1coef
 		read(fread,*) xizd23coef
+		if(size(parvec)>3) then
+			read(fread,*) Fd(2)
+			read(fread,*) Fd(3)
+		endif
 		read(fread,*) wmean
 	close(fread)
 
 	if (dbg_skip .eqv. .false.) then
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef/)
+		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 
 		caselabel = ""
@@ -6107,9 +6154,9 @@ program V0main
 		demog_dat = .true.
 
 		print_lev = 2
-!		call cal_dist(parvec,err0,shk)
-!	 	print *, "error in initial", err0(1), err0(2), err0(3)
-!		print *, "---------------------------------------------------"
+		call cal_dist(parvec,err0,shk)
+	 	print *, "error in initial", err0(1), err0(2), err0(3), err0(4), err0(5)
+		print *, "---------------------------------------------------"
 	endif
 
 
