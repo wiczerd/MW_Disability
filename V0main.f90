@@ -1007,7 +1007,11 @@ module model_data
 		else
 			moments_sim%avg_hlth_acc = 0._dp
 		endif
-		moments_sim%d1_diawardfrac = 1._dp - (1._dp-moments_sim%d1_diawardfrac/tot_apppr)**tlen !annual rate
+		if(tot_apppr>0) then
+			moments_sim%d1_diawardfrac = 1._dp - (1._dp-moments_sim%d1_diawardfrac/tot_apppr)**tlen !annual rate
+		else
+			moments_sim%d1_diawardfrac = 0._dp
+		endif
 
 		!just for convenience
 		forall(it=1:TT) totage(it) = sum(totage_st(it,:))
@@ -5204,7 +5208,7 @@ module find_params
 		integer :: fcal_eval,print_lev_old,verbose_old
 		integer :: c1=1,c2=1,cr=1,cm=1
 		real(dp) :: t1=1.,t2=1.
-		real(dp) :: zeros(nopt),ones(nopt)
+		real(dp) :: zeros(nopt),ones(nopt), initerr
 
 		external dfovec
 		call random_seed(size = iprint)
@@ -5249,7 +5253,7 @@ module find_params
 		allocate(world_internalopt(  nnode*nstartpn*ninternalopt))
 		dfbols_nuxi_trproc = 1
 
-		rhobeg = 0.5_dp !trust region starting size is
+		rhobeg = 0.5_dp/sqrt(dble(nnode)) !trust region starting size is
 		rhoend = rhobeg/1.e6_dp
 
 		fval = 0._dp
@@ -5299,9 +5303,11 @@ module find_params
 				do j=1,5
 
 					cal_niter = 0
-
+					xopt = (x0-xl)/(xu-xl)
 					call dfovec(nopt,nopt,(x0-xl)/(xu-xl)  ,v_err) !note that dfovec takes the normalized values between 0,1 for x
-					if( (abs(v_err(1)) > 4._dp) .or. (abs(v_err(2))>0.99_dp) ) then
+					initerr = sum( abs(v_err) )
+
+					if( (initerr .gt. 3) .or. v_err(1) .le. -1._dp  ) then
 						! exit
 						call random_number(junk) !burn one
 						do i=1,nopt
@@ -5361,8 +5367,10 @@ module find_params
 				call mat2csv(sepgrid0*seprt_mul, "sepgrid_opt"// rank_str //".csv")
 				if( nopt ==2) then
 					call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt"// rank_str //".csv")
-				else
+				elseif(nopt==3) then
 					call vec2csv( (/nu, xizd1coef,xizd23coef,wmean/)  , "nuxiw_opt"// rank_str //".csv")
+				elseif(nopt==5) then
+					call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt" // rank_str //".csv")
 				endif
 			enddo ! dd = 1,nstartpn
 			!pull together all of the optimization arguments
@@ -6058,7 +6066,7 @@ program V0main
 	!bounds for paramvec:
 	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3)
 	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp, 0.001_dp, 0.001_dp/)
-	ub = (/ 1.00_dp, 0.990_dp, 0.750_dp, 0.750_dp, 3.000_dp/)
+	ub = (/ 0.50_dp, 0.990_dp, 0.750_dp, 0.750_dp, 4.000_dp/)
 
 	!set up the grid over which to check derivatives
 	! open(unit=fcallog, file="cal_square.csv")
@@ -6182,6 +6190,7 @@ program V0main
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 	!	call draw_draw(shk%drawi_ititer,shk%drawt_ititer,shk%age_it,shk%al_int_it,shk%del_i_int,&
 	!		&	seed0,success)
 		call cal_dist(parvec,err0,shk)
@@ -6203,7 +6212,7 @@ program V0main
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 		call cal_dist(parvec,err0,shk)
 	 	print *, "error in targets with ", caselabel,  " ", err0
 		call gen_new_wgtrend(wage_trend,wage_coef)
@@ -6219,6 +6228,7 @@ program V0main
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
@@ -6233,7 +6243,7 @@ program V0main
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"
@@ -6249,7 +6259,7 @@ program V0main
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 		call cal_dist(parvec,err0,shk)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "error in targets with ", caselabel, " ", err0
@@ -6265,7 +6275,7 @@ program V0main
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 		call cal_dist(parvec,err0,shk)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "error in targets with ", caselabel, " ", err0
@@ -6280,7 +6290,7 @@ program V0main
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"

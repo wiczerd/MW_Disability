@@ -29,7 +29,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		oldD = 5., &		!Length of each old period
 		tlen =12., &		!Number of periods per year (monthly)
 		Longev = 82.- 30.,&	!Median longevity
-		UIrr = 0.4, &		!Replacement Rate in UI
+		UIrr = 0.8, &		!Replacement Rate in UI
 		eligY  = 0.834,&	!Fraction young who are eligable
 		R =1.,& !dexp(.02/tlen),&	!People can save in the backyard
 		upd_zscl = 0.1,&		! rate at which to update zshift
@@ -164,7 +164,7 @@ real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (10% annual discount ra
 		alfmu(nd) = 0.0,&		!Mean of Alpha_i type
 		alfcondsig(nd) = 0.015**0.5,&	!Conditional StdDev of Alpha_i type (Normal)
 
-		b = 0.05,&		!Home production income
+		b = 0.4,&		!Home production income
 		lrho = 0.5,&		!Discount in the probability of finding a job when long-term unemployed (David)
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
