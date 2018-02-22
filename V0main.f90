@@ -115,7 +115,7 @@ module helper_funs
 		real(dp), allocatable:: age_draw(:,:),dead_draw(:,:)
 		real(dp), allocatable :: al_hist(:,:), del_i_draw(:),fndsep_i_draw(:,:),fndarrive_draw(:,:)
 
-		real(dp), allocatable    :: status_it_innov(:,:),health_it_innov(:,:)
+		real(dp), allocatable    :: status_it_innov(:,:),health_it_innov(:,:),al_it_innov(:,:)
 		real(dp), allocatable    :: jshock_ij(:,:)
 		integer,  allocatable    :: drawi_ititer(:,:)
 		integer,  allocatable    :: drawt_ititer(:,:)
@@ -736,6 +736,7 @@ module helper_funs
 		allocate(shk%jshock_ij(Nsim,nj), stat=shk%alloced)
 		allocate(shk%status_it_innov(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%health_it_innov(Nsim,Tsim), stat=shk%alloced)
+		allocate(shk%al_it_innov(Nsim,Tsim), stat=shk%alloced)
 		allocate(shk%z_jt_innov(Tsim))
 		allocate(shk%z_jt_select(Tsim))
 
@@ -810,6 +811,7 @@ module helper_funs
 		deallocate(shk%jshock_ij, stat=shk%alloced)
 		deallocate(shk%status_it_innov , stat=shk%alloced)
 		deallocate(shk%health_it_innov , stat=shk%alloced)
+		deallocate(shk%al_it_innov, stat=shk%alloced)
 		deallocate(shk%d_hist , stat=shk%alloced)
 		deallocate(shk%del_i_int, stat=shk%alloced)
 		deallocate(shk%del_i_draw, stat=shk%alloced)
@@ -1497,8 +1499,6 @@ module sol_val
 						& +ptau(it)  *VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it)
 					uH = (1-ptau(it))*VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it+1) &
 						& +ptau(it)  *VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it)
-					!uL = VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee1,iaa,izz,it)
-					!uH = VU((il-1)*ntr+itr,(idi-1)*nal+ialUn,idd,iee2,iaa,izz,it)
 
 					Vc1 = piz(iz,izz)*pialf(ial,ialal,id)*pid_here(id,idd) &
 						& * (  (1.-sepgrid(il,iz))*(vH*(1._dp - iee1wt) + vL*iee1wt) &
@@ -2762,14 +2762,50 @@ module sim_hists
 		deallocate(bdayseed)
 	end subroutine draw_status_innov
 
-	subroutine draw_alit(al_it,al_int_it, d_it, seed0, success)
-	! draws alpha shocks and idices on the alpha grid (i.e at the discrete values)
+	subroutine draw_alit(al_it,al_int_it, al_it_innov, d_it, seed0, success)
 		implicit none
 
 		integer, intent(in) :: seed0
 		integer, intent(out),optional :: success
 		integer, intent(in), dimension(:,:) :: d_it
 		real(dp), dimension(:,:) :: al_it
+		real(dp), dimension(:,:) :: al_it_innov
+		integer, dimension(:,:) :: al_int_it
+		integer :: ss=1, Ndraw, t,m,i
+		real(dp) :: alf_innov
+		integer, allocatable :: bdayseed(:)
+
+		call random_seed(size = ss)
+		allocate(bdayseed(ss))
+		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
+		call random_seed(put = bdayseed(1:ss) )
+
+		Ndraw = size(al_it,1)
+		do i=1,Ndraw
+			do t=1,Tsim
+				if( al_contin .eqv. .true. ) then
+					call random_normal(alf_innov)
+					al_it_innov(i,t) = alf_innov
+				else
+					call rand_num_closed(alf_innov)
+					al_it_innov(i,t) = alf_innov
+				endif
+			enddo
+		enddo
+
+		call set_alit(al_it,al_int_it,al_it_innov,d_it,success)
+
+		deallocate(bdayseed)
+	endsubroutine draw_alit
+
+	subroutine set_alit(al_it,al_int_it,al_it_innov, d_it,  success)
+	! draws alpha shocks and idices on the alpha grid (i.e at the discrete values)
+		implicit none
+
+		integer, intent(out),optional :: success
+		integer, intent(in), dimension(:,:) :: d_it
+		real(dp), dimension(:,:) :: al_it
+		real(dp), dimension(:,:) :: al_it_innov
 		integer, dimension(:,:) :: al_int_it
 		integer :: ss=1, Ndraw, alfgrid_int, t,m,i,k,id
 		real(dp) :: alfgridL, alfgridH,alf_innov,alfgrid_i,alf_i
@@ -2786,17 +2822,10 @@ module sim_hists
 		enddo
 		alfgrid_Uval = alfgrid(1,1)
 
-		call random_seed(size = ss)
-		allocate(bdayseed(ss))
-		forall(m=1:ss) bdayseed(m) = (m-1)*100 + seed0
-		call random_seed(put = bdayseed(1:ss) )
-
 		cumpi_al =0.
 		Ndraw = size(al_it,1)
 
-
 		do id=1,nd
-
 			alfrhot(id) = alfrho(id)**(1./tlen)
 			alfsig(id) = (alfcondsig(id)**2/(1-alfrho(id)**2))**0.5
 			alfsigt(id) = (alfsig(id)**2/tlen)**0.5
@@ -2817,7 +2846,8 @@ module sim_hists
 
 			! draw starting values
 			id = 1
-			call random_normal(alf_innov) ! draw normal disturbances on 0,1
+			!call random_normal(alf_innov) ! draw normal disturbances on 0,1
+			alf_innov = al_it_innov(i,1)
 			! transform it by the ergodic distribution for the first period:
 			alf_i = alf_innov*alfsigt(id) + alfmu(id)
 
@@ -2834,11 +2864,12 @@ module sim_hists
 				if(t>=1) then
 					id = d_it(i,t)
 					if(id<1) id =1 !if they're not born, id is initialized to 0. This causes havok.
+					alf_innov = al_it_innov(i,t)
 				elseif(t<=0) then
 					id = 1
+					alf_innov = al_it_innov(i,abs(mod(t-1,Tsim-1))+1)
 				endif
 				if(al_contin .eqv. .true.) then
-						call random_normal(alf_innov)
 						alf_i  = alfrhot(id)*alf_i + alfcondsigt(id)*alf_innov + alfmu(id)*(1-alfrhot(id))
 						alf_i = max(alf_i,alfgrid_minE(id))
 						alf_i = min(alf_i,alfgrid_maxE(id))
@@ -2850,7 +2881,6 @@ module sim_hists
 						if( (alf_i - alfgrid(alfgrid_int,id))/(alfgrid(alfgrid_int+1,id)- alfgrid(alfgrid_int,id)) >0.5 ) alfgrid_int = alfgrid_int + 1
 						alfgrid_int = max(min(alfgrid_int,nal),2)
 				else
-					call rand_num_closed(alf_innov)
 					alfgrid_int = finder(cumpi_al(alfgrid_int,:,id), alf_innov )
 					alfgrid_int = max(min(alfgrid_int,nal),1)
 					if(t>=1) al_it(i,t) = alfgrid(alfgrid_int,id) ! log of wage shock, on grid
@@ -2861,12 +2891,11 @@ module sim_hists
 		if(success > 0.2*Ndraw*Tsim)  success = success
 		if(success <= 0.2*Ndraw*Tsim) success = 0
 
-		call mat2csv(al_it,"drawn_al_it.csv")
+!		call mat2csv(al_it,"drawn_al_it.csv")
 
-		!call mat2csv(cumpi_al,"cumpi_al.csv")
 		deallocate(cumpi_al)
-		deallocate(bdayseed)
-	end subroutine draw_alit
+
+	end subroutine set_alit
 
 	subroutine draw_dit( d_it,health_it_innov, del_i, age_it, seed0,success )
 		integer, allocatable :: bdayseed(:)
@@ -3352,7 +3381,7 @@ module sim_hists
 			seed0 = seed0 + 1
 			call draw_dit(shk%d_hist,shk%health_it_innov,shk%del_i_int,shk%age_hist,seed0,status)
 			seed1 = seed1 + 1
-			call draw_alit(shk%al_hist,shk%al_int_hist,shk%d_hist, seed0, status)
+			call draw_alit(shk%al_hist,shk%al_int_hist,shk%al_it_innov,shk%d_hist, seed0, status)
 			seed0 = seed0 + 1
 			call draw_fndsepi(shk%fndsep_i_draw, shk%fndsep_i_int, shk%fndarrive_draw, shk%j_i, seed0, status)
 			seed0 = seed0 + 1
@@ -3482,7 +3511,7 @@ module sim_hists
 		logical, optional :: occaggs
 
 		integer :: i=1, ii=1, iter=1, it=1, it_old=1, ij=1,il=1, idi=1, id=1, Tret=1,wo=1, &
-			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=5,Ncol=100,nomatch=0, &
+			&  seed0=1, seed1=1, status=1, m=1,ss=1, iter_draws=2,Ncol=100,nomatch=0, &
 			&  ndets=5, nregobs
 
 
@@ -3543,12 +3572,13 @@ module sim_hists
 		real(dp) :: pialf_conddist(nal), cumptau(TT+1),a_mean(TT-1),d_mean(TT-1),a_var(TT-1), &
 				& d_var(TT-1),a_mean_liter(TT-1),d_mean_liter(TT-1),a_var_liter(TT-1),d_var_liter(TT-1), &
 				& s_mean(TT-1),s_mean_liter(TT-1), occgrow_hr(nj),occsize_hr(nj),occshrink_hr(nj),PrAl1(nz),PrAl1St3(nz),totpopz(nz),&
-				& simiter_dist(maxiter),simiter_status_dist(maxiter)
+				& simiter_dist(maxiter),simiter_status_dist(maxiter), a_ap_dist(Na,Na)
 
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., iiwt=1., ziwt=1., jwt=1., cumval=1., &
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,&
 					&   triwt=1., ewt=0.,hatsig2,a_residj,e_residj
+
 
 		integer :: ali_hr=1,iiH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1,ial=1, ai_hr=1,api_hr=1,ei_hr=1,triH=1,eiH=1, &
 			& tri=1, tri_hr=1,fndi_hr(nz),sepi_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0,slice_len=1, brn_yr_hr=1, interp_i
@@ -3568,7 +3598,7 @@ module sim_hists
 		! Allocate things
 		!************************************************************************************************!
 
-		iter_draws = min(maxiter,5) !globally set variable
+		iter_draws = min(maxiter,8) !globally set variable
 
 		allocate(a_it_int(Nsim,Tsim))
 		allocate(e_it(Nsim,Tsim))
@@ -3655,6 +3685,7 @@ module sim_hists
 		nregobs = 0
 
 
+		a_ap_dist = 0._dp
 		hst%wage_hist    = 0.
 		Tret = (Longev - youngD - oldD*oldN)*tlen
 		work_dif_it      = 0.
@@ -3706,7 +3737,11 @@ module sim_hists
 		if(verbose >2) print *, "Simulating"
 		w_strchng_old = w_strchng
 		w_strchng = .false.
-		final_iter = .false.
+		if (iter_draws>1) then
+			final_iter = .false.
+		else
+			final_iter = .true.
+		endif
 		converged = .false.
 		!itertate to get dist of asset/earnings correct at each age from which to draw start conditions
 		do iter=1,iter_draws
@@ -3716,15 +3751,6 @@ module sim_hists
 			work_dif_it = 0.
 			hst%hlthprob_hist = 0.
 			hst%hlth_voc_hist= 0
-
-			! if(iter>1 ) then
-			! 	call mat2csv(Xdets(1:nregobs,:),"Xdets.csv")
-			! 	call OLS(Xdets(1:nregobs,:),adep(1:nregobs),acoef,cov_coef,hatsig2,status)
-			! 	call OLS(Xdets(1:nregobs,:),edep(1:nregobs),ecoef,cov_coef,hatsig2,status)
-			! 	call vec2csv(acoef,"acoef.csv")
-			! 	call vec2csv(ecoef,"ecoef.csv")
-			! 	print *, nregobs
-			! endif
 
 			it = 1
 			nomatch = 0
@@ -3745,51 +3771,7 @@ module sim_hists
 							drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
 							if( (status_it(drawi,drawt)>0) .and. (status_it(drawi,drawt)<4) .and. &
 							&	(age_it(drawi,drawt) .eq. age_hr ).and. (d_it(drawi,drawt) .eq. d_hr) ) then
-!							&  (status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1))>0) .and. (status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1))<4)) then
-								!ndets = 3-1+nd-1+(oldN+1-1)+ndi-1+nal-1 !status dummies (WUN), d dummies, age dummies (1+oldN), del dummies (12), al_int dummies.
-								! xidets = 0._dp
-								! xjdets = 0._dp
-								! m=1
-								! do il=2,3
-								! 	if(status_it(drawi,drawt) == il) xidets(m) = 1._dp
-								! 	if(status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
-								! 	m = m+1
-								! enddo
-								! do id=2,nd
-								! 	if(d_it(drawi,drawt)== id) xidets(m) = 1._dp
-								! 	if(d_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == id) xjdets(m) = 1._dp
-								! 	m = m+1
-								! enddo
-								! do il=2,(oldN+1)
-								! 	if(age_it(drawi,drawt) == il) xidets(m) = 1._dp
-								! 	if(age_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
-								! 	m=m+1
-								! enddo
-								! do  idi=2,ndi
-								! 	if(del_i_int(drawi)==idi) xidets(m)= 1._dp
-								! 	if(del_i_int(drawi_ititer(i,ii+1))==idi) xjdets(m)= 1._dp
-								! 	m=m+1
-								! enddo
-								! do  ial=1,nal
-								! 	if(ial .ne. 3)then
-								! 		if(al_int_it_endog(drawi,drawt)==ial) xidets(m)= 1._dp
-								! 		if(al_int_it_endog(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1))==ial) xjdets(m)= 1._dp
-								! 		m=m+1
-								! 	endif
-								! enddo
-								! xidets(m)= 1._dp
-								! xjdets(m)= 1._dp
-								!
-								! a_residj = a_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,acoef)
-								! e_residj = e_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,ecoef)
-								!
-								! brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
-								! status_it(i,it) = status_it(drawi,drawt)
-								! d_it(i,it) = d_hr
-								! a_it(i,it) = dot_product(xidets,acoef) + a_residj
-								! e_it(i,it) = dot_product(xidets,ecoef) + e_residj
-								! e_it_int(i,it) = locate(egrid,e_it(i,it))
-								! a_it_int(i,it) = locate(agrid,a_it(i,it))
+
 								d_it(i,it)		= d_hr
 								a_it(i,it)      = a_it(drawi,drawt)
 								e_it(i,it)      = e_it(drawi,drawt)
@@ -3805,12 +3787,12 @@ module sim_hists
 					if( (iter==1) .or. ii >=Ncol ) then
 						status_it(i,it) = 1
 						invol_un = 0
-						if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_int_it(i,it) ==1 ) then
-							status_it(i,it) = 2
-							if( (status_it_innov(i,it) >(1.-avg_unrt/5._dp)) .or. &
-							& ((al_int_it(i,it) ==1) .and. (status_it_innov(i,it)<0.2_dp)) ) & !about 1/5 of these are LTU
-							&	status_it(i,it) = 3
-						endif
+						! if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_int_it(i,it) ==1 ) then
+						! 	status_it(i,it) = 2
+						! 	if( (status_it_innov(i,it) >(1.-avg_unrt/5._dp)) .or. &
+						! 	& ((al_int_it(i,it) ==1) .and. (status_it_innov(i,it)<0.2_dp)) ) & !about 1/5 of these are LTU
+						! 	&	status_it(i,it) = 3
+						! endif
 						d_hr = d_it(i,it)
 						brn_drawi_drawt(i,it,:) = (/i,it/)
 						if(age_it(i,it)==1) then
@@ -3868,53 +3850,7 @@ module sim_hists
 								if((age_it(drawi,drawt) .eq. 1 ) .and. &
 								&  (status_it(drawi,drawt) .gt. 0) .and. (status_it(drawi,drawt) .le. 3) .and. &
 								&	(age_it(drawi,drawt) .eq. 1 ).and. (d_it(drawi,drawt) .eq. d_hr) ) then
-!								&  (status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) .gt. 0) .and. (status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) .le. 3) ) then
-									!ndets = 3-1+nd-1+(oldN+1-1)+ndi-1+nal-1 !status dummies (WUN), d dummies, age dummies (1+oldN), del dummies (12), al_int dummies.
-									! xidets = 0._dp
-									! xjdets = 0._dp
-									! m=1
-									! do il=2,3
-									! 	if(status_it(drawi,drawt) == il) xidets(m) = 1._dp
-									! 	if(status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
-									! 	m = m+1
-									! enddo
-									! do id=2,nd
-									! 	if(d_it(drawi,drawt)== id) xidets(m) = 1._dp
-									! 	if(d_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == id) xjdets(m) = 1._dp
-									! 	m = m+1
-									! enddo
-									! do il=2,(oldN+1)
-									! 	if(age_it(drawi,drawt) == il) xidets(m) = 1._dp
-									! 	if(age_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
-									! 	m=m+1
-									! enddo
-									! do  idi=2,ndi
-									! 	if(del_i_int(drawi)==idi) xidets(m)= 1._dp
-									! 	if(del_i_int(drawi_ititer(i,ii+1))==idi) xjdets(m)= 1._dp
-									! 	m=m+1
-									! enddo
-									! do  ial=1,nal
-									! 	if(ial .ne. 3)then
-									! 		if(al_int_it_endog(drawi,drawt)==ial) xidets(m)= 1._dp
-									! 		if(al_int_it_endog(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1))==ial) xjdets(m)= 1._dp
-									! 		m=m+1
-									! 	endif
-									! enddo
-									! xidets(m)= 1._dp
-									! xjdets(m)= 1._dp
-									!
-									! a_residj = a_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,acoef)
-									! e_residj = e_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,ecoef)
-									!
-									! brn_drawi_drawt(i,it,:) = (/drawi, drawt /)
-									! status_it(i,it) = status_it(drawi,drawt)
-									! d_it(i,it)		= d_hr
-									! a_it(i,it)		= dot_product(xidets,acoef) + a_residj
-									! a_it(i,it)      = min(max(a_it(i,it),minval(agrid)),maxval(agrid))
-									! e_it(i,it)      = dot_product(xidets,ecoef) + e_residj
-									! e_it(i,it)      = min(max(e_it(i,it),minval(egrid)),maxval(egrid))
-									! e_it_int(i,it)  = locate(egrid,e_it(i,it))
-									! a_it_int(i,it)  = locate(agrid,a_it(i,it))
+
 									a_it(i,it)      = a_it(drawi,drawt)
 									e_it(i,it)      = e_it(drawi,drawt)
 									e_it_int(i,it)  = e_it_int(drawi,drawt)
@@ -4289,7 +4225,7 @@ module sim_hists
 								if(interp_i == 1) then
 									junk = apc_hr
 								else
-									apc_hr = ewt*junk+(1.-ewt)*junk
+									apc_hr = ewt*junk+(1._dp-ewt)*junk
 									ei_hr = ii
 								endif
 							enddo !do interp_i
@@ -4298,7 +4234,7 @@ module sim_hists
 								if( dabs(agrid(ii)-apc_hr) <  dabs(agrid(ii)-agrid(api_hr))) api_hr = ii
 							enddo
 							api_hr = min(max(api_hr,1),na)
-
+							a_ap_dist(ai_hr,api_hr) = a_ap_dist(ai_hr,api_hr)+1._dp
 						endif
 					! retired
 					elseif( (age_hr==TT) .and. (it_old <= Tret)) then
@@ -4389,47 +4325,6 @@ module sim_hists
 			enddo! 1,Nsim
 			!$OMP  end parallel do
 
-			!	ndets = 3+nd+ndi+(oldN+1)+nal!status dummies (WUN), d dummies (123), age dummies (1+oldN), del dummies (12), al_int_dummies.
-			! Xdets = 0._dp
-			! edep = 0._dp
-			! adep = 0._dp
-			! ii = 1
-			! do i=1,Nsim
-			! 	if( mod(i,10)==0) then !sample 1/10
-			! 	do it=1,Tsim
-			! 		if(  (status_it(i,it) < 4) .and. (status_it(i,it)>0) ) then
-			! 			m = 1
-			! 			do il=2,3
-			! 				if(status_it(i,it)==il) Xdets(ii,m) = 1._dp
-			! 				m=m+1
-			! 			enddo
-			! 			do id=2,nd
-			! 				if(d_it(i,it)==id) Xdets(ii,m) = 1._dp
-			! 				m = m + 1
-			! 			enddo
-			! 			do il=2,(oldN+1)
-			! 				if(age_it(i,it)==il) Xdets(ii,m) = 1._dp
-			! 				m = m + 1
-			! 			enddo
-			! 			do idi=2,ndi
-			! 				if(del_i_int(i)==idi) Xdets(ii,m) = 1._dp
-			! 				m = m + 1
-			! 			enddo
-			! 			do ial=2,nal
-			! 				if(al_int_it_endog(i,it)==ial) Xdets(ii,m) = 1._dp
-			! 				m = m + 1
-			! 			enddo
-			! 			Xdets(ii,m) = 1._dp
-			! 			adep(ii) = a_it_int(i,it)
-			! 			edep(ii) = e_it_int(i,it)
-			!
-			! 			ii = ii+1
-			! 		endif
-			! 	enddo
-			! 	endif
-			! enddo
-			! nregobs = ii-1
-
 			if(print_lev >=3)then
 				call vec2csv(val_hr_it,"val_hr.csv")
 				call mat2csv (e_it,"e_it.csv")
@@ -4477,18 +4372,7 @@ module sim_hists
 			slice_len = iter
 			simiter_dist(iter) = sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter)/5 )/TT
 			simiter_status_dist(iter) = sum(dabs(s_mean - s_mean_liter))
-			! if( (sum(dabs(a_mean - a_mean_liter) + dabs(s_mean - s_mean_liter  )/5 )/TT < simtol) ) then
-			! 	converged = .true.
-			! else
-			! 	converged = .false.
-			! endif
-			! if( iter> 20 ) then
-			! 	if( dabs(sum(simiter_dist(iter-10:iter)) - sum(simiter_dist(iter-20:iter-10)) ) < 1e-3 .and. sum(simiter_dist(iter-5:iter))/5._dp<simtol*100 ) then
-			! 		converged = .true.
-			! 		print *, "simulations did not actually converge" !need a better error here
-			! 	endif
-			! endif
-			! if( (  (converged .eqv. .true.) .and. (iter .ge. 5) ) .or. &
+
 			if (iter .ge. (iter_draws-1)) then
 				if(verbose >=2 ) then
 					print *, "done simulating on iteration ", iter, " of ", iter_draws
@@ -4590,6 +4474,7 @@ module sim_hists
 					call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
 				endif
 				call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
+				call mat2csv (a_ap_dist,"a_ap_dist"//trim(caselabel)//".csv")
 				call mat2csv (e_it,"e_it_hist"//trim(caselabel)//".csv")
 				call mat2csv (wtr_it,"wtr_it_hist"//trim(caselabel)//".csv")
 				call mat2csv (trX_it,"transfer_it_hist"//trim(caselabel)//".csv")
@@ -5018,7 +4903,7 @@ module find_params
 		wcL = -0.5_dp
 		wcL(Ncoef_active+1) = 0.1_dp !for fndrt_mul
 		wcL(Ncoef_active+2) = 0.1_dp !for seprt_mul
-		wcU =  2.0_dp
+		wcU =  2.5_dp
 
 		if(print_lev .ge. 2) then
 			call dfovec(Nobj,Nobj, wc0,fval)
@@ -5748,7 +5633,6 @@ program V0main
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
 	call mpi_comm_size(mpi_comm_world,nnode,ierr)
 
-
 	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
@@ -5971,7 +5855,7 @@ program V0main
 		call mat2csv( xsec_PrDageDel(:,:,ndi),"xsec_PrDageDelH.csv")
 		PrDageDel = xsec_PrDageDel
 		call set_dit(shk%d_hist,shk%health_it_innov,shk%del_i_int,shk%age_hist)
-		call draw_alit(shk%al_hist,shk%al_int_hist, shk%d_hist, 671984, status)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
 			if(verbose>1) print *, "iterating to find wage trend"
@@ -6191,8 +6075,8 @@ program V0main
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
-	!	call draw_draw(shk%drawi_ititer,shk%drawt_ititer,shk%age_it,shk%al_int_it,shk%del_i_int,&
-	!		&	seed0,success)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+
 		call cal_dist(parvec,err0,shk)
 	 	print *, "error in targets with ", caselabel,  " ", err0
 		call gen_new_wgtrend(wage_trend,wage_coef)
@@ -6213,6 +6097,7 @@ program V0main
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		call cal_dist(parvec,err0,shk)
 	 	print *, "error in targets with ", caselabel,  " ", err0
 		call gen_new_wgtrend(wage_trend,wage_coef)
@@ -6229,6 +6114,7 @@ program V0main
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
@@ -6244,6 +6130,7 @@ program V0main
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"
@@ -6260,6 +6147,7 @@ program V0main
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		call cal_dist(parvec,err0,shk)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "error in targets with ", caselabel, " ", err0
@@ -6276,6 +6164,7 @@ program V0main
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		call cal_dist(parvec,err0,shk)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "error in targets with ", caselabel, " ", err0
@@ -6291,6 +6180,7 @@ program V0main
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
 	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"

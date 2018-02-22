@@ -705,7 +705,9 @@ subroutine setparams()
 			dm =  (PrDage(1,t)*PrDeath(1,t) + PrDage(2,t)*PrDeath(2,t) + PrDage(nd,t)*PrDeath(nd,t))*(1._dp-dm) +dm !die
 		enddo
 		dm = dm/dble(TT-1-2)
-		dm = 0.002008144_dp !just using from the simulation
+		!just using from the simulation
+		dm = 0.002250656
+		dy = 0.0002027271
 	else
 		dm = 0.d0
 		dy = 0.d0
