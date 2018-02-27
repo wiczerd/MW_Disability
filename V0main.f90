@@ -2976,8 +2976,10 @@ module sim_hists
 				d_hr = d_it(i,it)
 				age_hr = age_it(i,it)
 				if(age_hr>0) then
-					if( age_it(i,it)>0 .and. (age_it(i,it-1)<= 0)  ) then !born
-						d_it(i,it) = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
+					if(it>1) then
+						if( age_it(i,it)>0 .and. (age_it(i,it-1)<= 0)  ) then !born
+							d_it(i,it) = locate(cumPrDageDel(:,age_hr,del_hr),health_it_innov(i,it) )
+						endif
 					endif
 					!move forward d
 					if(age_hr .lt. TT)  then
@@ -3516,13 +3518,13 @@ module sim_hists
 
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
-		integer, allocatable :: a_it_int(:,:),e_it_int(:,:)
+		integer, allocatable :: a_it_int(:,:),e_it_int(:,:),invol_it(:,:)
 !		integer, allocatable :: hlthvocSSDI(:,:) ! got into ssdi on health or vocational considerations, 0= no ssdi, 1=health, 2=vocation
 		real(dp), allocatable :: e_it(:,:)
 		integer, allocatable :: brn_drawi_drawt(:,:,:)
 
 		! FOR DEBUGGING
-		real(dp), allocatable :: val_hr_it(:),ewt_it(:,:)
+		real(dp), allocatable :: ewt_it(:,:)
 		! because the actual alpha is endgoenous to unemployment and trend
 
 		real(dp), allocatable :: al_it_endog(:,:)
@@ -3610,10 +3612,10 @@ module sim_hists
 		allocate(wtr_it(Nsim,Tsim))
 		allocate(trX_it(Nsim,Tsim))
 		allocate(brn_drawi_drawt(Nsim,Tsim,2))
+		allocate(invol_it(Nsim,Tsim))
 !		allocate(hlthvocSSDI(Nsim,Tsim))
 
 		!!!!!!!!!!!!!!! DEBUGGING
-		allocate(val_hr_it(Nsim))
 		allocate(ewt_it(Nsim,Tsim))
 		ewt_it = 0._dp
 		!************************************************************************************************!
@@ -3769,15 +3771,16 @@ module sim_hists
 						do ii=1,(Ncol-1)
 							drawi = drawi_ititer(i,ii) !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
 							drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
+							brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
 							if( (status_it(drawi,drawt)>0) .and. (status_it(drawi,drawt)<4) .and. &
 							&	(age_it(drawi,drawt) .eq. age_hr ).and. (d_it(drawi,drawt) .eq. d_hr) ) then
-
 								d_it(i,it)		= d_hr
 								a_it(i,it)      = a_it(drawi,drawt)
 								e_it(i,it)      = e_it(drawi,drawt)
 								e_it_int(i,it)  = e_it_int(drawi,drawt)
 								a_it_int(i,it)  = a_it_int(drawi,drawt)
 								status_it(i,it) = status_it(drawi,drawt)
+								invol_un = invol_it(drawi,drawt)
 								exit
 							elseif(ii==Ncol) then
 								nomatch = nomatch+1
@@ -3787,6 +3790,7 @@ module sim_hists
 					if( (iter==1) .or. ii >=Ncol ) then
 						status_it(i,it) = 1
 						invol_un = 0
+						invol_it(drawi,drawt) = invol_un
 						! if(status_it_innov(i,it)>(1.-avg_unrt) .or. al_int_it(i,it) ==1 ) then
 						! 	status_it(i,it) = 2
 						! 	if( (status_it_innov(i,it) >(1.-avg_unrt/5._dp)) .or. &
@@ -3849,7 +3853,7 @@ module sim_hists
 								drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
 								if((age_it(drawi,drawt) .eq. 1 ) .and. &
 								&  (status_it(drawi,drawt) .gt. 0) .and. (status_it(drawi,drawt) .le. 3) .and. &
-								&	(age_it(drawi,drawt) .eq. 1 ).and. (d_it(drawi,drawt) .eq. d_hr) ) then
+								&  (d_it(drawi,drawt) .eq. d_hr) ) then
 
 									a_it(i,it)      = a_it(drawi,drawt)
 									e_it(i,it)      = e_it(drawi,drawt)
@@ -3935,6 +3939,7 @@ module sim_hists
 						ali_hr = al_int_it_endog(drawi,drawt)
 						if(ali_hr .eq. 1) then
 							invol_un = 1
+							invol_it(i,it) = invol_un
 							al_last_invol = al_it(drawi,drawt) ! have to set this to something. Given persistence, it's likely true
 							! status_hr = 2
 							! if( status_it_innov(drawi,drawt)<1._dp - (1._dp - fndi_hr(2))**6 ) then
@@ -3946,6 +3951,7 @@ module sim_hists
 						al_hr	= alfgrid(1,d_hr)
 						ali_hr	= 1
 					else
+						invol_it(i,it) = 0
 						al_hr	= al_it(i,it)
 						ali_hr	= al_int_it(i,it)
 					endif
@@ -4088,8 +4094,10 @@ module sim_hists
 								!voluntary or involuntary?
 									status_it(i,it) = 2
 									status_tmrw =2
+									invol_it(i,it) = 1
 								elseif((invol_un == 1) .and. (fndarrive_draw(i,it) <= fndi)) then
 									invol_un = 0
+									invol_it(i,it) = 0
 									ali_hr	= al_int_it(i,it)
 									al_hr = al_it(i,it)
 									! found a job!
@@ -4109,8 +4117,10 @@ module sim_hists
 								!voluntary or involuntary?
 									status_it(i,it) = 3
 									status_tmrw =3
+									invol_it(i,it) = 1
 								elseif((invol_un == 1) .and. (fndarrive_draw(i,it) <= lrho*fndi)) then
 									invol_un = 0
+									invol_it(i,it) = 0
 									ali_hr	= al_int_it(i,it)
 									al_hr = al_it(i,it)
 									! found a job!
@@ -4167,6 +4177,7 @@ module sim_hists
 							if( invol_un == 1) then
 								ali_hr = 1
 								al_hr = alfgrid(ali_hr,d_hr)
+								invol_it(i,it) = 1
 							endif
 						endif
 						!evaluate the asset policy
@@ -4326,7 +4337,6 @@ module sim_hists
 			!$OMP  end parallel do
 
 			if(print_lev >=3)then
-				call vec2csv(val_hr_it,"val_hr.csv")
 				call mat2csv (e_it,"e_it.csv")
 				call mat2csv (a_it,"a_it.csv")
 				call mati2csv(a_it_int,"a_it_int.csv")
@@ -4498,7 +4508,6 @@ module sim_hists
 		deallocate(ewt_it)
 		deallocate(a_it_int,e_it_int)
 		deallocate(app_it,work_it)
-		deallocate(val_hr_it)
 		deallocate(wtr_it)
 		deallocate(trX_it)
 		deallocate(brn_drawi_drawt)
@@ -4506,6 +4515,7 @@ module sim_hists
 		deallocate(xidets,xjdets)
 		deallocate(adep,edep)
 		deallocate(acoef,ecoef)
+		deallocate(invol_it)
 		deallocate(cov_coef)
 		!deallocate(hlthvocSSDI)
 		!deallocate(status_it_innov)
@@ -4675,7 +4685,7 @@ module find_params
 						else
 							XX(ii,ri) = 0._dp
 						endif
-						!call random_normal( XX(ii,ri) )
+
 					enddo
 				endif ! participating
 			enddo !it
@@ -4877,29 +4887,19 @@ module find_params
 			wage_coef = occwg_datcoef
 		endif
 
-		! do iter = 1,sd_estpts  !This is to estimate the noise standard error to get the optimal step size
-		! 	call clean_hist(hst)
-		! 	call reg_wgtrend(coef_est,vfs,pfs,hst,shk)
-		! 	call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
-		! enddo
-		! do ri=1,Ncoef
-		! 	call stdev_v( d2_coef(ri) ,coef_dist_der_hist(1:sd_estpts,ri))
-		! enddo
-		! if(print_lev .ge. 2) call vec2csv(d2_coef,"sd_coef.csv")
-
 		dfbols_nuxi_trproc = 2 !sets which problem dfovec will solve
 		Nobj_estpts = Nobj*2+1
 
 		mod_solcoefiter = 0
 
 !		Maximizing on scale vector on wc
-		if( (wglev_0 .eqv. .true.) .and. (sum(wc_guess_nolev**2)>1e-5) ) then
-			wc0 = wc_guess_nolev
-		elseif(  (wglev_0 .eqv. .false.) .and. (sum(wc_guess_lev**2)>1e-5) ) then
-			wc0 = wc_guess_lev
-		else
+!		if( (wglev_0 .eqv. .true.) .and. (sum(wc_guess_nolev**2)>1e-5) ) then
+!			wc0 = wc_guess_nolev
+!		elseif(  (wglev_0 .eqv. .false.) .and. (sum(wc_guess_lev**2)>1e-5) ) then
+!			wc0 = wc_guess_lev
+!		else
 			wc0 =  1.0_dp
-		endif
+!		endif
 		wcL = -0.5_dp
 		wcL(Ncoef_active+1) = 0.1_dp !for fndrt_mul
 		wcL(Ncoef_active+2) = 0.1_dp !for seprt_mul
@@ -5951,30 +5951,6 @@ program V0main
 	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3)
 	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp, 0.001_dp, 0.001_dp/)
 	ub = (/ 0.50_dp, 0.990_dp, 0.750_dp, 0.750_dp, 4.000_dp/)
-
-	!set up the grid over which to check derivatives
-	! open(unit=fcallog, file="cal_square.csv")
-	! write(fcallog,*) nu, xizcoef, ervec
-	! close(unit=fcallog)
-	! do i=1,6
-	! do j=1,6
-	! 	cal_on_iter_wgtrend = .false.
- ! 	 	verbose=1
-	!  	print_lev =1
-	!  	open(unit=fcallog, file = "cal_square.csv" ,ACCESS='APPEND', POSITION='APPEND')
-	!  	parvec(1) = lb(1)+  (ub(1)-lb(1))*dble(i-1)/5._dp
-	!  	parvec(2) = lb(2)+  (ub(2)-lb(2))*dble(j-1)/5._dp
-	! 	cal_on_iter_wgtrend = .false.
-	!  	call cal_dist(parvec,ervec,shk)
-	! 	cal_on_iter_wgtrend = .true.
- ! 		write(fcallog, "(G20.12)", advance='no')  nu
- ! 	 	write(fcallog, "(G20.12)", advance='no')  xizcoef
-	!  	write(fcallog, "(G20.12)", advance='no')  ervec(1)
-	!  	write(fcallog, "(G20.12)", advance='yes') ervec(2)
-	!  	print *, nu, xizcoef, ervec(1), ervec(2)
-	!  	close(unit=fcallog)
-	! enddo
-	! enddo
 
 	if( (run_cal .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
 		call system_clock(count_rate=cr)

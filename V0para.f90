@@ -56,8 +56,8 @@ integer, parameter ::	nal = 6,  &!5		!Number of individual alpha types
 			maxiter = 2000, &		!Tolerance parameter
 			Nsim = 20000,&!5000*nj	!how many agents to draw
 			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
-			init_yrs = 4,&			!how many years for calibration to initial state of things
-			init0_yrs= 1,&			!how many years buffer before calibration to initial state of things
+			init_yrs = 3,&			!how many years for calibration to initial state of things
+			init0_yrs= 0,&			!how many years buffer before calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10
@@ -562,9 +562,9 @@ subroutine setparams()
 	wage_trend = occwg_dattrend
 
 	!Wage-trend grid-setup
-	trgrid(1) = minval(wage_trend(Tsim,:)+wage_lev)*1.1_dp
+	trgrid(1) = (minval(wage_trend(Tsim,:) + wage_lev ))*1.1_dp
 	if(ntr>1) then
-		trgrid(ntr) = maxval(wage_trend(Tsim,:)+wage_lev)*1.1_dp
+		trgrid(ntr) = (maxval(wage_trend(Tsim,:)+wage_lev))*1.1_dp
 		do tri=2,(ntr-1)
 			trgrid(tri) = dble(tri-1)*(trgrid(ntr)-trgrid(1))/dble(ntr-1) + trgrid(1)
 		enddo
