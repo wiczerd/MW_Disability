@@ -55,7 +55,9 @@ integer, parameter ::	nal = 6,  &!5		!Number of individual alpha types
 			NTpolyT = 2,& 			!polynomial order for time trend overall
 			maxiter = 2000, &		!Tolerance parameter
 			Nsim = 20000,&!5000*nj	!how many agents to draw
-			Tsim = itlen*(2010-1984), &	!how many periods to solve for simulation
+			year0 = 1984, &			!when simulation starts and stops
+			yearT = 2015, &
+			Tsim = itlen*(yearT-year0+1), &	!how many periods to solve for simulation
 			init_yrs = 3,&			!how many years for calibration to initial state of things
 			init0_yrs= 0,&			!how many years buffer before calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
@@ -85,7 +87,8 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  RAS_pid    = .true.   !balance the health transition matrix
 
 logical			  ::  run_experiments = .false., &
-					  run_cal = .false.
+					  run_cal = .false., &
+					  refine_cal = .false.
 
 real(8), parameter ::  amax 	 = 24.0,   &	!Max on Asset Grid
 					   amin = 0.0	   	!Min on Asset Grid
@@ -206,7 +209,7 @@ integer :: 		Tblock_exp	= 2000,	&	!Expected time before structural change (years
 
 logical  :: cal_on_iter_wgtrend = .true.
 integer  :: cal_niter = 0
-real(8)  :: cal_obj = 1., wc_guess_nolev(NTpolyT+Nskill+2)=0.,&
+real(8)  :: cal_obj = 1., wc_guess_nolev(NTpolyT+Nskill+2)=0., &
 		&	wc_guess_lev(NTpolyT+Nskill*2+2)=0.
 logical  :: cal_on_grad = .false.
 
@@ -251,10 +254,12 @@ subroutine setparams()
 
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
-	real(8) :: age_occ_read(6,18), age_read(31,TT), maxADL_read(16), &
-		& occbody_trend_read(Tsim,17), wage_trend_read(Tsim,17), UE_occ_read(2,16),EU_occ_read(2,16),apprt_read(50,2), ONET_read(16,4), &
-		& pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15), age_read_wkr(31), &
-		& wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(22)
+	real(8) :: age_occ_read(6,18), age_read(38,TT), maxADL_read(16)
+	real(8) :: occbody_trend_read(yearT-year0+1,17),occbody_trend_interp(Tsim,nj)
+	real(8) :: UE_occ_read(2,16),EU_occ_read(2,16), apprt_read(50,2), ONET_read(16,4)
+	real(8) :: pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15)
+	real(8) :: age_read_wkr(38),occpr_read_wkr(yearT-year0+1)
+	real(8) :: wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(22)
 
 	real(8) :: pid1(nd,nd),r1(nd),s1(nd),PrDage_tp1(nd,TT-1)
 
@@ -265,7 +270,7 @@ subroutine setparams()
 
 	real(8) :: wr(nd),wi(nd),vl(nd,nd),vr(nd,nd),abnrm,rcondv(nd),scl(nd),sdec(nd,nd),rconde(nd),wrk(nd*(nd+6))
 	integer :: ilo,ihi,iwrk(nd*2-2),lwrk,status
-
+	CHARACTER(80) :: headers
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -277,8 +282,9 @@ subroutine setparams()
 	! Read things in:
 
 	!Read in the occupation size among the young.
-	open(unit=fread, file="hpShareO.csv")
-	do t=1,Tsim
+	open(unit=fread, file="Male_SOC_Demog.csv")
+	read(fread,*) headers !throw away the first row
+	do t=1,(yearT-year0+1)
 		read(fread,*) occbody_trend_read(t,:)
 	enddo
 	close(fread)
@@ -303,19 +309,12 @@ subroutine setparams()
 	enddo
 	close(fread)
 	!read initial distribution of age
-	open(unit= fread, file = "PrAge.csv")
-	do i=1,31
+	open(unit= fread, file = "Male_Age_Demog.csv")
+	read(fread,*) headers
+	do i=1,38
 		read(fread,*) age_read(i,:)
 	enddo
 	close(fread)
-
-	!wage levels and trends by occupation
-	open(unit= fread, file = "wageTrend.csv")
-	do t=1,Tsim
-		read(fread,*) wage_trend_read(t,:)
-	enddo
-	close(fread)
-
 
 	open(unit= fread, file = "OLSWageTrend_O2.csv")
 	do j=1,17
@@ -687,11 +686,10 @@ subroutine setparams()
 	enddo
 
 	!age structure extrapolate over periods
-	age_read(:,1) = age_read(:,1)-age_read(1,1)
 	do i=1,TT-1
 		call spline( age_read(:,1),age_read(:,i+1),age_read_wkr)
 		do t=1,Tsim
-			prob_age(i,t) = splint(age_read(:,1),age_read(:,i+1),age_read_wkr, dble(t-1)/tlen )
+			prob_age(i,t) = splint(age_read(:,1),age_read(:,i+1),age_read_wkr, dble(t-1)/tlen+year0 )
 		enddo
 	enddo
 
@@ -805,16 +803,23 @@ subroutine setparams()
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !	occupation structure
+
+	do i=1,nj
+		call spline( occbody_trend_read(:,1),occbody_trend_read(:,i+1),occpr_read_wkr)
+		do t=1,Tsim
+			occbody_trend_interp(t,i) = splint(occbody_trend_read(:,1),occbody_trend_read(:,i+1),occpr_read_wkr, dble(t-1)/tlen+year0)
+		enddo
+	enddo
 	summy = 0.
 	do j=1,nj
-		occpr_trend(1,j) = occbody_trend_read( 1,j+1 )
+		occpr_trend(1,j) = occbody_trend_interp( 1,j )
 		summy = occpr_trend(1,j) + summy
 	enddo
 	occpr_trend(1,:) = occpr_trend(1,:)/summy
 	do t=2,Tsim
 		summy = 0.
 		do j=1,nj
-			occpr_trend(t,j) = (occbody_trend_read( t,j+1 ) - occbody_trend_read(t-1,j+1 )*(1.-ptau(1)))/prborn_t(t)
+			occpr_trend(t,j) = (occbody_trend_interp( t,j ) - occbody_trend_interp(t-1,j )*(1.-ptau(1)))/prborn_t(t)
 			summy = occpr_trend(t,j) + summy
 		enddo
 		occpr_trend(t,:) = occpr_trend(t,:)/summy

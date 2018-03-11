@@ -1072,7 +1072,7 @@ module model_data
 		moments_sim%init_hlth_acc = 0._dp
 		do i=1,Nsim
 			dicont_hr = 0._dp
-			do it=(init0_yrs*itlen),(init_yrs*itlen)
+			do it=(init0_yrs*itlen+1),(init_yrs*itlen)
 				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
 					ninsur_app = 1._dp + ninsur_app
 					if(hst%status_hist(i,it) == 3) then
@@ -4919,10 +4919,10 @@ module find_params
 		if( verbose >=2) print *, "rhobeg in interwg: ", rhobeg
 		if( cal_niter < 2*(2*2+1)) then !2 is Nopt in the outer calibration cycle. This is a bit sloppy
 			rhoend = rhobeg/1000._dp
-			maxiter_hr = 100
+			maxiter_hr = min(100,maxiter)
 		else
 			rhoend = rhobeg/1000._dp
-			maxiter_hr = 200
+			maxiter_hr = min(200,maxiter)
 		endif
 		!maxiter_hr = 3
 		print_lev_bobyqa = plO !set this to printlev (plO)
@@ -5303,32 +5303,36 @@ module find_params
 				fdist = dabs( fopt_hist(i)-fval )/dabs(fval)
 				xdist = sum(dabs( xopt_hist(:,i)- xopt ) / dabs(xopt))
 				if( (fopt_hist(i) .lt. fval) .or. (i==1)) then
+					j = i
 					if(xdist .ge. nopt*simtol) W = W + 1._dp
-					fval = fopt_hist(i)
-					xopt = xopt_hist(:,i)
-					wage_coef = internalopt_hist(1:size(wage_coef),i)
-					fndrt_mul = internalopt_hist(1+size(wage_coef),i)
-					seprt_mul = internalopt_hist(2+size(wage_coef),i)
-					!output global wage_trend  in optimal
-					call gen_new_wgtrend(wage_trend, wage_coef)
-					fndgrid = fndgrid0*fndrt_mul
-					fndrt_mul =1._dp
-					sepgrid = sepgrid0*seprt_mul
-					seprt_mul =1._dp
-					!print them all
-					call mat2csv(wage_trend, "wage_trend_opt.csv")
-					call vec2csv(wage_coef, "wage_coef_opt.csv")
-					if(nopt==2) then
-						call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt.csv")
-					elseif(nopt==3) then
-						call vec2csv( (/nu, xizd1coef,xizd23coef,wmean/)  , "nuxiw_opt.csv")
-					elseif(nopt==5) then
-						call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt.csv")
-					endif
-					call mat2csv(fndgrid, "fndgrid_opt.csv")
-					call mat2csv(sepgrid, "sepgrid_opt.csv")
 				endif
 			enddo
+			i =j !j indexed the minimnum value
+			fval = fopt_hist(i)
+			xopt = xopt_hist(:,i)
+			wage_coef = internalopt_hist(1:size(wage_coef),i)
+			fndrt_mul = internalopt_hist(1+size(wage_coef),i)
+			seprt_mul = internalopt_hist(2+size(wage_coef),i)
+			!output global wage_trend  in optimal
+			call gen_new_wgtrend(wage_trend, wage_coef)
+			fndgrid = fndgrid0*fndrt_mul
+			fndrt_mul =1._dp
+			sepgrid = sepgrid0*seprt_mul
+			seprt_mul =1._dp
+			!print them all
+			call mat2csv(wage_trend, "wage_trend_opt.csv")
+			call vec2csv(wage_coef, "wage_coef_opt.csv")
+			if(nopt==2) then
+				call vec2csv( (/nu, xizcoef,wmean/)  , "nuxiw_opt.csv")
+			elseif(nopt==3) then
+				call vec2csv( (/nu, xizd1coef,xizd23coef,wmean/)  , "nuxiw_opt.csv")
+			elseif(nopt==5) then
+				call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt.csv")
+			endif
+			call mat2csv(fndgrid, "fndgrid_opt.csv")
+			call mat2csv(sepgrid, "sepgrid_opt.csv")
+
+
 			EW = W*dble(nstarts-1)/max( dble(nstarts) - W-2 ,1._dp)
 			if( dble(nstarts) - W-2 .le. 0._dp ) EW = nstarts
 			print *, "EW: ", EW, " W: ", W
@@ -5606,24 +5610,25 @@ program V0main
 		real(dp) :: xsec_PrDageDel(nd,TT,ndi)
 	!************************************************************************************************!
 	! Structure to communicate everything
-		type(val_struct), target :: vfs
-		type(pol_struct), target :: pfs
-		type(hist_struct), target:: hst
-		type(shocks_struct) :: shk
+		type(val_struct), target    :: vfs
+		type(pol_struct), target    :: pfs
+		type(hist_struct), target   :: hst
+		type(shocks_struct), target :: shk
 		type(moments_struct):: moments_sim
 		type(val_pol_shocks_struct) :: vfs_pfs_shk
 	! Timers
 		integer :: c1=1,c2=1,cr=1,cm=1
 		real(dp) :: t1=1.,t2=1.
 		logical :: sol_once = .true.
-	! NLopt stuff
+	! NLopt/BOBYQA stuff
 		integer(8) :: calopt=0,ires=0, calopt_loc=0,ires_loc=0
 		real(dp) :: lb(5),ub(5),parvec(5), ervec(5), erval, param0(5)=1.,err0(5)=1.,lb_1(1),ub_1(1),parvec_1(1),ervec_1(1)
 		integer  :: nodei,nnode,ierr
-!		external :: cal_dist_nloptwrap
-		real(dp) :: X1(5,3),X2(5,3),X3(3,3)
-
-		external dgemm
+		!for refinement
+		real(dp) :: rhobeg, rhoend,x0(5),xopt(5),zeros(5),ones(5)
+		real(dp), allocatable :: wspace(:)
+		integer :: nopt,ninterppt
+		external dgemm, dfovec
 
 	moments_sim%alloced = 0
 
@@ -5666,6 +5671,14 @@ program V0main
 			run_cal = .false.
 		endif
 		print *, "run calibration", run_cal
+		if(narg_in > 5) then
+			call GETARG(6, arg_in)
+			read(arg_in, *) refine_cal
+		else
+			refine_cal = .false.
+		endif
+		print *, "refine calibration", refine_cal
+
 
 	endif
 
@@ -5720,7 +5733,7 @@ program V0main
 
 		call vec2csv(occsz0, "occsz0.csv")
 		call vec2csv(occdel, "occdel.csv")
-		call mat2csv(prob_age, "prob_age.csv")
+		call mat2csv(transpose(prob_age), "prob_age.csv")
 		call mat2csv(occpr_trend,"occpr_trend.csv")
 		call mat2csv(occwg_dattrend,"occwg_dattrend.csv")
 		call vec2csv(occwg_datlev,"occwg_datlev.csv")
@@ -5833,8 +5846,8 @@ program V0main
 		if(verbose >1) print *, "Solving the model"
 		call sol(vfs,pfs)
 
-! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! THIS IS AN ENGINEERING FIX AND SHOULD BE REPLACED
+     ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     ! THIS IS AN ENGINEERING FIX AND SHOULD BE REPLACED
 		call sim(vfs, pfs, hst,shk,.false.) !---- lingering issue that 1st stage seems to have correlated results
 		xsec_PrDageDel = 0._dp
 		do i=1,Nsim
@@ -5856,7 +5869,7 @@ program V0main
 		PrDageDel = xsec_PrDageDel
 		call set_dit(shk%d_hist,shk%health_it_innov,shk%del_i_int,shk%age_hist)
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
-! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
 			if(verbose>1) print *, "iterating to find wage trend"
 			call iter_wgtrend(vfs, pfs, hst,shk)
@@ -5886,7 +5899,7 @@ program V0main
 		if(verbose >=1) print *, "Computing moments"
 		call moments_compute(hst,moments_sim,shk)
 		if(verbose >=1) print *, "DI rate" , moments_sim%avg_di
-!	set mean wage:
+		!	set mean wage:
 		wmean = 0._dp
 		junk = 0._dp
 		ii =1
@@ -5968,6 +5981,7 @@ program V0main
 		call system_clock(c2)
 		if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
 	endif
+
 	!****************************************************************************
 	!   Now run some experiments:
 	print_lev = 2
@@ -6009,6 +6023,41 @@ program V0main
 		endif
 		read(fread,*) wmean
 	close(fread)
+
+
+	if (refine_cal .eqv. .true. ) then
+
+		x0 = (/ nu,  xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3) /)
+		xopt = (x0-lb)/(ub-lb)
+		nopt = size(xopt)
+		ninterppt = 2*nopt+1
+		mod_shk => shk
+		allocate(mod_xl(nopt))
+		allocate(mod_xu(nopt))
+		mod_xl = lb ! this is so bounds are available in dfovec
+		mod_xu = ub
+		zeros = max(xopt - 0.075_dp, 0._dp)
+		ones  = min(xopt + 0.075_dp, 1._dp)
+
+		allocate(wspace((ninterppt+5)*(ninterppt+nopt)+3*nopt*(nopt+5)/2))
+		dfbols_nuxi_trproc = 1
+		rhobeg = .05
+		rhoend = rhobeg*1e-5_dp
+		do i=1,nopt
+			if( (ones(i)-zeros(i) < 2._dp * rhobeg)  .and. zeros(i) .le. 0._dp ) ones(i)  = zeros(i)+ 0.15_dp
+			if( (ones(i)-zeros(i) < 2._dp * rhobeg)  .and. ones(i)  .ge. 1._dp ) zeros(i) = ones(i) - 0.15_dp
+		enddo
+		cal_on_iter_wgtrend = .false.
+		call bobyqa_h(nopt,ninterppt,xopt,zeros,ones, &
+		&	rhobeg,rhoend,1,100,wspace,nopt)
+
+		call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt_refine.csv")
+
+		deallocate(mod_xl,mod_xu)
+		deallocate(wspace)
+
+	endif
+
 
 	if (dbg_skip .eqv. .false.) then
 		cal_on_iter_wgtrend = .false.
