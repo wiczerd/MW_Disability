@@ -167,7 +167,7 @@ real(8) :: 	beta= dexp(-.1/tlen),&	!People are impatient (10% annual discount ra
 		alfmu(nd) = 0.0,&		!Mean of Alpha_i type
 		alfcondsig(nd) = 0.015**0.5,&	!Conditional StdDev of Alpha_i type (Normal)
 
-		b = 0.4,&		!Home production income
+		b = 0.4,&			!Home production income
 		lrho = 0.5,&		!Discount in the probability of finding a job when long-term unemployed (David)
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
@@ -450,7 +450,7 @@ subroutine setparams()
 			summy = sum(pialf(i,2:nal,d))
 			if(summy /=1 ) pialf(i,2:nal,d)=pialf(i,2:nal,d)/summy !this is just numerical error
 		enddo
-		alfgrid(1,d) = log(b) !aribtrary... meant to be small
+		alfgrid(1,d) = min(log(b),alfgrid(2,d)) !aribtrary... meant to be small
 
 		! ergpialf = 0.
 		! ergpialf(1) = 0.
@@ -470,7 +470,7 @@ subroutine setparams()
 		!this comes from the SIPP, code in CVW: DTall[ lfstat_wave==1 & seam==T, mean(wavewage,na.rm = T)] - DTall[ lfstat_wave==1 & seam==T & shift(EU_wave,type="lag")==T, mean(wavewage,na.rm = T)]
 		sd_uloss   = (0.5888828)**0.5
 
-		pialf(1,2,d) = alnorm( ((alfgrid(1,d)+alfgrid(2,d))/2.-mean_uloss) /sd_uloss,.false.)
+		pialf(1,nal,d) = 1.- alnorm( ((alfgrid(nal-1,d)+alfgrid(nal,d))/2.-mean_uloss) /sd_uloss,.false.)
 		if( nal > 3) then
 			do i= 3,(nal-1)
 				pialf(1,i,d) = ( &
@@ -478,8 +478,11 @@ subroutine setparams()
 						&	alnorm( ((alfgrid(i-1,d)+alfgrid(i,d))/2.- mean_uloss ) /sd_uloss,.false.) )
 			enddo
 		endif
-		pialf(1,nal,d) = 1.-sum(pialf(1,2:(nal-1) ,d))
+		pialf(1,2,d) = 1.-sum(pialf(1,3:nal ,d))
 		pialf(2:nal,1,d) = 0. !exogenous separation is not built into alpha transitions
+		!change this!!!!!!!!!!!!!!!
+		!pialf(1,3:nal,d) = 0.
+		!pialf(1,2,d) = 1.
 	enddo
 
 	!~~~~~~~~~~~~~~~~~~~~~~~~~~~
