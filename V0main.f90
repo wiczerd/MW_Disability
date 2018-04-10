@@ -3757,47 +3757,61 @@ module sim_hists
 
 					d_hr = d_it(i,it)
 
-					if((iter>1) ) then
+					if(final_iter .eqv. .false.) then
 						do ii=1,(Ncol-1)
 							drawi = drawi_ititer(i,ii) !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
 							drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
-							brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
 							if( (status_it(drawi,drawt)>0) .and. (status_it(drawi,drawt)<4) .and. &
 							&	(age_it(drawi,drawt) .eq. age_hr ).and. (d_it(drawi,drawt) .eq. d_hr) .and. &
-							&   (al_int_it(drawi,drawt) .eq. al_int_it(i,it) )) then
+							&   (al_int_it(drawi,drawt) .eq. al_int_it(i,it) ) ) then
 								d_it(i,it)		= d_hr
 								a_it(i,it)      = a_it(drawi,drawt)
 								e_it(i,it)      = e_it(drawi,drawt)
 								e_it_int(i,it)  = e_it_int(drawi,drawt)
 								a_it_int(i,it)  = a_it_int(drawi,drawt)
 								status_it(i,it) = status_it(drawi,drawt)
-								invol_un = invol_it(drawi,drawt)
+								invol_un        = invol_it(drawi,drawt)
+								brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
 								exit
-							elseif(ii==Ncol) then
-								nomatch = nomatch+1
+
+							elseif((ii>=Ncol-1) .or. (iter==1) )then
+
+								status_it(i,it) = 1
+								invol_un = 0
+								invol_it(drawi,drawt) = invol_un
+
+								d_hr = d_it(i,it)
+								brn_drawi_drawt(i,it,:) = (/i,it/)
+								if(age_it(i,it)==1) then
+									a_it_int(i,it) = 1
+									a_it(i,it) = minval(agrid)
+									e_it(i,it) = minval(egrid)
+									e_it_int(i,it) = 1
+								else
+									a_it_int(i,it) = na/2
+									a_it(i,it) = agrid(na/2)
+									e_it(i,it) = egrid(ne/2)
+									e_it_int(i,it) = ne/2
+								endif
+								if(iter>1) nomatch = nomatch+1
+
+								exit
 							endif
 						enddo
-					endif
-					if( (iter==1) .or. ii >=Ncol ) then
-						status_it(i,it) = 1
-						invol_un = 0
-						invol_it(drawi,drawt) = invol_un
+					elseif( iter>1 .and. final_iter .eqv. .true.) then
+						drawt = brn_drawi_drawt(i,it,2)
+						drawi = brn_drawi_drawt(i,it,1)
+						d_it(i,it)		= d_hr
+						a_it(i,it)      = a_it(drawi,drawt)
+						e_it(i,it)      = e_it(drawi,drawt)
+						e_it_int(i,it)  = e_it_int(drawi,drawt)
+						a_it_int(i,it)  = a_it_int(drawi,drawt)
+						status_it(i,it) = status_it(drawi,drawt)
+						invol_un        = invol_it(drawi,drawt)
 
-						d_hr = d_it(i,it)
-						brn_drawi_drawt(i,it,:) = (/i,it/)
-						if(age_it(i,it)==1) then
-							a_it_int(i,it) = 1
-							a_it(i,it) = minval(agrid)
-							e_it(i,it) = minval(egrid)
-							e_it_int(i,it) = 1
-						else
-							a_it_int(i,it) = na/2
-							a_it(i,it) = agrid(na/2)
-							e_it(i,it) = egrid(ne/2)
-							e_it_int(i,it) = ne/2
-						endif
 					endif
-				endif
+
+				endif !age>0
 
 			enddo !i=1:Nsim
 
@@ -4053,7 +4067,7 @@ module sim_hists
 							! figure out status transition and involuntary unemployment
 							select case (status_hr)
 							case(1) ! working
-								if( status_it_innov(i,it) < sepi .or. work_dif_hr<0 ) then !separate?
+								if( status_it_innov(i,it) < sepi .or. work_dif_hr<0 ) then !separate? (don't allow endogenous separations in period 1 because their state might be screwy)
 									al_last_invol = al_hr
 									wage_hr	= wage(0._dp,al_last_invol,d_hr,age_hr)
 									if(w_strchng .eqv. .true.) &
@@ -4361,7 +4375,6 @@ module sim_hists
 				d_var(age_hr) = d_var(age_hr)/junk
 			enddo
 
-
 			if( final_iter .eqv. .true. ) then
 				exit !leave the iter loop!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 			endif
@@ -4503,9 +4516,6 @@ module sim_hists
 		deallocate(acoef,ecoef)
 		deallocate(invol_it)
 		deallocate(cov_coef)
-		!deallocate(hlthvocSSDI)
-		!deallocate(status_it_innov)
-		!deallocate(drawi_ititer,drawt_ititer)
 
 	end subroutine sim
 
