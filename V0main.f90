@@ -1068,7 +1068,7 @@ module model_data
 		moments_sim%init_hlth_acc = 0._dp
 		do i=1,Nsim
 			dicont_hr = 0._dp
-			do it=(init0_yrs*itlen+1),(init_yrs*itlen)
+			do it=(init0_yrs*itlen+1),((init_yrs+init0_yrs)*itlen)
 				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
 					ninsur_app = 1._dp + ninsur_app
 					if(hst%status_hist(i,it) == 3) then
@@ -4351,7 +4351,7 @@ module sim_hists
 			do age_hr = 1,TT-1
 				junk = 1.
 				do i=1,Nsim
-					do it = 1,(init_yrs*itlen)
+					do it = (init0_yrs*itlen),((init_yrs+init0_yrs)*itlen)
 						if( age_hr .eq. age_it(i,it) ) then
 							a_mean(age_hr) = a_it(i,it)      + a_mean(age_hr)
 							d_mean(age_hr) = d_it(i,it)      + d_mean(age_hr)
@@ -4364,7 +4364,7 @@ module sim_hists
 				d_mean(age_hr) = d_mean(age_hr)/junk
 				s_mean(age_hr) = s_mean(age_hr)/junk
 				do i=1,Nsim
-					do it = 1,(init_yrs*itlen)
+					do it = (init0_yrs*itlen),((init_yrs+init0_yrs)*itlen)
 						if( (age_hr .eq. age_it(i,it)) .and. (a_it(i,it)>0._dp)) then
 							a_var(age_hr) = (dlog(a_it(i,it)) - dlog(a_mean(age_hr)))**2 + a_var(age_hr)
 							d_var(age_hr) = (d_it(i,it) - d_mean(age_hr))**2+ d_var(age_hr)
@@ -4635,7 +4635,7 @@ module find_params
 
 		ii = 0
 		do i=1,Nsim
-			do it=1,Tsim
+			do it=(TossYears*itlen+1),Tsim
 				if(  (shk%age_hist(i,it) > 0) .and. (hst%status_hist(i,it)==1)) then
 					ii = 1+ii
 					ij = shk%j_i(i) !this guy's occupation
@@ -4647,16 +4647,16 @@ module find_params
 								if((ik == 1) .and. (ip == 1)) then
 									XX(ii,ri) = 1._dp
 								elseif( (ik==1) .and. (ip>1)) then
-									XX(ii,ri) = (dble(it)/tlen)**(ip-1)
+									XX(ii,ri) = (dble(it)/tlen-TossYears)**(ip-1)
 								else
-									XX(ii,ri) = occ_onet(ij,ik-1)*(dble(it)/tlen)**(ip-1)
+									XX(ii,ri) = occ_onet(ij,ik-1)*(dble(it)/tlen-TossYears)**(ip-1)
 								endif
 								ri = ri+1
 							enddo !ik, skill
 						enddo !ip, poly degree
 					else
 						do ip=1,NTpolyT
-							XX(ii,ri) = (dble(it)/tlen)**ip
+							XX(ii,ri) = (dble(it)/tlen-TossYears)**ip
 							ri = ri+1
 						enddo
 						do ik=1,Nskill
@@ -4664,7 +4664,7 @@ module find_params
 							ri = ri+1
 						enddo
 						do ik=1,Nskill
-							XX(ii,ri) = (dble(it)/tlen)*occ_onet(ij,ik)
+							XX(ii,ri) = (dble(it)/tlen-TossYears)*occ_onet(ij,ik)
 							ri = ri+1
 						enddo
 						XX(ii,ri) = 1._dp
@@ -4758,15 +4758,21 @@ module find_params
 			do ij=1,nj
 				do it=1,Tsim
 					wage_trend_hr = 0._dp
-					do ip =1,(NKpolyT+1)
-						if((wglev_0 .eqv. .false.) .or. (ip .gt. 1)) then
-							if(ip .gt. 1) &
-							&	wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
-							do ik=2,(Nskill+1)
-								wage_trend_hr  = (dble(it)/tlen)**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
-							enddo
-						endif
-					enddo
+					if(it>TossYears*itlen) then
+						do ip =1,(NKpolyT+1)
+							if((wglev_0 .eqv. .false.) .or. (ip .gt. 1)) then
+								if(ip .gt. 1) &
+								&	wage_trend_hr  = (dble(it)/tlen-dble(TossYears))**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
+								do ik=2,(Nskill+1)
+									wage_trend_hr  = (dble(it)/tlen-dble(TossYears))**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
+								enddo
+							endif
+						enddo
+					else
+						do ik=2,(Nskill+1)
+							wage_trend_hr  = (0._dp)**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
+						enddo
+					endif
 					if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
 					if(wage_trend_hr .lt. trgrid(1)  ) wage_trend_hr = trgrid(1)
 
@@ -4782,13 +4788,23 @@ module find_params
 			do ij=1,nj
 			do it=1,Tsim
 				wage_trend_hr = 0._dp
-				do ip =1,NTpolyT
-					wage_trend_hr = (dble(it)/tlen)**ip*wage_coef_in(ip) + wage_trend_hr
-				enddo
-				do ik=1,Nskill
-					wage_trend_hr = dble(it)/tlen*wage_coef_in(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
-					& + wage_coef_in(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
-				enddo
+				if( it>TossYears*itlen) then
+					do ip =1,NTpolyT
+						wage_trend_hr = (dble(it)/tlen - dble(TossYears))**ip*wage_coef_in(ip) + wage_trend_hr
+					enddo
+					do ik=1,Nskill
+						wage_trend_hr = (dble(it)/tlen - dble(TossYears))*wage_coef_in(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
+						& + wage_coef_in(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
+					enddo
+				else
+					do ip =1,NTpolyT
+						wage_trend_hr = (0._dp)**ip*wage_coef_in(ip) + wage_trend_hr
+					enddo
+					do ik=1,Nskill
+						wage_trend_hr = (0._dp)*wage_coef_in(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
+						& + wage_coef_in(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
+					enddo
+				endif
 				new_wgtrend(it,ij) = wage_trend_hr
 			enddo
 			enddo
@@ -4816,7 +4832,7 @@ module find_params
 		type(pol_struct), target :: pfs
 		type(hist_struct), target:: hst
 
-		real(dp) :: dist_wgtrend,dist_wgtrend_iter(maxiter), sep_fnd_mul(maxiter,2)
+		real(dp) :: dist_wgtrend, sep_fnd_mul(maxiter,2)
 		real(dp) :: wage_trend_hr
 		integer  :: i,ii,ij,it, iter,iout,plO,vO, ik, ip,ri
 		integer  :: miniter = 3, status, maxiter_hr,print_lev_bobyqa

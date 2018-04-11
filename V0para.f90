@@ -57,9 +57,10 @@ integer, parameter ::	nal = 6,  &!5		!Number of individual alpha types
 			Nsim = 20000,&!5000*nj	!how many agents to draw
 			year0 = 1984, &			!when simulation starts and stops
 			yearT = 2015, &
-			Tsim = itlen*(yearT-year0+1), &	!how many periods to solve for simulation
+			TossYears = 2, & 		!number of years to run and throwaway
+			Tsim = itlen*(yearT - year0+1 + TossYears), &	!how many periods to solve for simulation
 			init_yrs = 3,&			!how many years for calibration to initial state of things
-			init0_yrs= 0,&			!how many years buffer before calibration to initial state of things
+			init0_yrs= TossYears,&	!how many years buffer before calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10
@@ -528,25 +529,44 @@ subroutine setparams()
 		do i=1,nj
 			do t=1,Tsim
 				occwg_dattrend(t,i) = 0._dp
-				do j =1,(NKpolyT+1)
-					occwg_dattrend(t,i) =     (dble(t)/tlen)**(j-1)*occwg_datcoef_sqr(1,j)                 + occwg_dattrend(t,i)
-					do k=1,Nskill
-						occwg_dattrend(t,i) = (dble(t)/tlen)**(j-1)*occwg_datcoef_sqr(k+1,j)*occ_onet(i,k) + occwg_dattrend(t,i)
+				if(t>TossYears*itlen) then
+					do j =1,(NKpolyT+1)
+						occwg_dattrend(t,i) =     (dble(t)/tlen-dble(TossYears))**(j-1)*occwg_datcoef_sqr(1,j)                 + occwg_dattrend(t,i)
+						do k=1,Nskill
+							occwg_dattrend(t,i) = (dble(t)/tlen-dble(TossYears))**(j-1)*occwg_datcoef_sqr(k+1,j)*occ_onet(i,k) + occwg_dattrend(t,i)
+						enddo
 					enddo
-				enddo
+				else
+					do j =1,(NKpolyT+1)
+						occwg_dattrend(t,i) =     (0.)**(j-1)*occwg_datcoef_sqr(1,j)                 + occwg_dattrend(t,i)
+						do k=1,Nskill
+							occwg_dattrend(t,i) = (0.)**(j-1)*occwg_datcoef_sqr(k+1,j)*occ_onet(i,k) + occwg_dattrend(t,i)
+						enddo
+					enddo
+				endif
 			enddo
 		enddo
 	else
 		do i=1,nj
 			do t=1,Tsim
 				occwg_dattrend(t,i) = 0._dp
-				do j =1,NTpolyT !unroll time trend
-					occwg_dattrend(t,i) = (dble(t)/tlen)**j*occwg_datcoef(j) + occwg_dattrend(t,i)
-				enddo
-				do k=1,Nskill !occupation-specific ONET prices
-					occwg_dattrend(t,i) = (dble(t)/tlen)*occwg_datcoef(k+NTpolyT+ Nskill)*occ_onet(i,k) &
-					& + occwg_datcoef(k+NTpolyT)*occ_onet(i,k) + occwg_dattrend(t,i)
-				enddo
+				if(t>TossYears*itlen) then
+					do j =1,NTpolyT !unroll time trend
+						occwg_dattrend(t,i) = (dble(t)/tlen-dble(TossYears))**j*occwg_datcoef(j) + occwg_dattrend(t,i)
+					enddo
+					do k=1,Nskill !occupation-specific ONET prices
+						occwg_dattrend(t,i) = (dble(t)/tlen-dble(TossYears))*occwg_datcoef(k+NTpolyT+ Nskill)*occ_onet(i,k) &
+						& + occwg_datcoef(k+NTpolyT)*occ_onet(i,k) + occwg_dattrend(t,i)
+					enddo
+				else
+					do j =1,NTpolyT !unroll time trend
+						occwg_dattrend(t,i) = (0.)**j*occwg_datcoef(j) + occwg_dattrend(t,i)
+					enddo
+					do k=1,Nskill !occupation-specific ONET prices
+						occwg_dattrend(t,i) = (0.)*occwg_datcoef(k+NTpolyT+ Nskill)*occ_onet(i,k) &
+						& + occwg_datcoef(k+NTpolyT)*occ_onet(i,k) + occwg_dattrend(t,i)
+					enddo
+				endif
 			enddo
 		enddo
 	endif
@@ -691,8 +711,11 @@ subroutine setparams()
 	!age structure extrapolate over periods
 	do i=1,TT-1
 		call spline( age_read(:,1),age_read(:,i+1),age_read_wkr)
-		do t=1,Tsim
-			prob_age(i,t) = splint(age_read(:,1),age_read(:,i+1),age_read_wkr, dble(t-1)/tlen+year0 )
+		do t=(TossYears*itlen+1),Tsim
+			prob_age(i,t) = splint(age_read(:,1),age_read(:,i+1),age_read_wkr, dble(t-1)/tlen-TossYears+year0 )
+		enddo
+		do t=1,(TossYears*itlen)
+			prob_age(i,t) = prob_age(i,TossYears*itlen+1)
 		enddo
 	enddo
 
@@ -809,8 +832,11 @@ subroutine setparams()
 
 	do i=1,nj
 		call spline( occbody_trend_read(:,1),occbody_trend_read(:,i+1),occpr_read_wkr)
-		do t=1,Tsim
-			occbody_trend_interp(t,i) = splint(occbody_trend_read(:,1),occbody_trend_read(:,i+1),occpr_read_wkr, dble(t-1)/tlen+year0)
+		do t=(TossYears*itlen+1),Tsim
+			occbody_trend_interp(t,i) = splint(occbody_trend_read(:,1),occbody_trend_read(:,i+1),occpr_read_wkr, dble(t-1)/tlen+year0-TossYears)
+		enddo
+		do t=1,(TossYears*itlen)
+			occbody_trend_interp(t,i) = occbody_trend_interp(TossYears*itlen+1,i)
 		enddo
 	enddo
 	summy = 0.
