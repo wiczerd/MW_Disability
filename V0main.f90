@@ -3139,6 +3139,9 @@ module sim_hists
 		NBER_start_stop(2,2) = 18*itlen + 3*( itlen/4 ) +1
 		NBER_start_stop(3,1) = 24*itlen + 3*( itlen/4 ) +1
 		NBER_start_stop(3,2) = 26*itlen + 1*( itlen/4 ) +1
+
+		NBER_start_stop = NBER_start_stop+itlen*TossYears !shift the whole thing
+
 		!start cycles on 1st
 
 		ss = 1
