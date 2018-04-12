@@ -726,8 +726,8 @@ module helper_funs
 		allocate(shk%fndsep_i_int(Nsim,2,nz), stat=shk%alloced)
 		allocate(shk%fndarrive_draw(Nsim,Tsim), stat=shk%alloced)
 		!this must be big enough that we are sure it's big enough that can always find a worker
-		allocate(shk%drawi_ititer(Nsim,2000), stat=shk%alloced)
-		allocate(shk%drawt_ititer(Nsim,2000), stat=shk%alloced)
+		allocate(shk%drawi_ititer(Nsim,Nsim/5), stat=shk%alloced)
+		allocate(shk%drawt_ititer(Nsim,Nsim/5), stat=shk%alloced)
 		allocate(shk%j_i(Nsim), stat=shk%alloced)
 		allocate(shk%jshock_ij(Nsim,nj), stat=shk%alloced)
 		allocate(shk%status_it_innov(Nsim,Tsim), stat=shk%alloced)
@@ -3668,7 +3668,7 @@ module sim_hists
 			if(ptrsuccess .eqv. .false. ) print *, "failed to associate V"
 		endif
 		ndets = 2 + nd-1 + oldN+1-1 + ndi-1 + nal-1+1 !status dummies (WUN), d dummies (nd), age dummies (1+oldN), del dummies (ndi), al_int_dummies(nal).
-		nregobs = nint(dble(Nsim*Tsim)/10._dp)
+		nregobs = nint(dble(Nsim*Tsim)/2._dp)
 		allocate(cov_coef(ndets,ndets))
 		allocate(acoef(ndets))
 		allocate(ecoef(ndets))
@@ -3747,6 +3747,17 @@ module sim_hists
 			hst%hlthprob_hist = 0.
 			hst%hlth_voc_hist= 0
 
+			if(iter>1 ) then
+				call OLS(Xdets(1:nregobs,:),adep(1:nregobs),acoef,cov_coef,hatsig2,status)
+				call OLS(Xdets(1:nregobs,:),edep(1:nregobs),ecoef,cov_coef,hatsig2,status)
+				if(print_lev .ge. 4) then
+					call vec2csv(acoef,"acoef.csv")
+					call vec2csv(ecoef,"ecoef.csv")
+					call mat2csv(Xdets(1:nregobs,:),"Xdets.csv")
+				endif
+				! print *, nregobs
+			endif
+
 			it = 1
 			nomatch = 0
 			junk =0.
@@ -3760,65 +3771,140 @@ module sim_hists
 
 					d_hr = d_it(i,it)
 
-					if(final_iter .eqv. .false.) then
+					if(iter >1) then
+						xidets = 0._dp
+						xjdets = 0._dp
+						m=1
+						do il=2,3
+							if(status_it(drawi,drawt) == il) xidets(m) = 1._dp
+							m = m+1
+						enddo
+						do id=2,nd
+							if(d_it(drawi,drawt)== id) xidets(m) = 1._dp
+							m = m+1
+						enddo
+						do il=2,(oldN+1)
+							if(age_it(drawi,drawt) == il) xidets(m) = 1._dp
+							m=m+1
+						enddo
+						do  idi=2,ndi
+							if(del_i_int(drawi)==idi) xidets(m)= 1._dp
+							m=m+1
+						enddo
+						do  ial=1,nal
+							if(ial .ne. 3)then
+								if(al_int_it_endog(drawi,drawt)==ial) xidets(m)= 1._dp
+								m=m+1
+							endif
+						enddo
+						xidets(m)= 1._dp
+
 						do ii=1,(Ncol-1)
 							drawi = drawi_ititer(i,ii) !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
 							drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
 							if( (status_it(drawi,drawt)>0) .and. (status_it(drawi,drawt)<4) .and. &
-							&	(age_it(drawi,drawt) .eq. age_hr ).and. (d_it(drawi,drawt) .eq. d_hr) .and. &
-							&   (al_int_it(drawi,drawt) .eq. al_int_it(i,it) ) ) then
-								d_it(i,it)		= d_hr
-								a_it(i,it)      = a_it(drawi,drawt)
-								e_it(i,it)      = e_it(drawi,drawt)
-								e_it_int(i,it)  = e_it_int(drawi,drawt)
-								a_it_int(i,it)  = a_it_int(drawi,drawt)
+							&	(age_it(drawi,drawt) .eq. age_hr ).and. (d_it(drawi,drawt) .eq. d_hr) ) then
+							!&   (al_int_it(drawi,drawt) .eq. al_int_it(i,it)) ) then
+								!ndets = 3-1+nd-1+(oldN+1)-1+ndi-1+nal-1+1 !status dummies (WUN), d dummies, age dummies (1+oldN), del dummies (12), al_int dummies.
+								xjdets = 0._dp
+								m=1
+								do il=2,3
+									if(status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+									m = m+1
+								enddo
+								do id=2,nd
+									if(d_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == id) xjdets(m) = 1._dp
+									m = m+1
+								enddo
+								do il=2,(oldN+1)
+									if(age_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+									m=m+1
+								enddo
+								do  idi=2,ndi
+									if(del_i_int(drawi_ititer(i,ii+1))==idi) xjdets(m)= 1._dp
+									m=m+1
+								enddo
+								do  ial=1,nal
+									if(ial .ne. 3)then
+										if(al_int_it_endog(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1))==ial) xjdets(m)= 1._dp
+										m=m+1
+									endif
+								enddo
+								xjdets(m)= 1._dp
+
+								a_residj = a_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,acoef)
+								e_residj = e_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,ecoef)
+
+								brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
 								status_it(i,it) = status_it(drawi,drawt)
+								d_it(i,it) = d_hr
+								a_it(i,it) = dot_product(xidets,acoef) + a_residj
+								a_it(i,it) = min(max(a_it(i,it),minval(agrid)),maxval(agrid))
+								e_it(i,it) = dot_product(xidets,ecoef) + e_residj
+								e_it(i,it)     = min(max(e_it(i,it),minval(egrid)),maxval(egrid))
+								e_it_int(i,it) = locate(egrid,e_it(i,it))
+								a_it_int(i,it) = locate(agrid,a_it(i,it))
+								! d_it(i,it)		= d_hr
+								! a_it(i,it)      = a_it(drawi,drawt)
+								! e_it(i,it)      = e_it(drawi,drawt)
+								! e_it_int(i,it)  = e_it_int(drawi,drawt)
+								! a_it_int(i,it)  = a_it_int(drawi,drawt)
+								! status_it(i,it) = status_it(drawi,drawt)
 								invol_un        = invol_it(drawi,drawt)
 								brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
 								exit
-
-							elseif((ii>=Ncol-1) .or. (iter==1) )then
+							elseif(ii>=Ncol-1)then
 
 								status_it(i,it) = 1
 								invol_un = 0
 								invol_it(drawi,drawt) = invol_un
-
 								d_hr = d_it(i,it)
 								brn_drawi_drawt(i,it,:) = (/i,it/)
-								if(age_it(i,it)==1) then
-									a_it_int(i,it) = 1
-									a_it(i,it) = minval(agrid)
-									e_it(i,it) = minval(egrid)
-									e_it_int(i,it) = 1
-								else
-									a_it_int(i,it) = na/2
-									a_it(i,it) = agrid(na/2)
-									e_it(i,it) = egrid(ne/2)
-									e_it_int(i,it) = ne/2
+								a_it(i,it) = dot_product(xidets,acoef) !minval(agrid)
+								e_it(i,it) = dot_product(xidets,ecoef)
+								e_it_int(i,it) = locate(egrid,e_it(i,it))
+								a_it_int(i,it) = locate(agrid,a_it(i,it))
+								! if(age_it(i,it)==1) then
+								! 	a_it_int(i,it) = 1
+								! 	a_it(i,it) = minval(agrid)
+								! 	e_it(i,it) = minval(egrid)
+								! 	e_it_int(i,it) = 1
+								! else
+								! 	a_it_int(i,it) = na/2
+								! 	a_it(i,it) = agrid(na/2)
+								! 	e_it(i,it) = egrid(ne/2)
+								! 	e_it_int(i,it) = ne/2
+								! endif
+								if(iter>1) then
+									nomatch = nomatch+1
+									if(verbose>0) print *, "t=0 nomatch: d = ", d_hr , "al = ", al_int_it(i,it), "age = ", age_hr
 								endif
-								if(iter>1) nomatch = nomatch+1
-
 								exit
 							endif
 						enddo
-					elseif( iter>1 .and. final_iter .eqv. .true.) then
-						drawt = brn_drawi_drawt(i,it,2)
-						drawi = brn_drawi_drawt(i,it,1)
-						d_it(i,it)		= d_hr
-						a_it(i,it)      = a_it(drawi,drawt)
-						e_it(i,it)      = e_it(drawi,drawt)
-						e_it_int(i,it)  = e_it_int(drawi,drawt)
-						a_it_int(i,it)  = a_it_int(drawi,drawt)
-						status_it(i,it) = status_it(drawi,drawt)
-						invol_un        = invol_it(drawi,drawt)
-
+					elseif( iter==1 ) then
+						status_it(i,it) = 1
+						invol_un = 0
+						invol_it(drawi,drawt) = invol_un
+						d_hr = d_it(i,it)
+						brn_drawi_drawt(i,it,:) = (/i,it/)
+						if(age_it(i,it)==1) then
+							a_it_int(i,it) = 1
+							a_it(i,it) = minval(agrid)
+							e_it(i,it) = minval(egrid)
+							e_it_int(i,it) = 1
+						else
+							a_it_int(i,it) = na/2
+							a_it(i,it) = agrid(na/2)
+							e_it(i,it) = egrid(ne/2)
+							e_it_int(i,it) = ne/2
+						endif
 					endif
-
 				endif !age>0
-
 			enddo !i=1:Nsim
 
-			if( (verbose>0) .and. (nomatch>0) ) print *, "did not find match for draw ", nomatch, " times"
+			if( (verbose>0) .and. (nomatch>0) ) print *, "did not find match for t=0 draw ", nomatch, " times"
+			nomatch = 0
 
 			!$OMP  parallel do &
 			!$OMP& private(i,interp_i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,tri_hr,apc_hr,ep_hr, &
@@ -3856,13 +3942,59 @@ module sim_hists
 								drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
 								if((age_it(drawi,drawt) .eq. 1 ) .and. &
 								&  (status_it(drawi,drawt) .gt. 0) .and. (status_it(drawi,drawt) .le. 3) .and. &
-								&  (d_it(drawi,drawt) .eq. d_hr)  .and. &
-								&  (al_int_it(drawi,drawt) .eq. al_int_it(i,it) ) ) then
+								&  (d_it(drawi,drawt) .eq. d_hr)  ) then
+							!	&  (al_int_it(drawi,drawt) .eq. al_int_it(i,it) ) ) then
 
-									a_it(i,it)      = a_it(drawi,drawt)
-									e_it(i,it)      = e_it(drawi,drawt)
-									e_it_int(i,it)  = e_it_int(drawi,drawt)
-									a_it_int(i,it)  = a_it_int(drawi,drawt)
+									!ndets = 3-1+nd-1+(oldN+1-1)+ndi-1+nal-1+1 !status dummies (WUN), d dummies, age dummies (1+oldN), del dummies (12), al_int dummies.
+									xidets = 0._dp
+									xjdets = 0._dp
+									m=1
+									do il=2,3
+										if(status_it(drawi,drawt) == il) xidets(m) = 1._dp
+										if(status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+										m = m+1
+									enddo
+									do id=2,nd
+										if(d_it(drawi,drawt)== id) xidets(m) = 1._dp
+										if(d_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == id) xjdets(m) = 1._dp
+										m = m+1
+									enddo
+									do il=2,(oldN+1)
+										if(age_it(drawi,drawt) == il) xidets(m) = 1._dp
+										if(age_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+										m=m+1
+									enddo
+									do  idi=2,ndi
+										if(del_i_int(drawi)==idi) xidets(m)= 1._dp
+										if(del_i_int(drawi_ititer(i,ii+1))==idi) xjdets(m)= 1._dp
+										m=m+1
+									enddo
+									do  ial=1,nal
+										if(ial .ne. 3)then
+											if(al_int_it_endog(drawi,drawt)==ial) xidets(m)= 1._dp
+											if(al_int_it_endog(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1))==ial) xjdets(m)= 1._dp
+											m=m+1
+										endif
+									enddo
+									xidets(m)= 1._dp
+									xjdets(m)= 1._dp
+
+									a_residj = a_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,acoef)
+									e_residj = e_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,ecoef)
+
+									brn_drawi_drawt(i,it,:) = (/drawi, drawt /)
+									status_it(i,it) = status_it(drawi,drawt)
+									d_it(i,it)		= d_hr
+									a_it(i,it)		= dot_product(xidets,acoef) + a_residj
+									a_it(i,it)      = min(max(a_it(i,it),minval(agrid)),maxval(agrid))
+									e_it(i,it)      = dot_product(xidets,ecoef) + e_residj
+									e_it(i,it)      = min(max(e_it(i,it),minval(egrid)),maxval(egrid))
+									e_it_int(i,it)  = locate(egrid,e_it(i,it))
+									a_it_int(i,it)  = locate(agrid,a_it(i,it))
+									! a_it(i,it)      = a_it(drawi,drawt)
+									! e_it(i,it)      = e_it(drawi,drawt)
+									! e_it_int(i,it)  = e_it_int(drawi,drawt)
+									! a_it_int(i,it)  = a_it_int(drawi,drawt)
 									status_it(i,it) = status_it(drawi,drawt)
 									exit
 								endif
@@ -3870,14 +4002,21 @@ module sim_hists
 								brn_drawi_drawt(i,it,1) = i
 								brn_drawi_drawt(i,it,2) = it
 								d_it(i,it) = d_hr
-								a_it(i,it) = minval(agrid)
-								e_it(i,it) = 0.
-								e_it_int(i,it) = 1
-								a_it_int(i,it) = 1
+								if(iter >1) then
+									a_it(i,it) = dot_product(xidets,acoef) !minval(agrid)
+									e_it(i,it) = dot_product(xidets,ecoef)
+									e_it_int(i,it) = locate(egrid,e_it(i,it))
+									a_it_int(i,it) = locate(agrid,a_it(i,it))
+								else
+									a_it(i,it) = minval(agrid)
+									e_it(i,it) = minval(egrid)
+									e_it_int(i,it) = 1
+									a_it_int(i,it) = 1
+								endif
 								status_it(i,it) = 1
-								if(ii>=Ncol) then
+								if(ii>=Ncol-1) then
 									nomatch = nomatch+1
-									print *, "missed at d_hr: ", d_hr, "t= ", it, "al_int ", al_int_it(i,it), "del_i_int ",del_i_int(i), " j_i= ", j_hr
+									if(verbose >0) print *, "missed at d_hr: ", d_hr, "t= ", it, "al_int ", al_int_it(i,it), "del_i_int ",del_i_int(i), " j_i= ", j_hr
 								endif
 								exit
 							endif
@@ -4339,6 +4478,51 @@ module sim_hists
 			enddo! 1,Nsim
 			!$OMP  end parallel do
 
+			if(verbose >0 .and. nomatch>0)  print *, "did match for new borns in period >1 ", nomatch, " times"
+
+			!	ndets = 3+nd+ndi+(oldN+1)+nal!status dummies (WUN), d dummies (123), age dummies (1+oldN), del dummies (12), al_int_dummies.
+			Xdets = 0._dp
+			edep = 0._dp
+			adep = 0._dp
+			ii = 1
+			do i=1,Nsim
+				if( mod(i,4)==0) then !sample 1/4
+				do it=1,Tsim
+					if(  (status_it(i,it) < 4) .and. (status_it(i,it)>0) ) then
+						m = 1
+						do il=2,3
+							if(status_it(i,it)==il) Xdets(ii,m) = 1._dp
+							m=m+1
+						enddo
+						do id=2,nd
+							if(d_it(i,it)==id) Xdets(ii,m) = 1._dp
+							m = m + 1
+						enddo
+						do il=2,(oldN+1)
+							if(age_it(i,it)==il) Xdets(ii,m) = 1._dp
+							m = m + 1
+						enddo
+						do idi=2,ndi
+							if(del_i_int(i)==idi) Xdets(ii,m) = 1._dp
+							m = m + 1
+						enddo
+						do ial=1,nal
+							if(ial .ne. 3) then !make avg the base group
+								if(al_int_it_endog(i,it)==ial) Xdets(ii,m) = 1._dp
+								m = m + 1
+							endif
+						enddo
+						Xdets(ii,m) = 1._dp
+						adep(ii) = a_it(i,it)
+						edep(ii) = e_it(i,it)
+
+						ii = ii+1
+					endif
+				enddo
+				endif
+			enddo
+			nregobs = ii-1
+
 			if(print_lev >=3)then
 				call mat2csv (e_it,"e_it.csv")
 				call mat2csv (a_it,"a_it.csv")
@@ -4484,6 +4668,9 @@ module sim_hists
 					call mat2csv (occsize_jt,"occsize_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (occgrow_jt,"occgrow_jt_hist"//trim(caselabel)//".csv")
 					call mat2csv (occshrink_jt,"occshrink_jt_hist"//trim(caselabel)//".csv")
+					call vec2csv(acoef,"acoef.csv")
+					call vec2csv(ecoef,"ecoef.csv")
+					call mat2csv(Xdets(1:nregobs,:),"Xdets.csv")
 				endif
 				call mat2csv (a_it,"a_it_hist"//trim(caselabel)//".csv")
 				call mat2csv (a_ap_dist,"a_ap_dist"//trim(caselabel)//".csv")
@@ -5978,7 +6165,7 @@ program V0main
 	!bounds for paramvec:
 	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3)
 	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp, 0.001_dp, 0.001_dp/)
-	ub = (/ 0.50_dp, 0.990_dp, 0.750_dp, 0.750_dp, 4.000_dp/)
+	ub = (/ 0.50_dp, 0.990_dp, 0.990_dp, 0.750_dp, 5.000_dp/)
 
 	if( (run_cal .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
 		call system_clock(count_rate=cr)
