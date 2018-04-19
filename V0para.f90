@@ -33,7 +33,8 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		eligY  = 0.834,&	!Fraction young who are eligable
 		R =1.,& !dexp(.02/tlen),&	!People can save in the backyard
 		upd_zscl = 0.1,&		! rate at which to update zshift
-		upd_wgtrnd = 0.01		! rate at which update wage_trend
+		upd_wgtrnd = 0.01,&		! rate at which update wage_trend
+		smth_diaward = 0.1		! number between 0,1 for how much to mix the smoothed awards
 
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired

@@ -1105,6 +1105,8 @@ module model_data
 			moments_sim%init_di= moments_sim%init_di/ninsur_app
 			init_diaward_discr = init_diaward_discr/ninsur_app
 			moments_sim%init_diaward = moments_sim%init_diaward/ninsur_app
+			! mix the smoothed and discrete:
+			moments_sim%init_diaward = smth_diaward*moments_sim%init_diaward + (1._dp - init_diaward_discr)
 			!make the award rates annual:
 			moments_sim%init_diaward = 1._dp-(1._dp-moments_sim%init_diaward)**(tlen)
 			init_diaward_discr = 1._dp-(1._dp-init_diaward_discr)**(tlen)
@@ -3772,65 +3774,47 @@ module sim_hists
 					d_hr = d_it(i,it)
 
 					if(iter >1) then
-						xidets = 0._dp
-						xjdets = 0._dp
-						m=1
-						do il=2,3
-							if(status_it(drawi,drawt) == il) xidets(m) = 1._dp
-							m = m+1
-						enddo
-						do id=2,nd
-							if(d_it(drawi,drawt)== id) xidets(m) = 1._dp
-							m = m+1
-						enddo
-						do il=2,(oldN+1)
-							if(age_it(drawi,drawt) == il) xidets(m) = 1._dp
-							m=m+1
-						enddo
-						do  idi=2,ndi
-							if(del_i_int(drawi)==idi) xidets(m)= 1._dp
-							m=m+1
-						enddo
-						do  ial=1,nal
-							if(ial .ne. 3)then
-								if(al_int_it_endog(drawi,drawt)==ial) xidets(m)= 1._dp
-								m=m+1
-							endif
-						enddo
-						xidets(m)= 1._dp
 
 						do ii=1,(Ncol-1)
 							drawi = drawi_ititer(i,ii) !drawi = drawi_ititer(i,mod(ii+iter-2,Ncol)+1)
 							drawt = drawt_ititer(i,ii) !drawt = drawt_ititer(i,mod(ii+iter-2,Ncol)+1)
+
 							if( (status_it(drawi,drawt)>0) .and. (status_it(drawi,drawt)<4) .and. &
 							&	(age_it(drawi,drawt) .eq. age_hr ).and. (d_it(drawi,drawt) .eq. d_hr) ) then
 							!&   (al_int_it(drawi,drawt) .eq. al_int_it(i,it)) ) then
 								!ndets = 3-1+nd-1+(oldN+1)-1+ndi-1+nal-1+1 !status dummies (WUN), d dummies, age dummies (1+oldN), del dummies (12), al_int dummies.
 								xjdets = 0._dp
+								xidets = 0._dp
 								m=1
 								do il=2,3
 									if(status_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+									if(status_it(drawi,drawt) == il) xidets(m) = 1._dp
 									m = m+1
 								enddo
 								do id=2,nd
 									if(d_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == id) xjdets(m) = 1._dp
+									if(d_it(drawi,drawt)== id) xidets(m) = 1._dp
 									m = m+1
 								enddo
 								do il=2,(oldN+1)
 									if(age_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) == il) xjdets(m) = 1._dp
+									if(age_it(drawi,drawt) == il) xidets(m) = 1._dp
 									m=m+1
 								enddo
 								do  idi=2,ndi
+									if(del_i_int(drawi)==idi) xidets(m)= 1._dp
 									if(del_i_int(drawi_ititer(i,ii+1))==idi) xjdets(m)= 1._dp
 									m=m+1
 								enddo
 								do  ial=1,nal
 									if(ial .ne. 3)then
 										if(al_int_it_endog(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1))==ial) xjdets(m)= 1._dp
+										if(al_int_it_endog(drawi,drawt)==ial) xidets(m)= 1._dp
 										m=m+1
 									endif
 								enddo
 								xjdets(m)= 1._dp
+								xidets(m)= 1._dp
 
 								a_residj = a_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,acoef)
 								e_residj = e_it(drawi_ititer(i,ii+1),drawt_ititer(i,ii+1)) - dot_product(xjdets,ecoef)
@@ -3844,12 +3828,7 @@ module sim_hists
 								e_it(i,it)     = min(max(e_it(i,it),minval(egrid)),maxval(egrid))
 								e_it_int(i,it) = locate(egrid,e_it(i,it))
 								a_it_int(i,it) = locate(agrid,a_it(i,it))
-								! d_it(i,it)		= d_hr
-								! a_it(i,it)      = a_it(drawi,drawt)
-								! e_it(i,it)      = e_it(drawi,drawt)
-								! e_it_int(i,it)  = e_it_int(drawi,drawt)
-								! a_it_int(i,it)  = a_it_int(drawi,drawt)
-								! status_it(i,it) = status_it(drawi,drawt)
+
 								invol_un        = invol_it(drawi,drawt)
 								brn_drawi_drawt(i,it,:) = (/drawi,drawt/)
 								exit
@@ -5460,6 +5439,18 @@ module find_params
 					call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt" // rank_str //".csv")
 				endif
 			enddo ! dd = 1,nstartpn
+
+			open(unit=fcallog, file = "cal_mlsl.csv" ,ACCESS='APPEND', POSITION='APPEND')
+			do i=1,(nstartpn)
+				write(fcallog, "(I4.2)", advance='no')  (i-1)/nstartpn + rank
+				do j=1,nopt
+					write(fcallog, "(G20.12)", advance='no')  node_xopts((i-1)*nopt+j)
+				enddo
+				write(fcallog, "(G20.12)", advance='yes') node_fopts(i)
+				print *, world_xopts((i-1)*nopt+1:i*nopt), node_fopts(i)
+			enddo
+			close(unit=fcallog)
+
 			!pull together all of the optimization arguments
 			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, world_fopts,&
 			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
@@ -6216,7 +6207,6 @@ program V0main
 	!read in xi, nu
 	open(unit= fread, file="nuxiw_opt.csv")
 		read(fread,*) nu
-	!	read(fread,*) xizcoef
 		read(fread,*) xizd1coef
 		read(fread,*) xizd23coef
 		if(size(parvec)>3) then
