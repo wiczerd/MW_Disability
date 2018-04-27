@@ -4070,7 +4070,7 @@ module sim_hists
 						endif
 					endif
 					if( (w_strchng .eqv. .true.) .and. (it > TossYears*itlen ) )then
-						wtr_it(i,it) = wage_trend(it,j_hr) + wage_lev(j_hr)
+						wtr_it(i,it) = wage_trend(it - TossYears*itlen,j_hr) + wage_lev(j_hr)
 					else
 						wtr_it(i,it) = 0._dp + wage_lev(j_hr)
 					endif
@@ -4818,7 +4818,7 @@ module find_params
 								if((ik == 1) .and. (ip == 1)) then
 									XX(ii,ri) = 1._dp
 								elseif( (ik==1) .and. (ip>1)) then
-									XX(ii,ri) = (dble(it)/tlen-TossYears)**(ip-1)
+									XX(ii,ri) = (dble(it)/tlen-dble(TossYears))**(ip-1)
 								else
 									XX(ii,ri) = occ_onet(ij,ik-1)*(dble(it)/tlen-TossYears)**(ip-1)
 								endif
@@ -4827,7 +4827,7 @@ module find_params
 						enddo !ip, poly degree
 					else
 						do ip=1,NTpolyT
-							XX(ii,ri) = (dble(it)/tlen-TossYears)**ip
+							XX(ii,ri) = (dble(it)/tlen-dble(TossYears))**ip
 							ri = ri+1
 						enddo
 						do ik=1,Nskill
@@ -4835,7 +4835,7 @@ module find_params
 							ri = ri+1
 						enddo
 						do ik=1,Nskill
-							XX(ii,ri) = (dble(it)/tlen-TossYears)*occ_onet(ij,ik)
+							XX(ii,ri) = (dble(it)/tlen-dble(TossYears))*occ_onet(ij,ik)
 							ri = ri+1
 						enddo
 						XX(ii,ri) = 1._dp
