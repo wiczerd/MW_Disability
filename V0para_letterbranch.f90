@@ -58,7 +58,7 @@ integer, parameter ::	nal = 6,  &!5		!Number of individual alpha types
 			maxiter = 2000, &		!Tolerance parameter
 			Nsim = 40000,&!5000*nj	!how many agents to draw
 			year0 = 1984, &			!when simulation starts and stops
-			yearT = 2013, &
+			yearT = 2015, &
 			TossYears = 5, & 		!number of years to run and throwaway
 			Tsim = itlen*(yearT - year0+1 + TossYears), &	!how many periods to solve for simulation
 			init_yrs = 3,&			!how many years for calibration to initial state of things
@@ -72,6 +72,7 @@ integer, parameter ::	nal = 6,  &!5		!Number of individual alpha types
 logical            :: tr_spline  = .false.,& 	! use spline or global polynomials for fitting trend
 					  al_contin  = .true.,&		!make alpha draws continuous or stay on the grid
 					  zj_contin	 = .false.,&	!make zj draws continous
+					  z_regimes	 = .false.,&	!different z regimes?
 					  ineligNoNu = .false.,&	!do young ineligable also pay the nu cost when they are ineligable?
 					  dieyoung   = .true.,&		!do the young die (rate associated with health state)
 					  w_strchng	 = .true.,&     ! w gets fed a structural change sequence
@@ -133,35 +134,30 @@ real(8) :: 	alfgrid(nal,nd), &	!Alpha_i grid- individual wage type parameter
 		PrDageDel(nd,TT,ndi), &	!Ergodic distribution of each D at each Age and Delta (implied by pid)
 		PrDeath(nd,TT),&	!Probability of death during work-life
 !
-		tr_knots(Nknots) = 0., & !will be the knot points
 		tr_decls(11),& !0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1
 		wg_decls(11),& !0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1
 !
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
 		wage_trend(Tsim,nj),&!trend in wages
 		wage_lev(nj),&		!occupation-specific differences in wage-level
-		!wage_coef(Nskill*2+NTpolyT+5),& !occupation-specific differences in wage-level
-		!wage_coef(Nskill*NKpolyT+Nskill+NTpolyT+5),& !occupation-specific differences in wage-level
+		wage_coef(Nskill*2+NTpolyT+5),& !occupation-specific differences in wage-level
 		sepgrid(nl,nz),&		!grid for separation rates
 		fndgrid(nl,nz),&		!grid for finding rates
 		sepwt(nl,nj,nz),&		!grid for separation rates
 		fndwt(nl,nj,nz),&		!grid for finding rates
 		seprt_mul=1.,fndrt_mul=1.,&   !multipliers for separation and finding rates
+
 !		targets for occupations
 		seprisk(nz,nj),&	!occupation-cycle specific job separation
 		fndrate(nz,nj),&	!occupation-cycle specific job finding rates
 		occ_onet(nj,Nskill),&!physical and 3 KSA
 		occwg_datcoef_sqr(Nskill+1,NKpolyT+1),& !Only used with NKpolyT>=2. Then these are the data coefficients for wage regression. also includes 0-order and time-only
 		occwg_datcoef(Nskill*2+NTpolyT+5),& !!coefficients for wage regression. First is cubic in time, then linear in skill dimension. Then 2 for age profile, 2 for health dummies, 1 const
-		occwg_datspline(Nskill+Nknots-1+Nskill*(Nknots-1)+5),& !!coefficients for wage spline regression. First is levels for skills, then cubic spline in time. Then spline for each skill. Then 2 for age profile, 2 for health dummies, 1 const
 		occwg_dattrend(Tsim,nj),& !trend in occupation wage
 		occwg_datlev(nj),&		!level of occupation wage
 
 		occsz0(nj),&		   !Fraction in each occupation
 		occpr_trend(Tsim,nj) !trend in occupation choice
-
-real(8), allocatable :: wage_coef(:) !occupation-specific differences in wage-level
-
 
 integer :: 	dgrid(nd)	! just enumerate the d states
 real(8)	::	agegrid(TT)		! the mid points of the ages
@@ -219,12 +215,10 @@ integer :: 		Tblock_exp	= 2000,	&	!Expected time before structural change (years
 
 logical  :: cal_on_iter_wgtrend = .true.
 integer  :: cal_niter = 0
-real(8)  :: cal_obj = 1.
-real(8), allocatable  :: wc_guess_nolev(:), wc_guess_lev(:)
+real(8)  :: cal_obj = 1., wc_guess_nolev(NTpolyT+Nskill+2)=0., &
+		&	wc_guess_lev(NTpolyT+Nskill*2+2)=0.
 logical  :: cal_on_grad = .false.
 
-!remove this!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-real(8) :: tbase_out(Tsim, Nknots-1)
 
 
 !**** calibration targets
@@ -259,10 +253,10 @@ contains
 subroutine setparams()
 
 	logical, parameter :: lower= .FALSE.
-	integer:: i, j, k, t,d, tri,iter,it
+	integer:: i, j, k, t,d, tri,iter
 	real(8):: summy, emin, emax, step, &
 		   alfsig(nd),alfcondsigt(nd),alfrhot(nd),alfsigt(nd), &
-		  mean_uloss,sd_uloss,tbase(Nknots-1)
+		  mean_uloss,sd_uloss
 
 	real(8), parameter :: pival = 4.D0*datan(1.D0) !number pi
 
@@ -271,8 +265,7 @@ subroutine setparams()
 	real(8) :: UE_occ_read(2,16),EU_occ_read(2,16), apprt_read(50,2), ONET_read(16,4)
 	real(8) :: pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15)
 	real(8) :: age_read_wkr(38),occpr_read_wkr(yearT-year0+1)
-	real(8) :: wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(22),wage_coef_CS_read(25)
-
+	real(8) :: wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(22)
 
 	real(8) :: pid1(nd,nd),r1(nd),s1(nd),PrDage_tp1(nd,TT-1)
 
@@ -347,11 +340,6 @@ subroutine setparams()
 	enddo
 	close(fread)
 
-	open(unit= fread, file = "OLSWageTrend_CS2.csv")
-	do j=1,25
-		read(fread,*) wage_coef_CS_read(j)
-	enddo
-	close(fread)
 
 	!Read in the disability means by occuaption
 	open(unit= fread, file="maxADL.csv")
@@ -511,151 +499,82 @@ subroutine setparams()
 		enddo
 	enddo
 
-	tr_knots = (/1.,7.,11.,20.,28. /)
-
 	occwg_datcoef = 0._dp
-	occwg_datspline = 0._dp
 	occwg_datcoef_sqr   = 0._dp
-	if( tr_spline .eqv. .false. ) then
-		allocate(wc_guess_nolev(NTpolyT+Nskill+2))
-		allocate(wc_guess_lev(NTpolyT+Nskill*2+2))
-		if(wglev_0 .eqv. .false.) allocate(wage_coef(NTpolyT+Nskill*2+5))
-		if(wglev_0 .eqv. .true.) allocate(wage_coef(NTpolyT+Nskill+5))
-		if(NKpolyT >= 2) then
-			t=6
-			do j=1,(NKpolyT+1)
-				do k=1,(Nskill+1)
-					if(k > 1 .or. j > 1) then
-						if(NKpolyT == 2)	occwg_datcoef_sqr(k,j) = wage_coef_O2_read(t)
-						if(NKpolyT == 3)	occwg_datcoef_sqr(k,j) = wage_coef_O3_read(t)
-						t = t+1
-					else
-						if(NKpolyT == 2)	occwg_datcoef_sqr(k,j) = wage_coef_O2_read( (NKpolyT+1)*(Nskill+1) +5 )
-						if(NKpolyT == 3)	occwg_datcoef_sqr(k,j) = wage_coef_O3_read( (NKpolyT+1)*(Nskill+1) +5 )
-					endif
-				enddo
+	if(NKpolyT >= 2) then
+		t=6
+		do j=1,(NKpolyT+1)
+			do k=1,(Nskill+1)
+				if(k > 1 .or. j > 1) then
+					if(NKpolyT == 2)	occwg_datcoef_sqr(k,j) = wage_coef_O2_read(t)
+					if(NKpolyT == 3)	occwg_datcoef_sqr(k,j) = wage_coef_O3_read(t)
+					t = t+1
+				else
+					if(NKpolyT == 2)	occwg_datcoef_sqr(k,j) = wage_coef_O2_read( (NKpolyT+1)*(Nskill+1) +5 )
+					if(NKpolyT == 3)	occwg_datcoef_sqr(k,j) = wage_coef_O3_read( (NKpolyT+1)*(Nskill+1) +5 )
+				endif
 			enddo
-		else
-			t= 14
-			do j=1,NTpolyT !read the NTpolyT in time
-				occwg_datcoef(j) = wage_coef_O1_read(t)
-				t=t+1
-			enddo
-			do k=1,(2*Nskill) !level and then trend for each skill
-				occwg_datcoef(k+NTpolyT) = wage_coef_O1_read(t)
-				t=t+1
-			enddo
-			occwg_datcoef(1+NTpolyT+2*Nskill) = wage_coef_O1_read(t) !just to get the constant
-		endif
+		enddo
 	else
-		allocate(wc_guess_nolev((Nskill+1)*(Nknots-1)+2))
-		allocate(wc_guess_lev( Nknots-1+ Nskill*Nknots +2 ))
-		if(wglev_0 .eqv. .true.) allocate(wage_coef((Nskill+1)*(Nknots-1)+5) )
-		if(wglev_0 .eqv. .true.) allocate(wage_coef(Nknots-1 + Nskill*Nknots+5) )
+		t= 14
+		do j=1,NTpolyT !read the NTpolyT in time
+			occwg_datcoef(j) = wage_coef_O1_read(t)
+			t=t+1
+		enddo
+		do k=1,(2*Nskill) !level and then trend for each skill
+			occwg_datcoef(k+NTpolyT) = wage_coef_O1_read(t)
+			t=t+1
+		enddo
+		occwg_datcoef(1+NTpolyT+2*Nskill) = wage_coef_O1_read(t) !just to get the constant
+	endif
 
-		t= 6
-		do j=1,(Nknots-1)
-			occwg_datspline(j) = wage_coef_CS_read(t)
-			t = t+1
+
+	!use the coefficients to set the trends (stored in occwg_dattrend):
+	if(NKpolyT>=2) then
+		do i=1,nj
+			do t=1,Tsim
+				occwg_dattrend(t,i) = 0._dp
+				if(t>TossYears*itlen) then
+					do j =1,(NKpolyT+1)
+						occwg_dattrend(t,i) =     (dble(t)/tlen-dble(TossYears))**(j-1)*occwg_datcoef_sqr(1,j)                 + occwg_dattrend(t,i)
+						do k=1,Nskill
+							occwg_dattrend(t,i) = (dble(t)/tlen-dble(TossYears))**(j-1)*occwg_datcoef_sqr(k+1,j)*occ_onet(i,k) + occwg_dattrend(t,i)
+						enddo
+					enddo
+				else
+					do j =1,(NKpolyT+1)
+						occwg_dattrend(t,i) =     (0.)**(j-1)*occwg_datcoef_sqr(1,j)                 + occwg_dattrend(t,i)
+						do k=1,Nskill
+							occwg_dattrend(t,i) = (0.)**(j-1)*occwg_datcoef_sqr(k+1,j)*occ_onet(i,k) + occwg_dattrend(t,i)
+						enddo
+					enddo
+				endif
+			enddo
 		enddo
-		do j=1,Nskill
-			occwg_datspline(j+Nskill) = wage_coef_CS_read(t)
-			t = t+1
-		enddo
-		do k=1,NSkill
-			do j=1,(Nknots-1)
-				occwg_datspline(j +(k-1)*(Nknots-1) + Nskill+(Nknots-1)) = wage_coef_CS_read(t)
-				t =t+1
+	else
+		do i=1,nj
+			do t=1,Tsim
+				occwg_dattrend(t,i) = 0._dp
+				if(t>TossYears*itlen) then
+					do j =1,NTpolyT !unroll time trend
+						occwg_dattrend(t,i) = (dble(t)/tlen-dble(TossYears))**j*occwg_datcoef(j) + occwg_dattrend(t,i)
+					enddo
+					do k=1,Nskill !occupation-specific ONET prices
+						occwg_dattrend(t,i) = (dble(t)/tlen-dble(TossYears))*occwg_datcoef(k+NTpolyT+ Nskill)*occ_onet(i,k) &
+						& + occwg_datcoef(k+NTpolyT)*occ_onet(i,k) + occwg_dattrend(t,i)
+					enddo
+				else
+					do j =1,NTpolyT !unroll time trend
+						occwg_dattrend(t,i) = (0.)**j*occwg_datcoef(j) + occwg_dattrend(t,i)
+					enddo
+					do k=1,Nskill !occupation-specific ONET prices
+						occwg_dattrend(t,i) = (0.)*occwg_datcoef(k+NTpolyT+ Nskill)*occ_onet(i,k) &
+						& + occwg_datcoef(k+NTpolyT)*occ_onet(i,k) + occwg_dattrend(t,i)
+					enddo
+				endif
 			enddo
 		enddo
 	endif
-
-	!use the coefficients to set the trends (stored in occwg_dattrend):
-	if( tr_spline .eqv. .true. ) then
-		do i= 1,nj
-			do t=1,Tsim
-				occwg_dattrend(t,i) =0._dp
-				if(t>TossYears*itlen) then
-					it = t
-				else
-					it = TossYears*itlen
-				endif
-				do k=1,Nskill
-					occwg_dattrend(t,i) = occwg_datspline(k)*occ_onet(i,k) +occwg_dattrend(t,i)
-				enddo
-				tbase = 0._dp
-				tbase(1) = (dble(it)/tlen - dble(TossYears))
-				do j=1,(Nknots-2)
-					if((dble(it)/tlen - dble(TossYears) - tr_knots(j)) > 0.) &
-					& 	tbase(j+1) = (dble(it)/tlen - dble(TossYears) - tr_knots(j))**3 + tbase(j+1)
-					if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1) >0.) &
-					&	tbase(j+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1))**3 *(tr_knots(Nknots)-tr_knots(j))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-						&  + tbase(j+1)
-					if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) >0. ) &
-					& 	tbase(j+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) )**3 *(tr_knots(Nknots-1)-tr_knots(j))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-						&  + tbase(j+1)
-					tbase(j+1) = tbase(j+1)*(tr_knots(Nknots)-tr_knots(1))**(-2)
-				enddo
-				tbase_out(t,:) = tbase
-				do j=1,(Nknots-1)
-					occwg_dattrend(t,i) = occwg_datspline(j+Nskill)*tbase(j) +occwg_dattrend(t,i)
-				enddo
-
-				do k=1,Nskill
-					do j=1,(Nknots-1)
-						occwg_dattrend(t,i) = occwg_datspline(j+(k-1)*(Nknots-1)+Nskill+Nknots-1)*tbase(j)*occ_onet(i,k) &
-								& + occwg_dattrend(t,i)
-					enddo
-				enddo
-			enddo !Tsim
-		enddo ! Nj
-	else
-		if(NKpolyT>=2) then
-			do i=1,nj
-				do t=1,Tsim
-					occwg_dattrend(t,i) = 0._dp
-					if(t>TossYears*itlen) then
-						do j =1,(NKpolyT+1)
-							occwg_dattrend(t,i) =     (dble(t)/tlen-dble(TossYears))**(j-1)*occwg_datcoef_sqr(1,j)                 + occwg_dattrend(t,i)
-							do k=1,Nskill
-								occwg_dattrend(t,i) = (dble(t)/tlen-dble(TossYears))**(j-1)*occwg_datcoef_sqr(k+1,j)*occ_onet(i,k) + occwg_dattrend(t,i)
-							enddo
-						enddo
-					else
-						do j =1,(NKpolyT+1)
-							occwg_dattrend(t,i) =     (0.)**(j-1)*occwg_datcoef_sqr(1,j)                 + occwg_dattrend(t,i)
-							do k=1,Nskill
-								occwg_dattrend(t,i) = (0.)**(j-1)*occwg_datcoef_sqr(k+1,j)*occ_onet(i,k) + occwg_dattrend(t,i)
-							enddo
-						enddo
-					endif
-				enddo
-			enddo
-		else
-			do i=1,nj
-				do t=1,Tsim
-					occwg_dattrend(t,i) = 0._dp
-					if(t>TossYears*itlen) then
-						do j =1,NTpolyT !unroll time trend
-							occwg_dattrend(t,i) = (dble(t)/tlen-dble(TossYears))**j*occwg_datcoef(j) + occwg_dattrend(t,i)
-						enddo
-						do k=1,Nskill !occupation-specific ONET prices
-							occwg_dattrend(t,i) = (dble(t)/tlen-dble(TossYears))*occwg_datcoef(k+NTpolyT+ Nskill)*occ_onet(i,k) &
-							& + occwg_datcoef(k+NTpolyT)*occ_onet(i,k) + occwg_dattrend(t,i)
-						enddo
-					else
-						do j =1,NTpolyT !unroll time trend
-							occwg_dattrend(t,i) = (0.)**j*occwg_datcoef(j) + occwg_dattrend(t,i)
-						enddo
-						do k=1,Nskill !occupation-specific ONET prices
-							occwg_dattrend(t,i) = (0.)*occwg_datcoef(k+NTpolyT+ Nskill)*occ_onet(i,k) &
-							& + occwg_datcoef(k+NTpolyT)*occ_onet(i,k) + occwg_dattrend(t,i)
-						enddo
-					endif
-				enddo
-			enddo
-		endif !square coefficients or linear
-	endif !spline or global polynomial
 
 	!initialize the input to the observed
 	do i=1,nj
@@ -998,8 +917,8 @@ subroutine setparams()
 	wd(3) = -0.266	!Full Disabled, large penalty
 	!Fixed cost of particpation
 	Fd(1) = 0.
-	Fd(2) = 0.276
-	Fd(3) = 0.524
+	Fd(2) = 0.276*10
+	Fd(3) = 0.5248*10
 
 
 	!DI Acceptance probability for each d,t status

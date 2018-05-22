@@ -3568,7 +3568,6 @@ module sim_hists
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,&
 					&   triwt=1., ewt=0.,hatsig2,a_residj,e_residj
 
-
 		integer :: ali_hr=1,aliH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1,ial=1, ai_hr=1,api_hr=1,ei_hr=1,triH=1,eiH=1, &
 			& tri=1, tri_hr=1,fndi_hr(nz),sepi_hr(nz),status_hr=1,status_tmrw=1,drawi=1,drawt=1, invol_un = 0,slice_len=1, brn_yr_hr=1, interp_i, &
 			samplestep = 4
@@ -4368,7 +4367,7 @@ module sim_hists
 								apc_hr = min(max( apc_hr, minval(agrid)),maxval(agrid))
 								if(interp_i == 1) then
 									junk = apc_hr
-								else !interp_i == 2
+								else
 									apc_hr = ewt*junk+(1._dp-ewt)*junk
 									ei_hr = ii
 								endif
@@ -4433,7 +4432,9 @@ module sim_hists
 							ep_hr = max(min( ep_hr,egrid(ne) ),egrid(1))
 							e_it(i,it+1) = ep_hr
 							! assign to grid points by floor rule (will later interpolate)
-							ei_hr = locate(egrid,ep_hr)
+							do ei_hr = ne,1,-1
+								if( ep_hr > egrid(ei_hr) ) exit
+							enddo
 							ei_hr = min(max(ei_hr,1),ne)
 							e_it_int(i,it+1) = min(max(ei_hr,1),ne)
 
@@ -4787,16 +4788,11 @@ module find_params
 
 		real(dp), allocatable :: XX(:,:), yy(:), coef_est(:), cov_coef(:,:), XX_ii(:,:), yy_ii(:)
 		real(dp) :: hatsig2
-		real(dp) :: tbase(Nknots-1)
 
-		if(tr_spline .eqv. .false.) then
-			if( NKpolyT>=2 ) then
-				Ncoef = (Nskill+1)*(NKpolyT+1)+2 !NKpolyT*Nskill + Nskill + NKpolyT + 2 + const
-			else
-				Ncoef = Nskill*2 + NTpolyT+Nnuisance !Nskill-level, Nskill-time trend, cubic time, 2 age, const
-			endif
+		if( NKpolyT>=2 ) then
+			Ncoef = (Nskill+1)*(NKpolyT+1)+2 !NKpolyT*Nskill + Nskill + NKpolyT + 2 + const
 		else
-			Ncoef = Nskill*(Nknots-1) + Nskill + (Nknots-1)+Nnuisance
+			Ncoef = Nskill*2 + NTpolyT+Nnuisance !Nskill-level, Nskill-time trend, cubic time, 2 age, const
 		endif
 
 		allocate(XX(Tsim*Nsim,Ncoef))
@@ -4818,64 +4814,31 @@ module find_params
 					ij = shk%j_i(i) !this guy's occupation
 					yy(ii) = log(hst%wage_hist(i,it))
 					ri=1
-
-					if(tr_spline .eqv. .false.) then
-						if(NKpolyT >= 2 ) then
-							do ip=1,(NKpolyT+1)
-								do ik=1,(Nskill+1)
-									if((ik == 1) .and. (ip == 1)) then
-										XX(ii,ri) = 1._dp
-									elseif( (ik==1) .and. (ip>1)) then
-										XX(ii,ri) = (dble(it)/tlen-dble(TossYears))**(ip-1)
-									else
-										XX(ii,ri) = occ_onet(ij,ik-1)*(dble(it)/tlen-TossYears)**(ip-1)
-									endif
-									ri = ri+1
-								enddo !ik, skill
-							enddo !ip, poly degree
-						else
-							do ip=1,NTpolyT
-								XX(ii,ri) = (dble(it)/tlen-dble(TossYears))**ip
+					if(NKpolyT >= 2) then
+						do ip=1,(NKpolyT+1)
+							do ik=1,(Nskill+1)
+								if((ik == 1) .and. (ip == 1)) then
+									XX(ii,ri) = 1._dp
+								elseif( (ik==1) .and. (ip>1)) then
+									XX(ii,ri) = (dble(it)/tlen-dble(TossYears))**(ip-1)
+								else
+									XX(ii,ri) = occ_onet(ij,ik-1)*(dble(it)/tlen-TossYears)**(ip-1)
+								endif
 								ri = ri+1
-							enddo
-							do ik=1,Nskill
-								XX(ii,ri) = occ_onet(ij,ik)
-								ri = ri+1
-							enddo
-							do ik=1,Nskill
-								XX(ii,ri) = (dble(it)/tlen-dble(TossYears))*occ_onet(ij,ik)
-								ri = ri+1
-							enddo
-							XX(ii,ri) = 1._dp
-							ri = ri+1
-						endif
+							enddo !ik, skill
+						enddo !ip, poly degree
 					else
+						do ip=1,NTpolyT
+							XX(ii,ri) = (dble(it)/tlen-dble(TossYears))**ip
+							ri = ri+1
+						enddo
 						do ik=1,Nskill
 							XX(ii,ri) = occ_onet(ij,ik)
 							ri = ri+1
 						enddo
-						tbase = 0._dp
-						tbase(1) = (dble(it)/tlen - dble(TossYears))
-						do ip=1,(Nknots-2)
-							if((dble(it)/tlen - dble(TossYears) - tr_knots(ip)) > 0.) &
-							& 	tbase(ip+1) = (dble(it)/tlen - dble(TossYears) - tr_knots(ip))**3 + tbase(ip+1)
-							if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1) >0.) &
-							&	tbase(ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1))**3 *(tr_knots(Nknots)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-								&  + tbase(ip+1)
-							if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) >0. ) &
-							& 	tbase(ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) )**3 *(tr_knots(Nknots-1)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-								&  + tbase(ip+1)
-							tbase(ip+1) = tbase(ip+1)*(tr_knots(Nknots)-tr_knots(1))**(-2)
-						enddo
-						do ip=1,(Nknots-1)
-							XX(ii,ri) = tbase(ip)
-							ri = ri+1
-						enddo
 						do ik=1,Nskill
-							do ip=1,(Nknots-1)
-								XX(ii,ri) = tbase(ip)**occ_onet(ij,ik)
-								ri = ri+1
-							enddo
+							XX(ii,ri) = (dble(it)/tlen-dble(TossYears))*occ_onet(ij,ik)
+							ri = ri+1
 						enddo
 						XX(ii,ri) = 1._dp
 						ri = ri+1
@@ -4891,6 +4854,7 @@ module find_params
 						else
 							XX(ii,ri) = 0._dp
 						endif
+
 					enddo
 				endif ! participating
 			enddo !it
@@ -4929,37 +4893,28 @@ module find_params
 		reldist_coef = 0._dp
 		dif_coef = 0._dp
 
-		if( tr_spline .eqv. .true. ) then
+		if( NKpolyT >= 2 ) then
+			ri=1
+			do ip=1,(NKpolyT+1)
+				do ik=1,(Nskill+1)
+					if(ik > 1 .or. ip > 1) then
+						if((wglev_0 .eqv. .false.) .or. (ip .gt. 1)) then
+							!distance
+							reldist_coef(ri) = dabs(coef_est(ri) - occwg_datcoef_sqr(ik,ip))/(dabs(occwg_datcoef_sqr(ik,ip))+0.01_dp)
+							dif_coef(ri) = coef_est(ri) - occwg_datcoef_sqr(ik,ip)
+						endif
+					endif
+					ri = ri+1
+				enddo !ik, skill
+			enddo !ip, poly degree
+		! LINEAR in time for ONET skills
+		else
 			do ik=1,(Ncoef-Nnuisance)
-				if((wglev_0 .eqv. .false.) .or. (ik .ge. Nskill) ) then
-					reldist_coef(ik) = dabs(coef_est(ik) - occwg_datspline(ik))/(dabs(occwg_datspline(ik))+1._dp)
-					dif_coef(ik) = coef_est(ik) - occwg_datspline(ik)
+				if((wglev_0 .eqv. .false.) .or. ( (ik .le. NTpolyT) .or. (ik .ge. Nskill+1+NTpolyT) )) then
+					reldist_coef(ik) = dabs(coef_est(ik) - occwg_datcoef(ik))/(dabs(occwg_datcoef(ik))+1._dp)
+					dif_coef(ik) = coef_est(ik) - occwg_datcoef(ik)
 				endif
 			enddo
-		else
-			if( NKpolyT >= 2 ) then
-				ri=1
-				do ip=1,(NKpolyT+1)
-					do ik=1,(Nskill+1)
-						if(ik > 1 .or. ip > 1) then
-							if((wglev_0 .eqv. .false.) .or. (ip .gt. 1)) then
-								!distance
-								reldist_coef(ri) = dabs(coef_est(ri) - occwg_datcoef_sqr(ik,ip))/(dabs(occwg_datcoef_sqr(ik,ip))+0.01_dp)
-								dif_coef(ri) = coef_est(ri) - occwg_datcoef_sqr(ik,ip)
-							endif
-						endif
-						ri = ri+1
-					enddo !ik, skill
-				enddo !ip, poly degree
-			! LINEAR in time for ONET skills
-			else
-				do ik=1,(Ncoef-Nnuisance)
-					if((wglev_0 .eqv. .false.) .or. ( (ik .le. NTpolyT) .or. (ik .ge. Nskill+1+NTpolyT) )) then
-						reldist_coef(ik) = dabs(coef_est(ik) - occwg_datcoef(ik))/(dabs(occwg_datcoef(ik))+1._dp)
-						dif_coef(ik) = coef_est(ik) - occwg_datcoef(ik)
-					endif
-				enddo
-			endif
 		endif
 
 	end subroutine dist_wgcoefs
@@ -4969,107 +4924,73 @@ module find_params
 		real(dp), intent(in)  :: wage_coef_in(:)
 		real(dp), intent(out) :: new_wgtrend(:,:)
 		integer :: ij, it, ip,i,ik
-		real(dp) :: wage_trend_hr, tbase(Nknots-1)
+		real(dp) :: wage_trend_hr
 
 		wage_lev = 0._dp
-		if(tr_spline .eqv. .true.) then
-			do it=1,Tsim
-				tbase=0._dp
-				if(it>TossYears*itlen) then
-					tbase(1) = dble(it)/tlen-dble(TossYears)
-					do ip=1,(Nknots-2)
-						if((dble(it)/tlen - dble(TossYears) - tr_knots(ip)) > 0.) &
-						& 	tbase(ip+1) = (dble(it)/tlen - dble(TossYears) - tr_knots(ip))**3 + tbase(ip+1)
-						if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1) >0.) &
-						&	tbase(ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1))**3 *(tr_knots(Nknots)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-							&  + tbase(ip+1)
-						if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) >0. ) &
-						& 	tbase(ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) )**3 *(tr_knots(Nknots-1)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-							&  + tbase(ip+1)
-						tbase(ip+1) = tbase(ip+1)*(tr_knots(Nknots)-tr_knots(1))**(-2)
-					enddo
-				endif
-				do ij=1,nj
-					wage_trend_hr = 0._dp
-					do ik=1,Nskill
-						wage_trend_hr = wage_coef(ik)*occ_onet(ij,ik) +wage_trend_hr
-					enddo
-					do ip=1,(Nknots-1)
-						wage_trend_hr = wage_coef(ip+Nskill)*tbase(ip) + wage_trend_hr
-					enddo
-					do ik=1,Nskill
-						do ip=1,(Nknots-1)
-							wage_trend_hr = wage_coef(ip + ik*(Nknots-1)+Nskill+(Nknots-1))*tbase(ip)*occ_onet(ij,ik) +wage_trend_hr
-						enddo
-					enddo
-				enddo
-			enddo
-		else
-			if( NKpolyT >= 2 ) then
-				do ij=1,nj
-					do it=1,Tsim
-						wage_trend_hr = 0._dp
-						if(it>TossYears*itlen) then
-							do ip =1,(NKpolyT+1)
-								if((wglev_0 .eqv. .false.) .or. (ip .gt. 1)) then
-									if(ip .gt. 1) &
-									&	wage_trend_hr  = (dble(it)/tlen-dble(TossYears))**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
-									do ik=2,(Nskill+1)
-										wage_trend_hr  = (dble(it)/tlen-dble(TossYears))**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
-									enddo
-								endif
-							enddo
-						else
-							do ik=2,(Nskill+1)
-								wage_trend_hr  = (0._dp)**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
-							enddo
-						endif
-						if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
-						if(wage_trend_hr .lt. trgrid(1)  ) wage_trend_hr = trgrid(1)
-
-						new_wgtrend(it,ij) = wage_trend_hr !upd_wgtrnd*wage_trend_hr + (1._dp - upd_wgtrnd)*wage_trend(it,ij)
-					enddo
-				enddo
-				do i=1,nj
-					if( wglev_0 .eqv. .false.) wage_lev(i) = new_wgtrend(1,i)
-					new_wgtrend(:,i) = new_wgtrend(:,i) - new_wgtrend(1,i)
-				enddo
-			! LINEAR in time for ONET skills
-			else
-				do ij=1,nj
+		if( NKpolyT >= 2 ) then
+			do ij=1,nj
 				do it=1,Tsim
 					wage_trend_hr = 0._dp
-					if( it>TossYears*itlen) then
-						do ip =1,NTpolyT
-							wage_trend_hr = (dble(it)/tlen - dble(TossYears))**ip*wage_coef_in(ip) + wage_trend_hr
-						enddo
-						do ik=1,Nskill
-							wage_trend_hr = (dble(it)/tlen - dble(TossYears))*wage_coef_in(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
-							& + wage_coef_in(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
+					if(it>TossYears*itlen) then
+						do ip =1,(NKpolyT+1)
+							if((wglev_0 .eqv. .false.) .or. (ip .gt. 1)) then
+								if(ip .gt. 1) &
+								&	wage_trend_hr  = (dble(it)/tlen-dble(TossYears))**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+1 )                   + wage_trend_hr
+								do ik=2,(Nskill+1)
+									wage_trend_hr  = (dble(it)/tlen-dble(TossYears))**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
+								enddo
+							endif
 						enddo
 					else
-						do ip =1,NTpolyT
-							wage_trend_hr = (0._dp)**ip*wage_coef_in(ip) + wage_trend_hr
-						enddo
-						do ik=1,Nskill
-							wage_trend_hr = (0._dp)*wage_coef_in(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
-							& + wage_coef_in(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
+						do ik=2,(Nskill+1)
+							wage_trend_hr  = (0._dp)**(ip-1)*wage_coef_in( (ip-1)*(Nskill+1)+ik)*occ_onet(ij,ik-1) + wage_trend_hr
 						enddo
 					endif
-					new_wgtrend(it,ij) = wage_trend_hr
-				enddo
-				enddo
-				do ij=1,nj
-					if( wglev_0 .eqv. .false.) wage_lev(ij) = new_wgtrend(1,ij)
-					new_wgtrend(:,ij) = new_wgtrend(:,ij) - new_wgtrend(1,ij)
-					do it=1,Tsim
-						if(new_wgtrend(it,ij) .gt. trgrid(ntr)) new_wgtrend(it,ij) = trgrid(ntr)
-						if(new_wgtrend(it,ij) .lt. trgrid(1)  ) new_wgtrend(it,ij) = trgrid(1)
+					if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
+					if(wage_trend_hr .lt. trgrid(1)  ) wage_trend_hr = trgrid(1)
 
-					enddo
+					new_wgtrend(it,ij) = wage_trend_hr !upd_wgtrnd*wage_trend_hr + (1._dp - upd_wgtrnd)*wage_trend(it,ij)
 				enddo
-			endif !linear in onet skills
-		endif !cubic spline
+			enddo
+			do i=1,nj
+				if( wglev_0 .eqv. .false.) wage_lev(i) = new_wgtrend(1,i)
+				new_wgtrend(:,i) = new_wgtrend(:,i) - new_wgtrend(1,i)
+			enddo
+		! LINEAR in time for ONET skills
+		else
+			do ij=1,nj
+			do it=1,Tsim
+				wage_trend_hr = 0._dp
+				if( it>TossYears*itlen) then
+					do ip =1,NTpolyT
+						wage_trend_hr = (dble(it)/tlen - dble(TossYears))**ip*wage_coef_in(ip) + wage_trend_hr
+					enddo
+					do ik=1,Nskill
+						wage_trend_hr = (dble(it)/tlen - dble(TossYears))*wage_coef_in(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
+						& + wage_coef_in(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
+					enddo
+				else
+					do ip =1,NTpolyT
+						wage_trend_hr = (0._dp)**ip*wage_coef_in(ip) + wage_trend_hr
+					enddo
+					do ik=1,Nskill
+						wage_trend_hr = (0._dp)*wage_coef_in(ik+NTpolyT+ Nskill)*occ_onet(ij,ik) &
+						& + wage_coef_in(ik+NTpolyT)*occ_onet(ij,ik) + wage_trend_hr
+					enddo
+				endif
+				new_wgtrend(it,ij) = wage_trend_hr
+			enddo
+			enddo
+			do ij=1,nj
+				if( wglev_0 .eqv. .false.) wage_lev(ij) = new_wgtrend(1,ij)
+				new_wgtrend(:,ij) = new_wgtrend(:,ij) - new_wgtrend(1,ij)
+				do it=1,Tsim
+					if(new_wgtrend(it,ij) .gt. trgrid(ntr)) new_wgtrend(it,ij) = trgrid(ntr)
+					if(new_wgtrend(it,ij) .lt. trgrid(1)  ) new_wgtrend(it,ij) = trgrid(1)
+
+				enddo
+			enddo
+		endif
 
 	end subroutine gen_new_wgtrend
 
@@ -5096,19 +5017,14 @@ module find_params
 		real(dp), allocatable :: fval(:),jac(:,:), wa_coef(:),wksp_dfbols(:)
 		real(dp) :: maxskill(Nskill),minskill(Nskill),ret_onet(nj),rhobeg,rhoend
 
-		if(tr_spline .eqv. .true.) then
-			Ncoef = Nskill*(Nknots-1) + Nknots-1+Nskill+Nnuisance
-			Ncoef_active = Nskill*(Nknots-1) + Nknots-1+Nskill
+		if( NKpolyT>=2 ) then
+			Ncoef = (Nskill+1)*(NKpolyT+1)+2 !NKpolyT*Nskill + Nskill + NKpolyT + 2 + const
 		else
-			if( NKpolyT>=2 ) then
-				Ncoef = (Nskill+1)*(NKpolyT+1)+2 !NKpolyT*Nskill + Nskill + NKpolyT + 2 + const
+			Ncoef = Nskill*2 + NTpolyT +Nnuisance !Nskill-level, Nskill-time trend, cubic time, 2 age, const
+			if(wglev_0 .eqv. .true. )then
+				Ncoef_active = Nskill +NTpolyT
 			else
-				Ncoef = Nskill*2 + NTpolyT +Nnuisance !Nskill-level, Nskill-time trend, cubic time, 2 age, const
-				if(wglev_0 .eqv. .true. )then
-					Ncoef_active = Nskill +NTpolyT
-				else
-					Ncoef_active = Nskill*2 +NTpolyT
-				endif
+				Ncoef_active = Nskill*2 +NTpolyT
 			endif
 		endif
 		Nobj = Ncoef_active+2
@@ -5144,20 +5060,16 @@ module find_params
 		endif
 
 		!iniitialize wage_coef
-		if( tr_spline .eqv. .true. ) then
-			wage_coef = occwg_datspline
+		ri=1
+		if(NKpolyT>=2) then
+			do ip=1,(NKpolyT+1)
+				do ik=1,(Nskill+1)
+					wage_coef(ri) = occwg_datcoef_sqr(ik,ip)
+					ri = ri+1
+				enddo !ik, skill
+			enddo !ip, poly degree
 		else
-			ri=1
-			if(NKpolyT>=2) then
-				do ip=1,(NKpolyT+1)
-					do ik=1,(Nskill+1)
-						wage_coef(ri) = occwg_datcoef_sqr(ik,ip)
-						ri = ri+1
-					enddo !ik, skill
-				enddo !ip, poly degree
-			else
-				wage_coef = occwg_datcoef
-			endif
+			wage_coef = occwg_datcoef
 		endif
 
 		dfbols_nuxi_trproc = 2 !sets which problem dfovec will solve
@@ -5203,16 +5115,9 @@ module find_params
 
 		ii=0
 		do i = 1,(Ncoef-Nnuisance)
-			if(tr_spline .eqv. .true.) then
-				if( (wglev_0 .eqv. .false.) .or. (i .ge. Nskill)) then
-					ii=ii+1
-					wage_coef(i) = wc0(ii)*occwg_datspline(i)
-				endif
-			else
-				if( (wglev_0 .eqv. .false.) .or. ( (i .le. NTpolyT).or.(i .gt. NTpolyT+Nskill)  ) ) then
-					ii=ii+1
-					wage_coef(i) = wc0(ii)*occwg_datcoef(i)
-				endif
+			if( (wglev_0 .eqv. .false.) .or. ( (i .le. NTpolyT).or.(i .gt. NTpolyT+Nskill)  ) ) then
+				ii=ii+1
+				wage_coef(i) = wc0(ii)*occwg_datcoef(i)
 			endif
 		enddo
 		fndrt_mul = wc0(ii+1)
@@ -5364,10 +5269,9 @@ module find_params
 		integer :: ierr, iprint, rank, nnode, nstarts
 		integer, allocatable :: seedhr(:)
 		real(dp) :: draw(nopt)
-		real(dp) :: x0(nopt), x0hist(nopt,500),xopt_hist(nopt,500),fopt_hist(500),v_err(nopt)
+		real(dp) :: x0(nopt), x0hist(nopt,500),xopt_hist(nopt,500),fopt_hist(500),internalopt_hist(size(wage_coef)+2,500),v_err(nopt)
 		real(dp) :: rhobeg, rhoend, EW,W,err0,fdist,xdist,junk,attraction_size
 		real(dp), allocatable :: wspace(:),sepgrid0(:,:),fndgrid0(:,:)
-		real(dp), allocatable :: internalopt_hist(:,:)
 		real(dp), allocatable :: node_fopts(:),node_xopts(:),world_fopts(:), world_xopts(:)
 		real(dp), allocatable :: world_internalopt(:),node_internalopt(:)
 		character(len=2) :: rank_str
@@ -5408,7 +5312,6 @@ module find_params
 
 		!set ndraw to do it only once:
 		ndraw = nnode*nstartpn
-		allocate( internalopt_hist(size(wage_coef)+2,500) )
 
 		allocate(wspace((ninterppt+5)*(ninterppt+nopt)+3*nopt*(nopt+5)/2))
 		allocate(node_fopts(               nstartpn))
@@ -5484,31 +5387,17 @@ module find_params
 					else
 						! set initial guess
 						ii = 1
-						if(tr_spline .eqv. .true.)then
-							do i=1,((Nknots-1)+Nskill*Nknots)
-								if( i .gt. Nskill)  then
-									wc_guess_nolev(ii) = wage_coef(i)/occwg_datspline(i)
-									ii = ii+1
-								endif
-							enddo
-							do i=1,(Nknots-1+Nskill*Nknots)
-								wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
-							enddo
-						else
-							do i=1,(NTpolyT + 2*Nskill)
-								if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
-									wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
-									ii = ii+1
-								endif
-							enddo
-							do i=1,(NTpolyT + 2*Nskill)
-								wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
-							enddo
-						endif
-
-						wc_guess_nolev(Nskill + NTpolyT +1) = fndrt_mul
-						wc_guess_nolev(Nskill + NTpolyT +2) = seprt_mul
-
+						do i=1,(NTpolyT + 2*Nskill)
+							if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
+								wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
+								ii = ii+1
+							endif
+							wc_guess_nolev(Nskill + NTpolyT +1) = fndrt_mul
+							wc_guess_nolev(Nskill + NTpolyT +2) = seprt_mul
+						enddo
+						do i=1,(NTpolyT + 2*Nskill)
+							wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
+						enddo
 						wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
 						wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
 						! only do BOBYQA if the starting point is good
@@ -5805,20 +5694,12 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		enddo
 
 		if(print_lev .ge. 3) call vec2csv(wthr, "wthr_coef.csv" )
-		if(tr_spline .eqv. .true. ) coef_here = occwg_datspline
-		if(tr_spline .eqv. .false.) coef_here = occwg_datcoef !taking constant, age profile and non-targeted from the data
+		coef_here = occwg_datcoef !taking constant, age profile and non-targeted from the data
 		ii = 1
 		do i=1,(Ncoef - Nnuisance)
-			if( tr_spline .eqv. .true. ) then
-				if((wglev_0 .eqv. .false.) .or. (i .ge. Nskill) ) then
-					coef_here(i) = coef_loc(ii)*occwg_datspline(i)
-					ii = ii+1
-				endif
-			else
-				if((wglev_0 .eqv. .false.) .or. ( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) )) then
-					coef_here(i) = coef_loc(ii)*occwg_datcoef(i)
-					ii = ii+1
-				endif
+			if((wglev_0 .eqv. .false.) .or. ( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) )) then
+				coef_here(i) = coef_loc(ii)*occwg_datcoef(i)
+				ii = ii+1
 			endif
 		enddo
 		! write(char_solcoefiter, "(i10)") mod_solcoefiter
@@ -5833,16 +5714,9 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		fval = 0._dp
 		ri=1
 		do i=1,Ncoef-Nnuisance
-			if( tr_spline .eqv. .true. ) then
-				if((wglev_0 .eqv. .false.) .or. (i .ge. Nskill) ) then
-					fval(ri) = dif_coef(i)*wthr(i)
-					ri = ri+1
-				endif
-			else
-				if((wglev_0 .eqv. .false.) .or. ( (i .le. NTpolyT) .or. (i .gt. Nskill + NTpolyT) )) then
-					fval(ri) = dif_coef(i)*wthr(i)
-					ri = ri+1
-				endif
+			if((wglev_0 .eqv. .false.) .or. ( (i .le. NTpolyT) .or. (i .gt. Nskill + NTpolyT) )) then
+				fval(ri) = dif_coef(i)*wthr(i)
+				ri = ri+1
 			endif
 		enddo
 		!unemployment stats
@@ -5928,7 +5802,7 @@ program V0main
 	! Other
 	!************************************************************************************************!
 		real(dp)	:: wagehere=1.,utilhere=1., junk=1., totapp_dif_hist,ninsur_app,cumpid(nd,nd+1,ndi,TT-1)
-		real(dp), allocatable :: wage_coef_0chng(:)
+		real(dp)	:: wage_coef_0chng(size(wage_coef))
 		real(dp), allocatable :: tr_hist_vec(:),wg_hist_vec(:)
 		real(dp) :: xsec_PrDageDel(nd,TT,ndi)
 	!************************************************************************************************!
@@ -6033,7 +5907,6 @@ program V0main
 		call vec2csv(hazborn_t,"hazborn_t.csv",wo)
 		call vec2csv(prborn_constpop,"prborn_constpop.csv",wo)
 		call vec2csv(prborn_t,"prborn_t.csv",wo)
-		call mat2csv(tbase_out,"tbase_out.csv",wo)
 		cumpid = 0._dp
 		do idi=1,ndi
 		do it =1,TT-1
@@ -6061,14 +5934,10 @@ program V0main
 		call mat2csv(occpr_trend,"occpr_trend.csv")
 		call mat2csv(occwg_dattrend,"occwg_dattrend.csv")
 		call vec2csv(occwg_datlev,"occwg_datlev.csv")
-		if(tr_spline .eqv. .true.) then
-			call vec2csv(occwg_datspline,"occwg_datspline.csv")
+		if(NKpolyT >=2) then
+			call mat2csv(occwg_datcoef_sqr,"occwg_datcoefs.csv")
 		else
-			if(NKpolyT >=2) then
-				call mat2csv(occwg_datcoef_sqr,"occwg_datcoefs.csv")
-			else
-				call vec2csv(occwg_datcoef,"occwg_datcoefs.csv")
-			endif
+			call vec2csv(occwg_datcoef,"occwg_datcoefs.csv")
 		endif
 
 		open(1, file="wage_dist.csv")
@@ -6202,35 +6071,19 @@ program V0main
 			if(verbose>1) print *, "iterating to find wage trend"
 			call iter_wgtrend(vfs, pfs, hst,shk)
 			ii = 1
-			if( tr_spline .eqv. .true. ) then
-				do i=1,(Nknots-1 + Nskill*Nknots)
-					if( (i .gt. Nskill) ) then
-						wc_guess_nolev(ii) = wage_coef(i)/occwg_datspline(i)
-						ii = ii+1
-					endif
-					wc_guess_nolev(ii +1) = fndrt_mul
-					wc_guess_nolev(ii +2) = seprt_mul
-				enddo
-				do i=1,(Nknots-1 + Nskill*Nknots)
-					wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
-				enddo
-				wc_guess_lev(Nknots-1 + Nskill*Nknots +1) = fndrt_mul
-				wc_guess_lev(Nknots-1 + Nskill*Nknots +2) = seprt_mul
-			else
-				do i=1,(NTpolyT + 2*Nskill)
-					if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
-						wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
-						ii = ii+1
-					endif
-				enddo
-				wc_guess_nolev(ii +1) = fndrt_mul
-				wc_guess_nolev(ii +2) = seprt_mul
-				do i=1,(NTpolyT + 2*Nskill)
-					wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
-				enddo
-				wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
-				wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
-			endif
+			do i=1,(NTpolyT + 2*Nskill)
+				if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
+					wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
+					ii = ii+1
+				endif
+				wc_guess_nolev(Nskill + NTpolyT +1) = fndrt_mul
+				wc_guess_nolev(Nskill + NTpolyT +2) = seprt_mul
+			enddo
+			do i=1,(NTpolyT + 2*Nskill)
+				wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
+			enddo
+			wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
+			wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
 		endif ! dbg_skip == F
 
 		if(print_lev>1) then
@@ -6306,8 +6159,8 @@ program V0main
 
 	!bounds for paramvec:
 	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3)
-	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp, 0.001_dp, 0.001_dp/)
-	ub = (/ 0.50_dp, 0.990_dp, 0.990_dp, 0.750_dp, 5.000_dp/)
+	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp, 0.001_dp, 0.001_dp /)
+	ub = (/ 0.1_dp , 0.990_dp, 0.990_dp, 0.750_dp, 10.000_dp /)
 
 	if( (run_cal .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
 		call system_clock(count_rate=cr)
@@ -6323,7 +6176,7 @@ program V0main
 		Fd(3)      = parvec(5)
 
 		call system_clock(c2)
-		if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
+		if(nodei ==0)  print *, "Calibration, wall time in hours ", dble(c2-c1)/dble(cr)/360._dp
 	endif
 
 	!****************************************************************************
@@ -6338,15 +6191,9 @@ program V0main
 
 	print *, "about to read everything "
 	open(unit = fread, file= "wage_coef_opt.csv")
-	if( tr_spline .eqv. .true. ) then
-		do i=1,size(occwg_datspline)
-			read(fread, *) wage_coef(i)
-		enddo
-	else
-		do i=1,size(occwg_datcoef)
-			read(fread, *) wage_coef(i)
-		enddo
-	endif
+	do i=1,size(occwg_datcoef)
+		read(fread, *) wage_coef(i)
+	enddo
 	close(fread)
 	open(unit = fread, file= "fndgrid_opt.csv")
 	do i=1,size(fndgrid,1)
@@ -6427,7 +6274,7 @@ program V0main
 
 
 	if((nodei == 0) .and. (run_experiments .eqv. .true.) .and. (dbg_skip .eqv. .false.)) then
-		allocate(wage_coef_0chng(size(wage_coef)))
+
    	 	wage_coef_0chng = wage_coef
    		do i=(1+NTpolyT),size(wage_coef) !only turn off the occupation-specific trends
    			wage_coef_0chng(i)= 0._dp
@@ -6586,7 +6433,8 @@ program V0main
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"
 
-		deallocate(wage_coef_0chng)
+
+
 	endif
 
   	!****************************************************************************!
@@ -6595,8 +6443,6 @@ program V0main
 	deallocate(tr_hist_vec,wg_hist_vec)
 !~ 	call nlo_destroy(calopt)
 	call dealloc_shocks(shk)
-
-	deallocate(wc_guess_nolev,wc_guess_lev)
 
 	call mpi_finalize(ierr)
 
