@@ -165,8 +165,8 @@ module helper_funs
 		real(dp)		:: e_eval
 
 		if(present(a0in)) then
-			if(a0in< 35) then
-				e_eval = ein*dble(a0in)/35._dp
+			if(a0in< 17) then
+				e_eval = ein*dble(a0in)/17._dp
 			else
 				e_eval = ein
 			endif
@@ -1175,7 +1175,7 @@ module sol_val
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VR0(:,:,:,:)
 		real(dp) :: Vtest1,Vtest2,chere, Vc1, age0
-		integer :: iaa, iw
+		integer :: iaa, iw,idd
 
 		age0 = agegrid(agei0+TT-2)
 		iw=1
@@ -1185,16 +1185,17 @@ module sol_val
 			Vevals = Vevals +1
 			chere = SSret(egrid(ie),age0)+ R*agrid(ia) - agrid(iaa)
 			if( chere .gt. 0.) then !ensure positive consumption
-				Vc1 = beta*ptau(TT)*VR0(agei0,id,ie,iaa)
+				Vc1 = 0._dp
+				do idd =1,nd
+					Vc1 = beta*pid(id,idd,1,TT-1)*ptau(TT)*VR0(agei0,id,ie,iaa) + Vc1
+				enddo
 				Vtest2 = util(chere ,id,iw) + Vc1
 
 				if(Vtest2 > Vtest1  .or. iaa .eq. iaa0 ) then !always replace on the first loop
 					Vtest1 = Vtest2
 					apol = iaa
-				elseif( simp_concav .eqv. .true. ) then ! imposing concavity
-					exit
 				endif
-			else!saved too much and negative consumtion
+			else   !saved too much and negative consumtion
 				exit
 			endif
 		enddo
@@ -1207,13 +1208,16 @@ module sol_val
 		integer, intent(out) :: apol
 		real(dp), intent(out) :: Vout
 		real(dp), intent(in) :: VD0(:,:,:,:)
+		real(dp) :: pid_here(nd,nd)
 		real(dp) :: Vc1,chere,Vtest1,Vtest2,ein
-		integer :: iw, iaa
+		integer :: iw, iaa,idd
+
+		pid_here = pid(:,:,1,it)
 
 		iw = 1 ! don't work
 		Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa0,it+1)+ptau(it)*VD0(id,ie,iaa0,it))
 		ein = egrid(ie)
-		chere = SSDI(ein+R*agrid(ia)-agrid(iaa0))
+		chere = SSDI(ein)+R*agrid(ia)-agrid(iaa0)
 
 		Vtest1 = -1e6
 		apol = iaa0
@@ -1221,14 +1225,14 @@ module sol_val
 		do iaa=iaa0,iaaA
 			chere = SSDI(egrid(ie))+R*agrid(ia)-agrid(iaa)
 			if(chere >0.) then
-				Vc1 = beta*((1-ptau(it))*VD0(id,ie,iaa,it+1) + ptau(it)*VD0(id,ie,iaa,it))
-
+				Vc1 = 0._dp
+				do idd=1,nd
+					Vc1 = beta*pid_here(id,idd)*((1-ptau(it))*VD0(idd,ie,iaa,it+1) + ptau(it)*VD0(idd,ie,iaa,it)) + Vc1
+				enddo
 				Vtest2 = util(chere,id,iw)+ Vc1
 				if(Vtest2>Vtest1) then
 					Vtest1 = Vtest2
 					apol = iaa
-				elseif(simp_concav .eqv. .true.) then
-					exit
 				endif
 			else
 				exit
@@ -1316,9 +1320,9 @@ module sol_val
 		Vtest1 = -1e6
 		apol = iaa0
 		do iaa = iaa0,iaaA
-			chere = LTUrr*egrid(ie)+R*agrid(ia)-agrid(iaa)
-			if(chere >0.) then
-				Vtest2 = 0.
+			chere = min(LTUrr*egrid(ie),LTUrr)+R*agrid(ia)-agrid(iaa)
+			if(chere >0._dp) then
+				Vtest2 = 0._dp
 				!Continuation if do not apply for DI
 				do izz = 1,nz	 !Loop over z'
 				do ialal = ialL,nal !Loop over alpha_i'
@@ -1330,7 +1334,7 @@ module sol_val
 					!maxVNV0 = max(   V0((il-1)*ntr+itr,(idi-1)*nal +ialalhr,idd,ie,iaa,izz,it+1),VNhr)
 					maxVNV0 = max(   V0((il-1)*ntr+itr,(idi-1)*nal +ialal  ,idd,ie,iaa,izz,it+1),VNhr)
 
-					Vc1 = (1-ptau(it))*( (1-lrho*fndgrid(il,iz) )*VNhr +lrho*fndgrid(il,iz)*maxVNV0 ) !Age and might go on DI
+					Vc1 = (1-ptau(it))*( (1-lrho*fndgrid(il,iz) )*VNhr + lrho*fndgrid(il,iz)*maxVNV0 ) !Age and might go on DI
 
 					VNhr    =   	VN0((il-1)*ntr+itr,(idi-1)*nal +ialalhr,idd,ie,iaa,izz,it)
 					!maxVNV0 = max(   V0((il-1)*ntr+itr,(idi-1)*nal +ialalhr,idd,ie,iaa,izz,it),VNhr)
@@ -1375,7 +1379,7 @@ module sol_val
 		EVD = 0._dp
 		Ewage = 0._dp
 		do iaa = iaa0,iaaA
-			chere = LTUrr*egrid(ie)+R*agrid(ia)-agrid(iaa)
+			chere = min(LTUrr*egrid(ie),LTUrr)+R*agrid(ia)-agrid(iaa)
 			if(chere >0.) then
 				Vtest2 = 0.
 				!Continuation if apply for DI
@@ -1405,12 +1409,12 @@ module sol_val
 					Vtest2 = Vtest2 + beta*piz(iz,izz)*pialf(ial,ialal,id) *pid_here(id,idd) *Vc1
 					if(iaa == iaa0) then
 						Ewage = Ewage+     piz(iz,izz)*pialf(ial,ialal,id) *pid_here(id,idd) *wage(trgrid(itr),alfgrid(ialal,id),idd,it)
-						EVD   = EVD + beta*piz(iz,izz)*pialf(ial,ialal,id) *pid_here(id,idd) *VDhr
+					!	EVD   = EVD + beta*piz(iz,izz)*pialf(ial,ialal,id) *pid_here(id,idd) *VDhr
 					endif
 				enddo
 				enddo
 				enddo
-				if( ial .eq. ialUn ) Ewage = LTUrr*egrid(ie)
+				if( ial .eq. ialUn ) Ewage = min(LTUrr*egrid(ie),LTUrr)
 
 				Vtest2 = util(chere*exp(-nuhr*Ewage),id,iw) &
 					&	+ Vtest2
@@ -1898,8 +1902,8 @@ module sol_val
 		do ia=1,na
 			VW (:,:,id,ie,ia,:,TT) = VR(2,id,ie,ia)
 			VW0(:,:,id,ie,ia,:,TT) = VR(2,id,ie,ia)
-			VN (:,:,id,ie,ia,:,TT) = VR(2,id,ie,ia)
-			VN0(:,:,id,ie,ia,:,TT) = VR(2,id,ie,ia)
+			VN (:,:,id,ie,ia,:,TT) = VR(1,id,ie,ia)
+			VN0(:,:,id,ie,ia,:,TT) = VR(1,id,ie,ia)
 			VU (:,:,id,ie,ia,:,TT) = VR(2,id,ie,ia)
 			VU0(:,:,id,ie,ia,:,TT) = VR(2,id,ie,ia)
 			V  (:,:,id,ie,ia,:,TT) = VR(2,id,ie,ia)
@@ -1994,12 +1998,9 @@ module sol_val
 			do while (iter<=maxiter)
 				maxer = 0.
 				summer = 0.	!Use to calc |V-V0|<eps
-				! lots f printing every 100 iterations (mod 1 because Fortran is designed by idiots using base-1 indexing)
-				!if(mod(iter,3) .eq. 0) then
-					simp_concav = .false.
-				!else
-				!	simp_concav = .true.
-				!endif
+
+				simp_concav = .false.
+
 			!------------------------------------------------!
 			!Solve VU given guesses on VW, VN, VU and implied V
 			!------------------------------------------------!
@@ -4304,8 +4305,8 @@ module sim_hists
 						elseif(status_hr > 3 ) then !absorbing states of D,R
 							status_tmrw = status_hr
 							! just to fill in values
-							app_dif_it(i,it) = 0.
-							work_dif_it(i,it) = 0.
+							!app_dif_it(i,it) = 0.
+							!work_dif_it(i,it) = 0.
 							if(status_hr==4) di_prob_it(i,it) = 1.
 							if( invol_un == 1 .or. al_it_endog(i,it-1) == 1) then
 								ali_hr = 1
@@ -4396,12 +4397,14 @@ module sim_hists
 						case(2)
 							trX_it(i,it) = UI(e_hr,ali_hr)
 						case(3)
-							trX_it(i,it) = LTUrr * e_hr
+							trX_it(i,it) = min(LTUrr * e_hr,LTUrr)
 						case(4)
 							trX_it(i,it) = SSDI(e_hr)
 						case(5)
 							trX_it(i,it) = SSret(e_hr)
 						end select
+					else
+						trX_it(i,it) = 0._dp
 					endif
 
 					!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -4422,7 +4425,7 @@ module sim_hists
 							if( it>brn_yr_hr .and. status_hr==1 ) then
 								ep_hr = (e_hr*(tlen*agegrid(age_hr)-1._dp) + wage_hr)/ &
 								&	(tlen*agegrid(age_hr))
-								if( agegrid(age_hr) >35 ) then
+								if( agegrid(age_hr) >17 ) then
 									ep_hr = max(e_hr,ep_hr)
 								endif
 							elseif(it == brn_yr_hr) then
@@ -4435,7 +4438,7 @@ module sim_hists
 							! assign to grid points by floor rule (will later interpolate)
 							ei_hr = locate(egrid,ep_hr)
 							ei_hr = min(max(ei_hr,1),ne)
-							e_it_int(i,it+1) = min(max(ei_hr,1),ne)
+							e_it_int(i,it+1) = ei_hr
 
 						else
 							e_it(i,it+1) = e_hr
@@ -6585,6 +6588,190 @@ program V0main
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"
+
+
+		! without either the change in occupation or wage trend
+	 	occ_dat = .false.
+	 	wtr_by_occ = .false.
+	 	demog_dat = .true.
+		buscyc = .true.
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
+	 	caselabel = "wchng0deloc0"
+		print *, caselabel, " ---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		call cal_dist(parvec,err0,shk)
+		call gen_new_wgtrend(wage_trend,wage_coef)
+		print *, "error in targets with ", caselabel, " ", err0
+	 	print *, "---------------------------------------------------"
+
+		!without either the demograhpic change or wage trend
+		occ_dat = .true.
+		wtr_by_occ = .false.
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
+		demog_dat = .false.
+		buscyc = .true.
+		caselabel = "wchng0demog0"
+		print *, caselabel, " ---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		call cal_dist(parvec,err0,shk)
+		call gen_new_wgtrend(wage_trend,wage_coef)
+		print *, "error in targets with ", caselabel, " ", err0
+		print *, "---------------------------------------------------"
+
+	 	occ_dat = .false.
+	 	wtr_by_occ = .true.
+	 	demog_dat = .false.
+		buscyc = .true.
+	 	caselabel = "deloc0demog0"
+	 	print *, caselabel, " ---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		call cal_dist(parvec,err0,shk)
+		print *, "error in targets with ", caselabel, " ", err0
+	 	print *, "---------------------------------------------------"
+
+
+		! without business cycles or wage trend
+	 	occ_dat = .true.
+	 	wtr_by_occ = .false.
+	 	demog_dat = .true.
+		buscyc = .false.
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
+	 	caselabel = "wchng0bcyc0"
+		print *, caselabel, " ---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		call cal_dist(parvec,err0,shk)
+		call gen_new_wgtrend(wage_trend,wage_coef)
+		print *, "error in targets with ", caselabel, " ", err0
+	 	print *, "---------------------------------------------------"
+
+		!without either the demograhpic change or business cycles
+		occ_dat = .true.
+		wtr_by_occ = .true.
+		demog_dat = .false.
+		buscyc = .false.
+		caselabel = "demog0bcyc0"
+		print *, caselabel, " ---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		call cal_dist(parvec,err0,shk)
+		print *, "error in targets with ", caselabel, " ", err0
+		print *, "---------------------------------------------------"
+
+		!without either occupational changes or business cycles
+	 	occ_dat = .false.
+	 	wtr_by_occ = .true.
+	 	demog_dat = .true.
+		buscyc = .false.
+	 	caselabel = "deloc0bcyc0"
+	 	print *, caselabel, " ---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		call cal_dist(parvec,err0,shk)
+		print *, "error in targets with ", caselabel, " ", err0
+	 	print *, "---------------------------------------------------"
+
+		!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		! Turn on just one at a time
+		! with only wage trend
+		caselabel = "deloc0demog0bcyc0"
+		print *, caselabel, " ---------------------------------------------------"
+		wtr_by_occ = .true.
+		buscyc = .false.
+		occ_dat = .false.
+		demog_dat  = .false.
+		verbose = 1
+		print *, "---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+		call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		call cal_dist(parvec,err0,shk)
+		print *, "error in targets with ", caselabel,  " ", err0
+		print *, "---------------------------------------------------"
+
+		! with only the change in occupation composition
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
+		buscyc = .false.
+		occ_dat = .true.
+		wtr_by_occ = .false.
+		demog_dat = .false.
+		caselabel = "wchng0demog0bcyc0"
+		print *, caselabel, " ---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+			call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
+		call cal_dist(parvec,err0,shk)
+		print *, "error in targets with ", caselabel, " ", err0
+		print *, "---------------------------------------------------"
+
+		!without demographic changes
+		buscyc = .false.
+		occ_dat = .false.
+		wtr_by_occ = .false.
+		demog_dat = .true.
+		caselabel = "wchng0deloc0bcyc0"
+		print *, caselabel, " ---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+		call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		call cal_dist(parvec,err0,shk)
+		print *, "error in targets with ", caselabel, " ", err0
+		print *, "---------------------------------------------------"
+
+		!with only business cycles
+		buscyc = .true.
+		occ_dat = .false.
+		wtr_by_occ = .false.
+		demog_dat = .false.
+		caselabel = "wchng0deloc0demog0"
+		print *, caselabel, " ---------------------------------------------------"
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+		call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+		call cal_dist(parvec,err0,shk)
+		print *, "error in targets with ", caselabel, " ", err0
+		print *, "---------------------------------------------------"
+		!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 		deallocate(wage_coef_0chng)
 	endif

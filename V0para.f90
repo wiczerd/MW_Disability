@@ -998,8 +998,8 @@ subroutine setparams()
 	wd(3) = -0.266	!Full Disabled, large penalty
 	!Fixed cost of particpation
 	Fd(1) = 0.
-	Fd(2) = 0.276
-	Fd(3) = 0.524
+	Fd(2) = 0.276*5
+	Fd(3) = 0.524*5
 
 
 	!DI Acceptance probability for each d,t status
