@@ -51,10 +51,10 @@ integer, parameter ::	nal = 6,  &!5		!Number of individual alpha types
 			na  = 30,   &!50	    !Points on assets grid
 			nz  = 2,    &		    !Number of aggregate shock states
 			nj  = 16,   &!16		!Number of occupations
-			Nskill  = 3,&			!number of skills that define occupations. First is always physical
+			Nskill  = 2,&			!number of skills that define occupations. First is always physical
 			NKpolyT = 1,&			!polynomial order for time trend for occupation or number of spline segments
 			NTpolyT = 2,& 			!polynomial order for time trend overall or number of spline segments
-			Nknots   = 5,& 			! Number of knots
+			Nknots   = 4,& 			! Number of knots
 			maxiter = 2000, &		!Tolerance parameter
 			Nsim = 40000,&!5000*nj	!how many agents to draw
 			year0 = 1984, &			!when simulation starts and stops
@@ -69,7 +69,7 @@ integer, parameter ::	nal = 6,  &!5		!Number of individual alpha types
 
 
 ! thse relate to how we compute it. Mostly for debugging purposes
-logical            :: tr_spline  = .false.,& 	! use spline or global polynomials for fitting trend
+logical            :: tr_spline  = .true.,& 	! use spline or global polynomials for fitting trend
 					  al_contin  = .true.,&		!make alpha draws continuous or stay on the grid
 					  zj_contin	 = .false.,&	!make zj draws continous
 					  ineligNoNu = .false.,&	!do young ineligable also pay the nu cost when they are ineligable?
@@ -133,7 +133,6 @@ real(8) :: 	alfgrid(nal,nd), &	!Alpha_i grid- individual wage type parameter
 		PrDageDel(nd,TT,ndi), &	!Ergodic distribution of each D at each Age and Delta (implied by pid)
 		PrDeath(nd,TT),&	!Probability of death during work-life
 !
-		tr_knots(Nknots) = 0., & !will be the knot points
 		tr_decls(11),& !0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1
 		wg_decls(11),& !0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1
 !
@@ -160,8 +159,8 @@ real(8) :: 	alfgrid(nal,nd), &	!Alpha_i grid- individual wage type parameter
 		occsz0(nj),&		   !Fraction in each occupation
 		occpr_trend(Tsim,nj) !trend in occupation choice
 
-real(8), allocatable :: wage_coef(:) !occupation-specific differences in wage-level
-
+real(8), allocatable :: wage_coef(:), & !occupation-specific differences in wage-level
+						tr_knots(:)  !will be the knot points
 
 integer :: 	dgrid(nd)	! just enumerate the d states
 real(8)	::	agegrid(TT)		! the mid points of the ages
@@ -329,29 +328,40 @@ subroutine setparams()
 	enddo
 	close(fread)
 
-	open(unit= fread, file = "OLSWageTrend_O2.csv")
-	do j=1,17
-		read(fread,*) wage_coef_O2_read(j)
-	enddo
-	close(fread)
+	if( tr_spline .eqv. .false. ) then
+		open(unit= fread, file = "OLSWageTrend_O2.csv")
+		do j=1,17
+			read(fread,*) wage_coef_O2_read(j)
+		enddo
+		close(fread)
 
-	open(unit= fread, file = "OLSWageTrend_O3.csv")
-	do j=1,21
-		read(fread,*) wage_coef_O3_read(j)
-	enddo
-	close(fread)
+		open(unit= fread, file = "OLSWageTrend_O3.csv")
+		do j=1,21
+			read(fread,*) wage_coef_O3_read(j)
+		enddo
+		close(fread)
 
-	open(unit= fread, file = "OLSWageTrend_O1.csv")
-	do j=1,22
-		read(fread,*) wage_coef_O1_read(j)
-	enddo
-	close(fread)
+		open(unit= fread, file = "OLSWageTrend_O1.csv")
+		do j=1,22
+			read(fread,*) wage_coef_O1_read(j)
+		enddo
+		close(fread)
+	else
+		if(Nskill ==3) then
+			open(unit= fread, file = "OLSWageTrend_CS2.csv")
+			do j=1,25
+				read(fread,*) wage_coef_CS_read(j)
+			enddo
+		else
+			open(unit= fread, file = "OLSWageTrend_CS1.csv")
+			do j=1,17
+				read(fread,*) wage_coef_CS_read(j)
+			enddo
+		endif
 
-	open(unit= fread, file = "OLSWageTrend_CS2.csv")
-	do j=1,25
-		read(fread,*) wage_coef_CS_read(j)
-	enddo
-	close(fread)
+		close(fread)
+
+	endif
 
 	!Read in the disability means by occuaption
 	open(unit= fread, file="maxADL.csv")
@@ -511,7 +521,18 @@ subroutine setparams()
 		enddo
 	enddo
 
-	tr_knots = (/1.,7.,11.,20.,28. /)
+	allocate(tr_knots(Nknots))
+	if(Nknots == 5) then
+		tr_knots = (/1.,7.,11.,20.,28. /)
+	elseif(Nknots == 4) then
+		tr_knots = (/1.,9.,16.,28. /)
+	else
+		tr_knots(1) = 1.
+		tr_knots(Nknots) = 28.
+		do j=2,Nknots-1
+			tr_knots(j) = dble(j)/(28.-1.)+1.
+		enddo
+	endif
 
 	occwg_datcoef = 0._dp
 	occwg_datspline = 0._dp
@@ -554,11 +575,11 @@ subroutine setparams()
 		if(wglev_0 .eqv. .true.) allocate(wage_coef(Nknots-1 + Nskill*Nknots+5) )
 
 		t= 6
-		do j=1,(Nknots-1)
+		do j=1,Nskill
 			occwg_datspline(j) = wage_coef_CS_read(t)
 			t = t+1
 		enddo
-		do j=1,Nskill
+		do j=1,(Nknots-1)
 			occwg_datspline(j+Nskill) = wage_coef_CS_read(t)
 			t = t+1
 		enddo
@@ -600,7 +621,6 @@ subroutine setparams()
 				do j=1,(Nknots-1)
 					occwg_dattrend(t,i) = occwg_datspline(j+Nskill)*tbase(j) +occwg_dattrend(t,i)
 				enddo
-
 				do k=1,Nskill
 					do j=1,(Nknots-1)
 						occwg_dattrend(t,i) = occwg_datspline(j+(k-1)*(Nknots-1)+Nskill+Nknots-1)*tbase(j)*occ_onet(i,k) &

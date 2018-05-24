@@ -4115,11 +4115,6 @@ module sim_hists
 					endif
 					ewt_it(i,it) = ewt
 
-					!******************************
-					!ENGINEERING FIX. Just a test
-					!ei_hr = min(ei_hr+1,ne)
-					!eiH  = min(ei_hr+2,ne)
-
 					junk = 0._dp
 					if(w_strchng .eqv. .true.) junk = wtr_it(i,it)
 					if(junk == 1000._dp) print *, "big wage trend!"
