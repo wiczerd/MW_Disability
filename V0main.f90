@@ -4785,7 +4785,7 @@ module find_params
 
 		real(dp), allocatable :: XX(:,:), yy(:), coef_est(:), cov_coef(:,:), XX_ii(:,:), yy_ii(:)
 		real(dp) :: hatsig2
-		real(dp) :: tbase(Nknots-1)
+		real(dp) :: tbase(Tsim,Nknots-1)
 
 		if(tr_spline .eqv. .false.) then
 			if( NKpolyT>=2 ) then
@@ -4808,10 +4808,28 @@ module find_params
 
 		call sim(vfs, pfs, hst,shk,.false.)
 
+		tbase = 0._dp
+		do it=(TossYears*itlen+1),Tsim
+			tbase(it,1) = (dble(it)/tlen - dble(TossYears))
+			do ip=1,(Nknots-2)
+				if((dble(it)/tlen - dble(TossYears) - tr_knots(ip)) > 0.) &
+				& 	tbase(it,ip+1) = (dble(it)/tlen - dble(TossYears) - tr_knots(ip))**3 + tbase(it,ip+1)
+				if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1) >0.) &
+				&	tbase(it,ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1))**3 *(tr_knots(Nknots)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
+					&  + tbase(it,ip+1)
+				if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) >0. ) &
+				& 	tbase(it,ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) )**3 *(tr_knots(Nknots-1)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
+					&  + tbase(it,ip+1)
+				tbase(it,ip+1) = tbase(it,ip+1)*(tr_knots(Nknots)-tr_knots(1))**(-2)
+			enddo
+		enddo
+
+
 		ii = 0
 		do i=1,Nsim
 			do it=(TossYears*itlen+1),Tsim
-				if(  (shk%age_hist(i,it) > 0) .and. (hst%status_hist(i,it)==1)) then
+				if(  (shk%age_hist(i,it) > 0) .and. (hst%status_hist(i,it)==1) ) then
+				!& .and. (dble(it)/tlen-dble(TossYears) .ge. tr_knots(1)) .and. (dble(it)/tlen-dble(TossYears) .le. tr_knots(Nknots)) ) then
 					ii = 1+ii
 					ij = shk%j_i(i) !this guy's occupation
 					yy(ii) = log(hst%wage_hist(i,it))
@@ -4852,26 +4870,13 @@ module find_params
 							XX(ii,ri) = occ_onet(ij,ik)
 							ri = ri+1
 						enddo
-						tbase = 0._dp
-						tbase(1) = (dble(it)/tlen - dble(TossYears))
-						do ip=1,(Nknots-2)
-							if((dble(it)/tlen - dble(TossYears) - tr_knots(ip)) > 0.) &
-							& 	tbase(ip+1) = (dble(it)/tlen - dble(TossYears) - tr_knots(ip))**3 + tbase(ip+1)
-							if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1) >0.) &
-							&	tbase(ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1))**3 *(tr_knots(Nknots)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-								&  + tbase(ip+1)
-							if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) >0. ) &
-							& 	tbase(ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) )**3 *(tr_knots(Nknots-1)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-								&  + tbase(ip+1)
-							tbase(ip+1) = tbase(ip+1)*(tr_knots(Nknots)-tr_knots(1))**(-2)
-						enddo
 						do ip=1,(Nknots-1)
-							XX(ii,ri) = tbase(ip)
+							XX(ii,ri) = tbase(it,ip)
 							ri = ri+1
 						enddo
 						do ik=1,Nskill
 							do ip=1,(Nknots-1)
-								XX(ii,ri) = tbase(ip)**occ_onet(ij,ik)
+								XX(ii,ri) = tbase(it,ip)*occ_onet(ij,ik)
 								ri = ri+1
 							enddo
 						enddo
@@ -4906,11 +4911,11 @@ module find_params
 		do i=1,Ncoef
 			coefs(i) = coef_est(i)
 		enddo
-		if( print_lev .ge. 2) then
+		!if( print_lev .ge. 2) then
 			call mat2csv(XX_ii, "XX_ii.csv")
 			call vec2csv(yy_ii, "yy_ii.csv")
-			call vec2csv(coef_est, "coef_est.csv")
-		endif
+		!endif
+		call vec2csv(coef_est, "coef_est.csv")
 
 		deallocate(XX_ii,yy_ii)
 		deallocate(XX,yy,coef_est,cov_coef)
@@ -4997,10 +5002,18 @@ module find_params
 					enddo
 					do ik=1,Nskill
 						do ip=1,(Nknots-1)
-							wage_trend_hr = wage_coef(ip + ik*(Nknots-1)+Nskill+(Nknots-1))*tbase(ip)*occ_onet(ij,ik) +wage_trend_hr
+							wage_trend_hr = wage_coef(ip + (ik-1)*(Nknots-1)+Nskill+(Nknots-1))*tbase(ip)*occ_onet(ij,ik) +wage_trend_hr
 						enddo
-					enddo
-				enddo
+					enddo !for each ik
+!					if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
+!					if(wage_trend_hr .lt. trgrid(1)  ) wage_trend_hr = trgrid(1)
+
+					new_wgtrend(it,ij) = wage_trend_hr
+				enddo !for ij=1:nj
+			enddo !for it=1:Tsim
+			do i=1,nj
+				if( wglev_0 .eqv. .false.) wage_lev(i) = new_wgtrend(TossYears*itlen,i)
+				new_wgtrend(:,i) = new_wgtrend(:,i) - new_wgtrend(TossYears*itlen,i)
 			enddo
 		else
 			if( NKpolyT >= 2 ) then
@@ -5058,16 +5071,19 @@ module find_params
 				enddo
 				enddo
 				do ij=1,nj
-					if( wglev_0 .eqv. .false.) wage_lev(ij) = new_wgtrend(1,ij)
-					new_wgtrend(:,ij) = new_wgtrend(:,ij) - new_wgtrend(1,ij)
+					if( wglev_0 .eqv. .false.) wage_lev(ij) = new_wgtrend(TossYears*itlen,ij)
+					new_wgtrend(:,ij) = new_wgtrend(:,ij) - new_wgtrend(TossYears*itlen,ij)
 					do it=1,Tsim
 						if(new_wgtrend(it,ij) .gt. trgrid(ntr)) new_wgtrend(it,ij) = trgrid(ntr)
 						if(new_wgtrend(it,ij) .lt. trgrid(1)  ) new_wgtrend(it,ij) = trgrid(1)
-
 					enddo
 				enddo
 			endif !linear in onet skills
 		endif !cubic spline
+
+		!if(print_lev .ge. 2) then
+			call mat2csv(new_wgtrend,"new_wgtrend.csv")
+		!endif
 
 	end subroutine gen_new_wgtrend
 
@@ -5095,7 +5111,7 @@ module find_params
 		real(dp) :: maxskill(Nskill),minskill(Nskill),ret_onet(nj),rhobeg,rhoend
 
 		if(tr_spline .eqv. .true.) then
-			Ncoef = Nskill*(Nknots-1) + Nknots-1+Nskill+Nnuisance
+			Ncoef        = Nskill*(Nknots-1) + Nknots-1+Nskill+Nnuisance
 			Ncoef_active = Nskill*(Nknots-1) + Nknots-1+Nskill
 		else
 			if( NKpolyT>=2 ) then
@@ -5176,15 +5192,15 @@ module find_params
 		wcL(Ncoef_active+2) = 0.1_dp !for seprt_mul
 		wcU =  2.5_dp
 
-		if(print_lev .ge. 2) then
+	!	if(print_lev .ge. 2) then
 			call dfovec(Nobj,Nobj, wc0,fval)
 			call vec2csv(fval,"fdfbols0_wage_coef.csv")
 
-			call dfovec(Nobj,Nobj, wcU,fval)
-			call vec2csv(fval,"fdfbolsU_wage_coef.csv")
-			call dfovec(Nobj,Nobj, wcL,fval)
-			call vec2csv(fval,"fdfbolsL_wage_coef.csv")
-		endif
+	!		call dfovec(Nobj,Nobj, wcU,fval)
+	!		call vec2csv(fval,"fdfbolsU_wage_coef.csv")
+	!		call dfovec(Nobj,Nobj, wcL,fval)
+	!		call vec2csv(fval,"fdfbolsL_wage_coef.csv")
+	!	endif
 
 		rhobeg = minval( wcU - wcL)/4._dp	!loosen this up?
 		if( verbose >=2) print *, "rhobeg in interwg: ", rhobeg
@@ -5769,9 +5785,13 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		mod_solcoefiter = mod_solcoefiter+1
 		ncoef_active = ntheta-2
 
-		coef_loc = theta0(1:ncoef_active)  !coef loc are multipliers for the coefficients
+		coef_loc = 0._dp !have actually over-sized this one. There will be a few last that are not used
+		do i=1,ncoef_active
+			coef_loc(i) = theta0(i)  !coef loc are multipliers for the coefficients
+		enddo
 		fndrt_mul = theta0(1+ncoef_active)
 		seprt_mul = theta0(2+ncoef_active)
+
 
 		fndgrid = fndgrid*fndrt_mul
 		sepgrid = sepgrid*seprt_mul
@@ -5789,18 +5809,18 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 
 		!the weights will be the averages for time and skill
 		wthr = 1._dp
-		avwt = 0._dp
-		do i=1,NTpolyT
-			wthr(i) = (dble(Tsim)/2._dp)**i
-			avwt = wthr(i) + avwt
-		enddo
-		do i=1,Nskill
-			avonet(i) = sum(occ_onet(:,i)*occsz0)
-			wthr(i+NTpolyT) = avonet(i)
-			wthr(i+Nskill+NTpolyT) = avonet(i)*(dble(Tsim)/2._dp)
-			avwt = wthr(i+Nskill+NTpolyT)+avwt
-			avwt = wthr(i+NTpolyT)+avwt
-		enddo
+		! avwt = 0._dp
+		! do i=1,NTpolyT
+		! 	wthr(i) = (dble(Tsim)/2._dp)**i
+		! 	avwt = wthr(i) + avwt
+		! enddo
+		! do i=1,Nskill
+		! 	avonet(i) = sum(occ_onet(:,i)*occsz0)
+		! 	wthr(i+NTpolyT) = avonet(i)
+		! 	wthr(i+Nskill+NTpolyT) = avonet(i)*(dble(Tsim)/2._dp)
+		! 	avwt = wthr(i+Nskill+NTpolyT)+avwt
+		! 	avwt = wthr(i+NTpolyT)+avwt
+		! enddo
 
 		if(print_lev .ge. 3) call vec2csv(wthr, "wthr_coef.csv" )
 		if(tr_spline .eqv. .true. ) coef_here = occwg_datspline
@@ -5825,8 +5845,6 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		call clean_hist(mod_hst)
 		call reg_wgtrend(coef_est,mod_vfs,mod_pfs,mod_hst,mod_shk)
 		call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
-
-		! call mat2csv(wage_trend,  trim("wage_trend_1_")//trim(char_solcoefiter)//".csv")
 
 		fval = 0._dp
 		ri=1
@@ -5857,11 +5875,11 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		v_err(2+ncoef_active) = dist_frt
 
 		if(verbose  >= 2) print *, "F-evaluation in DFBOLS"
-		if(print_lev>=2) then
+		!if(print_lev>=2) then
 			call vec2csv(v_err, "fdfbolsi_wage_coef.csv")
 			call vec2csv(coef_here, "wdfbolsi_wage_coef.csv")
 			call vec2csv(coef_loc, "ldfbolsi_wage_coef.csv")
-		endif
+		!endif
 
 		do i=1,(Ncoef - Nnuisance)
 			wage_coef(i) = coef_here(i)

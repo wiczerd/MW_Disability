@@ -593,38 +593,38 @@ subroutine setparams()
 
 	!use the coefficients to set the trends (stored in occwg_dattrend):
 	if( tr_spline .eqv. .true. ) then
-		do i= 1,nj
+		do j= 1,nj
 			do t=1,Tsim
-				occwg_dattrend(t,i) =0._dp
+				occwg_dattrend(t,j) =0._dp
 				if(t>TossYears*itlen) then
 					it = t
 				else
 					it = TossYears*itlen
 				endif
 				do k=1,Nskill
-					occwg_dattrend(t,i) = occwg_datspline(k)*occ_onet(i,k) +occwg_dattrend(t,i)
+					occwg_dattrend(t,j) = occwg_datspline(k)*occ_onet(j,k) +occwg_dattrend(t,j)
 				enddo
 				tbase = 0._dp
 				tbase(1) = (dble(it)/tlen - dble(TossYears))
-				do j=1,(Nknots-2)
-					if((dble(it)/tlen - dble(TossYears) - tr_knots(j)) > 0.) &
-					& 	tbase(j+1) = (dble(it)/tlen - dble(TossYears) - tr_knots(j))**3 + tbase(j+1)
+				do i=1,(Nknots-2)
+					if((dble(it)/tlen - dble(TossYears) - tr_knots(i)) > 0.) &
+					& 	tbase(i+1) = (dble(it)/tlen - dble(TossYears) - tr_knots(i))**3 + tbase(i+1)
 					if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1) >0.) &
-					&	tbase(j+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1))**3 *(tr_knots(Nknots)-tr_knots(j))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-						&  + tbase(j+1)
+					&	tbase(i+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1))**3 *(tr_knots(Nknots)-tr_knots(i))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
+						&  + tbase(i+1)
 					if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) >0. ) &
-					& 	tbase(j+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) )**3 *(tr_knots(Nknots-1)-tr_knots(j))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
-						&  + tbase(j+1)
-					tbase(j+1) = tbase(j+1)*(tr_knots(Nknots)-tr_knots(1))**(-2)
+					& 	tbase(i+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) )**3 *(tr_knots(Nknots-1)-tr_knots(i))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
+						&  + tbase(i+1)
+					tbase(i+1) = tbase(i+1)*(tr_knots(Nknots)-tr_knots(1))**(-2)
 				enddo
 				tbase_out(t,:) = tbase
-				do j=1,(Nknots-1)
-					occwg_dattrend(t,i) = occwg_datspline(j+Nskill)*tbase(j) +occwg_dattrend(t,i)
+				do i=1,(Nknots-1)
+					occwg_dattrend(t,j) = occwg_datspline(i+Nskill)*tbase(i) +occwg_dattrend(t,j)
 				enddo
 				do k=1,Nskill
-					do j=1,(Nknots-1)
-						occwg_dattrend(t,i) = occwg_datspline(j+(k-1)*(Nknots-1)+Nskill+Nknots-1)*tbase(j)*occ_onet(i,k) &
-								& + occwg_dattrend(t,i)
+					do i=1,(Nknots-1)
+						occwg_dattrend(t,j) = occwg_datspline(i+(k-1)*(Nknots-1)+Nskill+Nknots-1)*tbase(i)*occ_onet(j,k) &
+								& + occwg_dattrend(t,j)
 					enddo
 				enddo
 			enddo !Tsim
@@ -679,7 +679,7 @@ subroutine setparams()
 
 	!initialize the input to the observed
 	do i=1,nj
-		occwg_datlev(i) = occwg_dattrend(1,i)
+		occwg_datlev(i) = occwg_dattrend(TossYears*itlen,i)
 		occwg_dattrend(:,i) = occwg_dattrend(:,i) - occwg_datlev(i)
 	enddo
 	if(wglev_0 .eqv. .true.) then
