@@ -3417,12 +3417,12 @@ module sim_hists
 			call veci2csv(shk%j_i,"j_i_hist.csv")
 			call mat2csv(shk%al_hist,"al_it_hist.csv")
 			call mati2csv(shk%al_int_hist,"al_int_it_hist.csv")
-			call vec2csv(shk%z_jt_innov,"z_jt_innov_hist.csv")
-			call vec2csv(shk%z_jt_innov,"z_jt_select.csv")
+			! call vec2csv(shk%z_jt_innov,"z_jt_innov_hist.csv")
+			! call vec2csv(shk%z_jt_innov,"z_jt_select.csv")
 			call mati2csv(shk%age_hist,"age_it_hist.csv")
 			call mat2csv(shk%fndsep_i_draw,"fndsep_i_draw.csv")
-			call mati2csv(shk%drawi_ititer,"drawi_hist.csv")
-			call mati2csv(shk%drawt_ititer,"drawt_hist.csv")
+			! call mati2csv(shk%drawi_ititer,"drawi_hist.csv")
+			! call mati2csv(shk%drawt_ititer,"drawt_hist.csv")
 			call mat2csv(shk%status_it_innov,"status_it_innov.csv")
 			call mat2csv(shk%health_it_innov,"health_it_innov.csv")
 			call mat2csv(shk%dead_draw,"dead_draw.csv")
@@ -4911,10 +4911,10 @@ module find_params
 		do i=1,Ncoef
 			coefs(i) = coef_est(i)
 		enddo
-		!if( print_lev .ge. 2) then
+		if( print_lev .ge. 2) then
 			call mat2csv(XX_ii, "XX_ii.csv")
 			call vec2csv(yy_ii, "yy_ii.csv")
-		!endif
+		endif
 		call vec2csv(coef_est, "coef_est.csv")
 
 		deallocate(XX_ii,yy_ii)
@@ -5005,8 +5005,8 @@ module find_params
 							wage_trend_hr = wage_coef(ip + (ik-1)*(Nknots-1)+Nskill+(Nknots-1))*tbase(ip)*occ_onet(ij,ik) +wage_trend_hr
 						enddo
 					enddo !for each ik
-!					if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
-!					if(wage_trend_hr .lt. trgrid(1)  ) wage_trend_hr = trgrid(1)
+					if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
+					if(wage_trend_hr .lt. trgrid(1)  ) wage_trend_hr = trgrid(1)
 
 					new_wgtrend(it,ij) = wage_trend_hr
 				enddo !for ij=1:nj
@@ -5081,9 +5081,9 @@ module find_params
 			endif !linear in onet skills
 		endif !cubic spline
 
-		!if(print_lev .ge. 2) then
+		if(print_lev .ge. 2) then
 			call mat2csv(new_wgtrend,"new_wgtrend.csv")
-		!endif
+		endif
 
 	end subroutine gen_new_wgtrend
 
@@ -5333,9 +5333,9 @@ module find_params
 		if(size(errvec)>2) &
 		&	errvec(3) = (moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
 		if(size(errvec)>3) &
-		&	errvec(4) = (moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/p1d2_target
+		&	errvec(4) = (moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/(p1d2_target+p1d3_target)
 		if(size(errvec)>4) &
-		&	errvec(5) = (moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/p1d3_target
+		&	errvec(5) = (moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/(p1d2_target+p1d3_target)
 
 		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
 		write(rank_str, '(I2.2)') rank_hr
@@ -5488,7 +5488,7 @@ module find_params
 					call dfovec(nopt,nopt,(x0-xl)/(xu-xl)  ,v_err) !note that dfovec takes the normalized values between 0,1 for x
 					initerr = sum( abs(v_err) )
 
-					if( (initerr .gt. 3) .or. v_err(1) .le. -1._dp  ) then
+					if( v_err(1) .ge. 0.99_dp .or. v_err(1) .le. -0.99_dp  ) then !throw out the ones with crazy DI rates
 						! exit
 						call random_number(junk) !burn one
 						do i=1,nopt
@@ -5807,20 +5807,32 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		allocate(coef_here(Ncoef))
 		allocate(wthr(Ncoef))
 
-		!the weights will be the averages for time and skill
+		!the weights will be the number of periods non-zero
 		wthr = 1._dp
-		! avwt = 0._dp
-		! do i=1,NTpolyT
-		! 	wthr(i) = (dble(Tsim)/2._dp)**i
-		! 	avwt = wthr(i) + avwt
-		! enddo
-		! do i=1,Nskill
-		! 	avonet(i) = sum(occ_onet(:,i)*occsz0)
-		! 	wthr(i+NTpolyT) = avonet(i)
-		! 	wthr(i+Nskill+NTpolyT) = avonet(i)*(dble(Tsim)/2._dp)
-		! 	avwt = wthr(i+Nskill+NTpolyT)+avwt
-		! 	avwt = wthr(i+NTpolyT)+avwt
-		! enddo
+		if(tr_spline .eqv. .true.) then
+			wthr = 1._dp
+			! do i=1,(Nknots-1)
+			! 	wthr(i+Nskill) = (tr_knots(Nknots)-tr_knots(i))/(tr_knots(Nknots)-tr_knots(1))
+			! enddo
+			! do ii=1,Nskill
+			! 	do i=1,(Nknots-1)
+			! 		wthr(i+ (ii-1)*(Nknots-1)+ (Nknots-1)+Nskill) = (tr_knots(Nknots)-tr_knots(i))/(tr_knots(Nknots)-tr_knots(1))
+			! 	enddo
+			! enddo
+		else
+			avwt = 0._dp
+			do i=1,NTpolyT
+				wthr(i) = (dble(Tsim)/2._dp)**i
+				avwt = wthr(i) + avwt
+			enddo
+			do i=1,Nskill
+				avonet(i) = sum(occ_onet(:,i)*occsz0)
+				wthr(i+NTpolyT) = avonet(i)
+				wthr(i+Nskill+NTpolyT) = avonet(i)*(dble(Tsim)/2._dp)
+				avwt = wthr(i+Nskill+NTpolyT)+avwt
+				avwt = wthr(i+NTpolyT)+avwt
+			enddo
+		endif
 
 		if(print_lev .ge. 3) call vec2csv(wthr, "wthr_coef.csv" )
 		if(tr_spline .eqv. .true. ) coef_here = occwg_datspline
@@ -5870,7 +5882,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		fndgrid = fndgrid/fndrt_mul
 		sepgrid = sepgrid/seprt_mul
 
-		v_err(1:ncoef_active) = fval
+		v_err(1:ncoef_active) = fval(1:ncoef_active)
 		v_err(1+ncoef_active) = dist_urt
 		v_err(2+ncoef_active) = dist_frt
 
@@ -6323,7 +6335,7 @@ program V0main
 	!bounds for paramvec:
 	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3)
 	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp, 0.001_dp, 0.001_dp/)
-	ub = (/ 0.50_dp, 0.990_dp, 0.990_dp, 0.750_dp, 5.000_dp/)
+	ub = (/ 0.50_dp, 0.990_dp, 0.990_dp, 0.750_dp, 3.000_dp/)
 
 	if( (run_cal .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
 		call system_clock(count_rate=cr)
