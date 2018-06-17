@@ -15,7 +15,7 @@ save
 
 !***Unit number***********************************!
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
-character(len=12) :: caselabel
+character(len=18) :: caselabel
 character(len=10) :: callog = "callog.log"
 integer           :: fcallog = 7
 
@@ -42,7 +42,7 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 6,  &!5		!Number of individual alpha types
+integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
 			ntr = 7,    &!7	        !Number of occupation trend points
 			ndi = 2,    &		    !Number of individual disability risk types
 			nl	= 2,    &			!Number of finding/separation rates
@@ -219,7 +219,10 @@ integer :: 		Tblock_exp	= 2000,	&	!Expected time before structural change (years
 logical  :: cal_on_iter_wgtrend = .true.
 integer  :: cal_niter = 0
 real(8)  :: cal_obj = 1.
+
+
 real(8), allocatable  :: wc_guess_nolev(:), wc_guess_lev(:)
+
 logical  :: cal_on_grad = .false.
 
 !remove this!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -229,7 +232,7 @@ real(8) :: tbase_out(Tsim, Nknots-1)
 !**** calibration targets
 real(8) :: apprt_target = .01,&	!target for application rates (to be filled below)
 		dirt_target = 0.018,&	!target for di rates
-		diaward_target = 0.0038,& !target for new award rate
+		diaward_target = 0.0034,& !target for new award rate
 		d1_diawardfrac_target = 0.16,&
 		voc_acc_target = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_acc_target = 0.75,&		!fraction taken based on health criteria, target 1985
@@ -542,6 +545,7 @@ subroutine setparams()
 		allocate(wc_guess_lev(NTpolyT+Nskill*2+2))
 		if(wglev_0 .eqv. .false.) allocate(wage_coef(NTpolyT+Nskill*2+5))
 		if(wglev_0 .eqv. .true.) allocate(wage_coef(NTpolyT+Nskill+5))
+		wage_coef = 0._dp
 		if(NKpolyT >= 2) then
 			t=6
 			do j=1,(NKpolyT+1)
@@ -556,6 +560,7 @@ subroutine setparams()
 					endif
 				enddo
 			enddo
+			!wage_coef = occwg_datcoef_sqr
 		else
 			t= 14
 			do j=1,NTpolyT !read the NTpolyT in time
@@ -568,11 +573,13 @@ subroutine setparams()
 			enddo
 			occwg_datcoef(1+NTpolyT+2*Nskill) = wage_coef_O1_read(t) !just to get the constant
 		endif
+		wage_coef = occwg_datcoef
 	else
 		allocate(wc_guess_nolev((Nskill+1)*(Nknots-1)+2))
 		allocate(wc_guess_lev( Nknots-1+ Nskill*Nknots +2 ))
 		if(wglev_0 .eqv. .true.) allocate(wage_coef((Nskill+1)*(Nknots-1)+5) )
-		if(wglev_0 .eqv. .true.) allocate(wage_coef(Nknots-1 + Nskill*Nknots+5) )
+		if(wglev_0 .eqv. .false.) allocate(wage_coef(Nknots-1 + Nskill*Nknots+5) )
+		wage_coef = 0._dp
 
 		t= 6
 		do j=1,Nskill
@@ -589,6 +596,7 @@ subroutine setparams()
 				t =t+1
 			enddo
 		enddo
+		wage_coef = occwg_datspline
 	endif
 
 	!use the coefficients to set the trends (stored in occwg_dattrend):
@@ -688,6 +696,7 @@ subroutine setparams()
 		wage_lev = occwg_datlev
 	endif
 	wage_trend = occwg_dattrend
+
 
 	!Wage-trend grid-setup
 	trgrid(1) = (minval(wage_trend(Tsim,:) + wage_lev ))*1.1_dp

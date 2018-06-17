@@ -1068,7 +1068,7 @@ module model_data
 		moments_sim%init_hlth_acc = 0._dp
 		do i=1,Nsim
 			dicont_hr = 0._dp
-			do it=(init0_yrs*itlen+1),((init_yrs+init0_yrs)*itlen)
+			do it=((init0_yrs)*itlen+1),((init_yrs+init0_yrs)*itlen)
 				if( hst%status_hist(i,it)<5 .and. hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
 					ninsur_app = 1._dp + ninsur_app
 					if(hst%status_hist(i,it) == 3) then
@@ -4518,7 +4518,7 @@ module sim_hists
 			do age_hr = 1,TT-1
 				junk = 1.
 				do i=1,Nsim
-					do it = (init0_yrs*itlen),((init_yrs+init0_yrs)*itlen)
+					do it = ((init0_yrs)*itlen),((init_yrs+init0_yrs)*itlen)
 						if( age_hr .eq. age_it(i,it) ) then
 							a_mean(age_hr) = a_it(i,it)      + a_mean(age_hr)
 							d_mean(age_hr) = d_it(i,it)      + d_mean(age_hr)
@@ -4531,7 +4531,7 @@ module sim_hists
 				d_mean(age_hr) = d_mean(age_hr)/junk
 				s_mean(age_hr) = s_mean(age_hr)/junk
 				do i=1,Nsim
-					do it = (init0_yrs*itlen),((init_yrs+init0_yrs)*itlen)
+					do it = ((init0_yrs)*itlen),((init_yrs+init0_yrs)*itlen)
 						if( (age_hr .eq. age_it(i,it)) .and. (a_it(i,it)>0._dp)) then
 							a_var(age_hr) = (dlog(a_it(i,it)) - dlog(a_mean(age_hr)))**2 + a_var(age_hr)
 							d_var(age_hr) = (d_it(i,it) - d_mean(age_hr))**2+ d_var(age_hr)
@@ -4995,14 +4995,14 @@ module find_params
 				do ij=1,nj
 					wage_trend_hr = 0._dp
 					do ik=1,Nskill
-						wage_trend_hr = wage_coef(ik)*occ_onet(ij,ik) +wage_trend_hr
+						wage_trend_hr = wage_coef_in(ik)*occ_onet(ij,ik) +wage_trend_hr
 					enddo
 					do ip=1,(Nknots-1)
-						wage_trend_hr = wage_coef(ip+Nskill)*tbase(ip) + wage_trend_hr
+						wage_trend_hr = wage_coef_in(ip+Nskill)*tbase(ip) + wage_trend_hr
 					enddo
 					do ik=1,Nskill
 						do ip=1,(Nknots-1)
-							wage_trend_hr = wage_coef(ip + (ik-1)*(Nknots-1)+Nskill+(Nknots-1))*tbase(ip)*occ_onet(ij,ik) +wage_trend_hr
+							wage_trend_hr = wage_coef_in(ip + (ik-1)*(Nknots-1)+Nskill+(Nknots-1))*tbase(ip)*occ_onet(ij,ik) +wage_trend_hr
 						enddo
 					enddo !for each ik
 					if(wage_trend_hr .gt. trgrid(ntr)) wage_trend_hr = trgrid(ntr)
@@ -5081,9 +5081,10 @@ module find_params
 			endif !linear in onet skills
 		endif !cubic spline
 
-		if(print_lev .ge. 2) then
+!		if(print_lev .ge. 2) then
 			call mat2csv(new_wgtrend,"new_wgtrend.csv")
-		endif
+			call vec2csv(wage_lev,"new_wglev.csv")
+!		endif
 
 	end subroutine gen_new_wgtrend
 
@@ -5113,6 +5114,7 @@ module find_params
 		if(tr_spline .eqv. .true.) then
 			Ncoef        = Nskill*(Nknots-1) + Nknots-1+Nskill+Nnuisance
 			Ncoef_active = Nskill*(Nknots-1) + Nknots-1+Nskill
+			if(wglev_0 .eqv. .true.) Ncoef_active = Nskill*(Nknots-1) + Nknots-1
 		else
 			if( NKpolyT>=2 ) then
 				Ncoef = (Nskill+1)*(NKpolyT+1)+2 !NKpolyT*Nskill + Nskill + NKpolyT + 2 + const
@@ -5187,10 +5189,12 @@ module find_params
 !		else
 			wc0 =  1.0_dp
 !		endif
-		wcL = -0.5_dp
+		wcL = 0._dp
 		wcL(Ncoef_active+1) = 0.1_dp !for fndrt_mul
 		wcL(Ncoef_active+2) = 0.1_dp !for seprt_mul
-		wcU =  2.5_dp
+		wcU =  1.5_dp
+		wcU(Ncoef_active+1) = 2.9_dp !for fndrt_mul
+		wcU(Ncoef_active+2) = 2.9_dp !for seprt_mul
 
 	!	if(print_lev .ge. 2) then
 			call dfovec(Nobj,Nobj, wc0,fval)
@@ -5202,8 +5206,8 @@ module find_params
 	!		call vec2csv(fval,"fdfbolsL_wage_coef.csv")
 	!	endif
 
-		rhobeg = minval( wcU - wcL)/4._dp	!loosen this up?
-		if( verbose >=2) print *, "rhobeg in interwg: ", rhobeg
+		rhobeg = minval( wcU - wcL )/10._dp	!loosen this up?
+		if( verbose >=2) print *, "rhobeg in iter_wg: ", rhobeg
 		if( cal_niter < 2*(2*2+1)) then !2 is Nopt in the outer calibration cycle. This is a bit sloppy
 			rhoend = rhobeg/1000._dp
 			maxiter_hr = min(100,maxiter)
@@ -5235,6 +5239,9 @@ module find_params
 		print_lev = plO
 		verbose = vO
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Come back to uncomment this
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !		if(print_lev .ge. 2) then
 			call mat2csv(wage_trend,"wage_trend_jt.csv")
 			call vec2csv(wage_lev,"wage_lev_j.csv")
@@ -5498,6 +5505,8 @@ module find_params
 					else
 						! set initial guess
 						ii = 1
+						wc_guess_lev = 1._dp
+						wc_guess_nolev = 1._dp
 						if(tr_spline .eqv. .true.)then
 							do i=1,((Nknots-1)+Nskill*Nknots)
 								if( i .gt. Nskill)  then
@@ -5508,6 +5517,11 @@ module find_params
 							do i=1,(Nknots-1+Nskill*Nknots)
 								wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
 							enddo
+							wc_guess_nolev((Nknots-1)+Nskill*Nknots +1) = fndrt_mul
+							wc_guess_nolev((Nknots-1)+Nskill*Nknots +2) = seprt_mul
+
+							wc_guess_lev(Nknots-1+Nskill*Nknots +1) = fndrt_mul !Nskill + Nknots-1 + NKsill*(Nknots-1)
+							wc_guess_lev(Nknots-1+Nskill*Nknots +2) = seprt_mul
 						else
 							do i=1,(NTpolyT + 2*Nskill)
 								if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
@@ -5518,25 +5532,31 @@ module find_params
 							do i=1,(NTpolyT + 2*Nskill)
 								wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
 							enddo
+
+							wc_guess_nolev(Nskill + NTpolyT +1) = fndrt_mul
+							wc_guess_nolev(Nskill + NTpolyT +2) = seprt_mul
+
+							wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
+							wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
 						endif
 
-						wc_guess_nolev(Nskill + NTpolyT +1) = fndrt_mul
-						wc_guess_nolev(Nskill + NTpolyT +2) = seprt_mul
-
-						wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
-						wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
 						! only do BOBYQA if the starting point is good
 						if(nopt >=5) then
 							print *, "Computing from: ",  x0(1), x0(2), x0(3),x0(4), x0(5)," on node: ", rank, "after ", j, " tries"
 						else
 							print *, "Computing from: ",  x0(1), x0(2), x0(3)," on node: ", rank, "after ", j, " tries"
 						endif
+						!output the internal stage 1 parameters
+						call vec2csv(wage_coef, "wage_coef_opt"// rank_str //".csv")
+						call mat2csv(fndgrid0*fndrt_mul, "fndgrid_opt"// rank_str //".csv")
+						call mat2csv(sepgrid0*seprt_mul, "sepgrid_opt"// rank_str //".csv")
+
 						cal_niter = 1
 						iprint = 1
 						xopt = (x0-xl)/(xu-xl) !convert x0 draw into normalized (0,1) units
 						cal_on_iter_wgtrend = .false.
 						call bobyqa_h(nopt,ninterppt,xopt,zeros,ones, &
-						&	rhobeg,rhoend,iprint,100,wspace,nopt)
+						&	rhobeg,rhoend,iprint,70,wspace,nopt)
 
 						call dfovec(nopt,nopt,xopt,v_err)
 						cal_on_iter_wgtrend = .true.
@@ -5550,12 +5570,16 @@ module find_params
 				node_xopts(((dd-1)*nopt+1):(dd*nopt)) = xopt*(xu-xl)+xl
 				node_internalopt( ((dd - 1)*ninternalopt+1):(dd - 1)*ninternalopt + size(wage_coef) ) = wage_coef
 				node_internalopt( ((dd - 1)*ninternalopt+1+ size(wage_coef)):dd*ninternalopt ) = (/ fndrt_mul, seprt_mul /) !are these available globally?
+				print *, "-----------------"
+				print *, "-----------------"
 				print *, "Found min ", err0, "at ", xopt," on node: ", rank, "attraction basin: ", attraction_size
 
 				call CPU_TIME(t2)
 				call SYSTEM_CLOCK(c2)
 				print *, "System Time on calibration for rank ", rank, ": ", dble(c2-c1)/dble(cr)
 				print *, "   CPU Time for rank ", rank_str, ": ", (t2-t1)
+				print *, "-----------------"
+				print *, "-----------------"
 
 				call vec2csv(wage_coef, "wage_coef_opt"// rank_str //".csv")
 				call mat2csv(fndgrid0*fndrt_mul, "fndgrid_opt"// rank_str //".csv")
@@ -5565,6 +5589,12 @@ module find_params
 				elseif(nopt==3) then
 					call vec2csv( (/nu, xizd1coef,xizd23coef,wmean/)  , "nuxiw_opt"// rank_str //".csv")
 				elseif(nopt==5) then
+					xopt = xopt*(xu-xl)+xl !convert to input space
+					nu = xopt(1)
+					xizd1coef  = xopt(2)*xopt(3)
+					xizd23coef = xopt(2)
+					Fd(2) = xopt(4)*xopt(5)
+					Fd(3) = xopt(5)
 					call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt" // rank_str //".csv")
 				endif
 			enddo ! dd = 1,nstartpn
@@ -5641,6 +5671,11 @@ module find_params
 			fndrt_mul =1._dp
 			sepgrid = sepgrid0*seprt_mul
 			seprt_mul =1._dp
+			nu = xopt(1)
+			xizd1coef  = xopt(2)*xopt(3)
+			xizd23coef = xopt(2)
+			Fd(2) = xopt(4)*xopt(5)
+			Fd(3) = xopt(5)
 			!print them all
 			call mat2csv(wage_trend, "wage_trend_opt.csv")
 			call vec2csv(wage_coef, "wage_coef_opt.csv")
@@ -5661,6 +5696,9 @@ module find_params
 			if( EW < W + 0.5_dp ) then
 				exit
 			endif
+
+			call vec2csv(fopt_hist(1:nstarts),"fopt_hist.csv")
+			call mat2csv(xopt_hist(:,1:nstarts),"xopt_hist.csv")
 		enddo
 
 		print_lev = print_lev_old
@@ -5779,6 +5817,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 	integer :: print_lev_old,verbose_old
 	real(dp):: avwt,avonet(Nskill),urt,Efrt,Esrt
 	real(dp):: paramwt(mv)
+	real(dp):: wage_trend_out(Tsim,nj)
 	character(len=10) :: char_solcoefiter
 
 	if( dfbols_nuxi_trproc == 2 )then
@@ -5786,9 +5825,8 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		ncoef_active = ntheta-2
 
 		coef_loc = 0._dp !have actually over-sized this one. There will be a few last that are not used
-		do i=1,ncoef_active
-			coef_loc(i) = theta0(i)  !coef loc are multipliers for the coefficients
-		enddo
+
+		coef_loc(1:ncoef_active) = theta0(1:ncoef_active)  !coef loc are multipliers for the coefficients
 		fndrt_mul = theta0(1+ncoef_active)
 		seprt_mul = theta0(2+ncoef_active)
 
@@ -5811,6 +5849,9 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		wthr = 1._dp
 		if(tr_spline .eqv. .true.) then
 			wthr = 1._dp
+			do i=1,Ncoef
+				wthr = 1./(1._dp + occwg_datspline(i))
+			enddo
 			! do i=1,(Nknots-1)
 			! 	wthr(i+Nskill) = (tr_knots(Nknots)-tr_knots(i))/(tr_knots(Nknots)-tr_knots(1))
 			! enddo
@@ -5853,7 +5894,8 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		enddo
 		! write(char_solcoefiter, "(i10)") mod_solcoefiter
 		! call mat2csv(wage_trend,  trim("wage_trend_0_")//trim(char_solcoefiter)//".csv")
-		call gen_new_wgtrend(wage_trend, coef_here)
+		call gen_new_wgtrend(wage_trend_out, coef_here)
+		wage_trend = wage_trend_out
 		call clean_hist(mod_hst)
 		call reg_wgtrend(coef_est,mod_vfs,mod_pfs,mod_hst,mod_shk)
 		call dist_wgcoefs(dif_coef, reldist_coef,coef_est)
@@ -5989,9 +6031,14 @@ program V0main
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
 	call mpi_comm_size(mpi_comm_world,nnode,ierr)
 
+	print *, "Running version June 9, 2018"
 	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
+
+
+	call gen_new_wgtrend(wage_trend,wage_coef)
+	call mat2csv(wage_trend,"wage_trend.csv")
 
 	narg_in = iargc()
 	if( narg_in > 0 ) then
@@ -6328,7 +6375,7 @@ program V0main
 	endif !sol_once
 
 	!parameters from the 7/23/2017 calibration
-	!test parameter vector     0.812298608310627       0.123992114316186
+	!test parameter vector   https://en.wikipedia.org/wiki/Kaiser_Permanente  0.812298608310627       0.123992114316186
 	! nu = 0.812298608310627
 	! xizcoef = 0.123992114316186
 
@@ -6440,13 +6487,12 @@ program V0main
 		cal_on_iter_wgtrend = .false.
 		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
 		call gen_new_wgtrend(wage_trend,wage_coef)
-
 		caselabel = ""
 	 	print *, caselabel, " ---------------------------------------------------"
 		occ_dat = .true.
 		wtr_by_occ = .true.
 		demog_dat = .true.
-
+		buscyc = .true.
 		print_lev = 2
 		call cal_dist(parvec,err0,shk)
 	 	print *, "error in initial", err0(1), err0(2), err0(3), err0(4), err0(5)
@@ -6455,16 +6501,28 @@ program V0main
 
 
 	if((nodei == 0) .and. (run_experiments .eqv. .true.) .and. (dbg_skip .eqv. .false.)) then
+
+		cal_on_iter_wgtrend = .false.
+		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
+
+
 		allocate(wage_coef_0chng(size(wage_coef)))
    	 	wage_coef_0chng = wage_coef
-   		do i=(1+NTpolyT),size(wage_coef) !only turn off the occupation-specific trends
-   			wage_coef_0chng(i)= 0._dp
-   		enddo
+		if(tr_spline .eqv. .true. )then
+			do i=(Nskill+1),size(wage_coef) !turn-off wage trends
+				wage_coef_0chng(i)= 0._dp
+			enddo
+		else
+			do i=(1+NTpolyT),size(wage_coef) !only turn off the occupation-specific trends
+	   			wage_coef_0chng(i)= 0._dp
+	   		enddo
+		endif
 
 		!without any drivers
 		caselabel = "all0"
 	 	print *, caselabel, " ---------------------------------------------------"
 		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
+		if(print_lev .gt. 1) call vec2csv( wage_coef_0chng ,"wage_coef"//trim(caselabel)//".csv")
 		if(print_lev .gt. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
 	 	wtr_by_occ = .false.
 	 	occ_dat = .false.
@@ -6547,7 +6605,7 @@ program V0main
 		occ_dat = .true.
 	 	wtr_by_occ = .true.
 	 	demog_dat = .true.
-	 	caselabel = "buscyc0"
+	 	caselabel = "bcyc0"
 		print *, caselabel, " ---------------------------------------------------"
 		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
@@ -6614,62 +6672,6 @@ program V0main
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"
 
-
-		! without either the change in occupation or wage trend
-	 	occ_dat = .false.
-	 	wtr_by_occ = .false.
-	 	demog_dat = .true.
-		buscyc = .true.
-		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
-	 	caselabel = "wchng0deloc0"
-		print *, caselabel, " ---------------------------------------------------"
-		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
-		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
-	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
-		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
-		call cal_dist(parvec,err0,shk)
-		call gen_new_wgtrend(wage_trend,wage_coef)
-		print *, "error in targets with ", caselabel, " ", err0
-	 	print *, "---------------------------------------------------"
-
-		!without either the demograhpic change or wage trend
-		occ_dat = .true.
-		wtr_by_occ = .false.
-		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
-		demog_dat = .false.
-		buscyc = .true.
-		caselabel = "wchng0demog0"
-		print *, caselabel, " ---------------------------------------------------"
-		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
-		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
-	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
-		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
-		call cal_dist(parvec,err0,shk)
-		call gen_new_wgtrend(wage_trend,wage_coef)
-		print *, "error in targets with ", caselabel, " ", err0
-		print *, "---------------------------------------------------"
-
-	 	occ_dat = .false.
-	 	wtr_by_occ = .true.
-	 	demog_dat = .false.
-		buscyc = .true.
-	 	caselabel = "deloc0demog0"
-	 	print *, caselabel, " ---------------------------------------------------"
-		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
-		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
-		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
-	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
-		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
-		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
-		call cal_dist(parvec,err0,shk)
-		print *, "error in targets with ", caselabel, " ", err0
-	 	print *, "---------------------------------------------------"
-
-
 		! without business cycles or wage trend
 	 	occ_dat = .true.
 	 	wtr_by_occ = .false.
@@ -6689,10 +6691,10 @@ program V0main
 		print *, "error in targets with ", caselabel, " ", err0
 	 	print *, "---------------------------------------------------"
 
-		!without either the demograhpic change or business cycles
-		occ_dat = .true.
-		wtr_by_occ = .true.
-		demog_dat = .false.
+		! without either the change in demographics or business cycles
+	 	occ_dat = .true.
+	 	wtr_by_occ = .true.
+	 	demog_dat = .false.
 		buscyc = .false.
 		caselabel = "demog0bcyc0"
 		print *, caselabel, " ---------------------------------------------------"
@@ -6704,7 +6706,7 @@ program V0main
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		call cal_dist(parvec,err0,shk)
 		print *, "error in targets with ", caselabel, " ", err0
-		print *, "---------------------------------------------------"
+	 	print *, "---------------------------------------------------"
 
 		!without either occupational changes or business cycles
 	 	occ_dat = .false.
@@ -6745,21 +6747,22 @@ program V0main
 		print *, "---------------------------------------------------"
 
 		! with only the change in occupation composition
-		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		buscyc = .false.
 		occ_dat = .true.
 		wtr_by_occ = .false.
 		demog_dat = .false.
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		caselabel = "wchng0demog0bcyc0"
 		print *, caselabel, " ---------------------------------------------------"
 		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
 		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
-			call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		if(print_lev .ge. 1) call mat2csv( wage_trend ,"wage_trend"//trim(caselabel)//".csv")
 		call cal_dist(parvec,err0,shk)
+		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "error in targets with ", caselabel, " ", err0
 		print *, "---------------------------------------------------"
 
@@ -6768,7 +6771,9 @@ program V0main
 		occ_dat = .false.
 		wtr_by_occ = .false.
 		demog_dat = .true.
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		caselabel = "wchng0deloc0bcyc0"
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		print *, caselabel, " ---------------------------------------------------"
 		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
 		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
@@ -6777,6 +6782,7 @@ program V0main
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		call cal_dist(parvec,err0,shk)
+		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "error in targets with ", caselabel, " ", err0
 		print *, "---------------------------------------------------"
 
@@ -6785,6 +6791,7 @@ program V0main
 		occ_dat = .false.
 		wtr_by_occ = .false.
 		demog_dat = .false.
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
 		caselabel = "wchng0deloc0demog0"
 		print *, caselabel, " ---------------------------------------------------"
 		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
@@ -6794,6 +6801,7 @@ program V0main
 		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		call cal_dist(parvec,err0,shk)
+		call gen_new_wgtrend(wage_trend,wage_coef)
 		print *, "error in targets with ", caselabel, " ", err0
 		print *, "---------------------------------------------------"
 		!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -6805,14 +6813,13 @@ program V0main
 	! IF you love something....
 	!****************************************************************************!
 	deallocate(tr_hist_vec,wg_hist_vec)
-!~ 	call nlo_destroy(calopt)
+
 	call dealloc_shocks(shk)
 
 	deallocate(wc_guess_nolev,wc_guess_lev)
 
 	call mpi_finalize(ierr)
 
-!~ 	call dealloc_econ(vfs,pfs,hst)
 
 
 !    .----.   @   @
