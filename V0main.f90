@@ -5113,7 +5113,7 @@ module find_params
 
 		if(tr_spline .eqv. .true.) then
 			Ncoef        = Nskill*(Nknots-1) + Nknots-1+Nskill+Nnuisance
-			Ncoef_active = Nskill*(Nknots-1) + Nknots-1+Nskill
+			Ncoef_active = Nskill*(Nknots-1) + Nknots-1+Nskill - 1  !have to subtract 1 because first coef is going to be fixed o.w. indeterminant.
 			if(wglev_0 .eqv. .true.) Ncoef_active = Nskill*(Nknots-1) + Nknots-1
 		else
 			if( NKpolyT>=2 ) then
@@ -5219,8 +5219,9 @@ module find_params
 		print_lev_bobyqa = plO !set this to printlev (plO)
 		call bobyqa_h(Nobj,Nobj_estpts,wc0,wcL,wcU,rhobeg,rhoend,print_lev_bobyqa,maxiter_hr,wksp_dfbols,Nobj)
 
+		wage_coef(1) = occwg_datspline(1) !first coef, fixed
 		ii=0
-		do i = 1,(Ncoef-Nnuisance)
+		do i = 2,(Ncoef-Nnuisance)
 			if(tr_spline .eqv. .true.) then
 				if( (wglev_0 .eqv. .false.) .or. (i .ge. Nskill)) then
 					ii=ii+1
@@ -5835,9 +5836,9 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		sepgrid = sepgrid*seprt_mul
 
 		if(wglev_0 .eqv. .false.) then
-			Ncoef = ncoef_active+Nnuisance
+			Ncoef = ncoef_active+Nnuisance+1
 		else
-			Ncoef = ncoef_active+Nnuisance+Nskill !if we're not maximizing levels, need to add them
+			Ncoef = ncoef_active+Nnuisance+Nskill+1 !if we're not maximizing levels, need to add them
 		endif
 		allocate(coef_est(Ncoef))
 		allocate(dif_coef(Ncoef))
@@ -5878,17 +5879,19 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		if(print_lev .ge. 3) call vec2csv(wthr, "wthr_coef.csv" )
 		if(tr_spline .eqv. .true. ) coef_here = occwg_datspline
 		if(tr_spline .eqv. .false.) coef_here = occwg_datcoef !taking constant, age profile and non-targeted from the data
-		ii = 1
-		do i=1,(Ncoef - Nnuisance)
+
+		coef_here(1) = occwg_datspline(1)
+		ii = 0
+		do i=2,(Ncoef - Nnuisance)
 			if( tr_spline .eqv. .true. ) then
 				if((wglev_0 .eqv. .false.) .or. (i .ge. Nskill) ) then
-					coef_here(i) = coef_loc(ii)*occwg_datspline(i)
 					ii = ii+1
+					coef_here(i) = coef_loc(ii)*occwg_datspline(i)
 				endif
 			else
 				if((wglev_0 .eqv. .false.) .or. ( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) )) then
-					coef_here(i) = coef_loc(ii)*occwg_datcoef(i)
 					ii = ii+1
+					coef_here(i) = coef_loc(ii)*occwg_datcoef(i)
 				endif
 			endif
 		enddo
@@ -5902,7 +5905,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 
 		fval = 0._dp
 		ri=1
-		do i=1,Ncoef-Nnuisance
+		do i=2,Ncoef-Nnuisance
 			if( tr_spline .eqv. .true. ) then
 				if((wglev_0 .eqv. .false.) .or. (i .ge. Nskill) ) then
 					fval(ri) = dif_coef(i)*wthr(i)
