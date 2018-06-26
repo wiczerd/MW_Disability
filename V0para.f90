@@ -355,14 +355,14 @@ subroutine setparams()
 			do j=1,25
 				read(fread,*) wage_coef_CS_read(j)
 			enddo
+			close(fread)
 		else
 			open(unit= fread, file = "OLSWageTrend_CS1.csv")
 			do j=1,17
 				read(fread,*) wage_coef_CS_read(j)
 			enddo
+			close(fread)
 		endif
-
-		close(fread)
 
 	endif
 
@@ -699,9 +699,9 @@ subroutine setparams()
 
 
 	!Wage-trend grid-setup
-	trgrid(1) = (minval(wage_trend(Tsim,:) + wage_lev ))*1.1_dp
+	trgrid(1) = (minval(wage_trend(Tsim,:) + wage_lev ))*1.5_dp
 	if(ntr>1) then
-		trgrid(ntr) = (maxval(wage_trend(Tsim,:)+wage_lev))*1.1_dp
+		trgrid(ntr) = (maxval(wage_trend(Tsim,:)+wage_lev))*1.5_dp
 		do tri=2,(ntr-1)
 			trgrid(tri) = dble(tri-1)*(trgrid(ntr)-trgrid(1))/dble(ntr-1) + trgrid(1)
 		enddo
