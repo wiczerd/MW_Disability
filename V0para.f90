@@ -34,7 +34,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		R = dexp(.02/tlen),&	!People can save in the backyard
 		upd_zscl = 0.1,&		! rate at which to update zshift
 		upd_wgtrnd = 0.01,&		! rate at which update wage_trend
-		smth_diaward = 0.1		! number between 0,1 for how much to mix the smoothed awards
+		smth_diaward = 0.05		! number between 0,1 for how much to mix the smoothed awards
 
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
@@ -61,7 +61,7 @@ integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
 			yearT = 2013, &
 			TossYears = 5, & 		!number of years to run and throwaway
 			Tsim = itlen*(yearT - year0+1 + TossYears), &	!how many periods to solve for simulation
-			init_yrs = 3,&			!how many years for calibration to initial state of things
+			init_yrs = 1,&			!how many years for calibration to initial state of things
 			init0_yrs= TossYears,&	!how many years buffer before calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
@@ -155,8 +155,7 @@ real(8) :: 	alfgrid(nal,nd), &	!Alpha_i grid- individual wage type parameter
 		occwg_datspline(Nskill+Nknots-1+Nskill*(Nknots-1)+5),& !!coefficients for wage spline regression. First is levels for skills, then cubic spline in time. Then spline for each skill. Then 2 for age profile, 2 for health dummies, 1 const
 		occwg_dattrend(Tsim,nj),& !trend in occupation wage
 		occwg_datlev(nj),&		!level of occupation wage
-
-		occsz0(nj),&		   !Fraction in each occupation
+		occsz0(nj), &		   !Fraction in each occupation
 		occpr_trend(Tsim,nj) !trend in occupation choice
 
 real(8), allocatable :: wage_coef(:), & !occupation-specific differences in wage-level
@@ -699,9 +698,9 @@ subroutine setparams()
 
 
 	!Wage-trend grid-setup
-	trgrid(1) = (minval(wage_trend(Tsim,:) + wage_lev ))*1.5_dp
+	trgrid(1) = (minval(wage_trend(Tsim,:) + wage_lev ))*1.1_dp
 	if(ntr>1) then
-		trgrid(ntr) = (maxval(wage_trend(Tsim,:)+wage_lev))*1.5_dp
+		trgrid(ntr) = (maxval(wage_trend(Tsim,:)+wage_lev))*1.2_dp
 		do tri=2,(ntr-1)
 			trgrid(tri) = dble(tri-1)*(trgrid(ntr)-trgrid(1))/dble(ntr-1) + trgrid(1)
 		enddo

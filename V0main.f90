@@ -83,7 +83,7 @@ module helper_funs
 		integer :: alloced
 		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+1,nj+1)
 		real(dp) :: s2,avg_di,init_di
-		real(dp) :: init_hlth_acc,avg_hlth_acc,d1_diawardfrac,init_diaward,init_diaward_discr
+		real(dp) :: init_hlth_acc,init_diprob,avg_hlth_acc,d1_diawardfrac,init_diaward,init_diaward_discr
 		real(dp) :: hlth_acc_rt(TT-1)
 
 	end type moments_struct
@@ -1066,6 +1066,7 @@ module model_data
 		init_diaward_discr = 0._dp
 		moments_sim%init_diaward = 0._dp
 		moments_sim%init_hlth_acc = 0._dp
+		moments_sim%init_diprob = 0._dp
 		do i=1,Nsim
 			dicont_hr = 0._dp
 			do it=((init0_yrs)*itlen+1),((init_yrs+init0_yrs)*itlen)
@@ -1079,7 +1080,8 @@ module model_data
 
 						if( hst%app_dif_hist(i,it) >=0. .and. hst%di_prob_hist(i,it)>0.) then
 							napp_t = napp_t+1._dp
-							moments_sim%init_hlth_acc = hst%hlthprob_hist(i,it)/(hst%di_prob_hist(i,it)) + moments_sim%init_hlth_acc
+							moments_sim%init_hlth_acc = hst%hlthprob_hist(i,it) + moments_sim%init_hlth_acc
+							moments_sim%init_diprob   = hst%di_prob_hist(i,it)  + moments_sim%init_diprob
 						endif
 					endif
 
@@ -1105,11 +1107,11 @@ module model_data
 			moments_sim%init_di= moments_sim%init_di/ninsur_app
 			init_diaward_discr = init_diaward_discr/ninsur_app
 			moments_sim%init_diaward = moments_sim%init_diaward/ninsur_app
-			! mix the smoothed and discrete:
-			moments_sim%init_diaward = smth_diaward*moments_sim%init_diaward + (1._dp -smth_diaward)* init_diaward_discr
 			!make the award rates annual:
 			moments_sim%init_diaward = 1._dp-(1._dp-moments_sim%init_diaward)**(tlen)
 			init_diaward_discr = 1._dp-(1._dp-init_diaward_discr)**(tlen)
+			! mix the smoothed and discrete:
+			moments_sim%init_diaward = smth_diaward*moments_sim%init_diaward + (1._dp -smth_diaward)* init_diaward_discr
 		else
 			moments_sim%init_diaward = 0._dp
 			moments_sim%init_di= 0._dp
@@ -1118,7 +1120,9 @@ module model_data
 		moments_sim%init_diaward_discr = init_diaward_discr
 
 		if(napp_t > 0._dp) then
-			moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/napp_t
+			!make hlth acc a conditional probability instead of the cumulative probability
+			moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/moments_sim%init_diprob
+			moments_sim%init_diprob  = moments_sim%init_diprob/napp_t
 		else
 			moments_sim%init_hlth_acc= 1._dp
 		endif
@@ -4914,8 +4918,9 @@ module find_params
 		if( print_lev .ge. 2) then
 			call mat2csv(XX_ii, "XX_ii.csv")
 			call vec2csv(yy_ii, "yy_ii.csv")
+			call vec2csv(coef_est, "coef_est.csv")
 		endif
-		call vec2csv(coef_est, "coef_est.csv")
+
 
 		deallocate(XX_ii,yy_ii)
 		deallocate(XX,yy,coef_est,cov_coef)
@@ -5081,10 +5086,10 @@ module find_params
 			endif !linear in onet skills
 		endif !cubic spline
 
-!		if(print_lev .ge. 2) then
+		if(print_lev .ge. 2) then
 			call mat2csv(new_wgtrend,"new_wgtrend.csv")
 			call vec2csv(wage_lev,"new_wglev.csv")
-!		endif
+		endif
 
 	end subroutine gen_new_wgtrend
 
