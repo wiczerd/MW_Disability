@@ -88,12 +88,14 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  occ_dat    = .true.,& ! do we
 					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
 					  RAS_pid    = .true.,& !balance the health transition matrix
-					  buscyc	 = .true.
+					  buscyc	 = .true. !turn on/off business cycles?
+
 
 logical			  ::  run_experiments = .false., &
 					  run_cal = .false., &
 					  refine_cal = .false., &
-					  est_elasticity = .false.
+					  elast_xi 	 = .false.   !calculate the elasticity of w.r.t. xi?
+
 
 real(8), parameter ::  amax 	 = 24.0,   &	!Max on Asset Grid
 					   amin = 0.0	   	!Min on Asset Grid

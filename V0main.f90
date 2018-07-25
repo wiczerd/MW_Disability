@@ -6081,6 +6081,13 @@ program V0main
 			refine_cal = .false.
 		endif
 		print *, "refine calibration", refine_cal
+		if(narg_in > 6) then
+			call GETARG(7, arg_in)
+			read(arg_in, *) elast_xi
+		else
+			elast_xi = .false.
+		endif
+		print *, "calculate xi elasticity", elast_xi
 
 
 	endif
@@ -6504,6 +6511,54 @@ program V0main
 		print *, "---------------------------------------------------"
 	endif
 
+	if( (elast_xi .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
+		cal_on_iter_wgtrend = .false.
+		allocate(wage_coef_0chng(size(wage_coef)))
+   	 	wage_coef_0chng = wage_coef
+		if(tr_spline .eqv. .true. )then
+			do i=(Nskill+1),size(wage_coef) !turn-off wage trends
+				wage_coef_0chng(i)= 0._dp
+			enddo
+		else
+			do i=(1+NTpolyT),size(wage_coef) !only turn off the occupation-specific trends
+	   			wage_coef_0chng(i)= 0._dp
+	   		enddo
+		endif
+
+		!without any drivers
+	 	print *, caselabel, " ---------------------------------------------------"
+		call gen_new_wgtrend(wage_trend,wage_coef_0chng)
+
+		wtr_by_occ = .false.
+	 	occ_dat = .false.
+	 	demog_dat  = .false.
+		buscyc = .false.
+		call set_age(shk%age_hist, shk%born_hist, shk%age_draw)
+		call set_ji( shk%j_i,shk%jshock_ij,shk%born_hist)
+		call set_fndsepi(shk%fndsep_i_int,shk%fndsep_i_draw,shk%j_i)
+	 	call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+
+		caselabel = "xi0L"
+		parvec = (/nu,0.75*xizd23coef, 0.75*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
+		call cal_dist(parvec,err0,shk)
+		print *, "error with low xi ", err0(1), err0(2), err0(3), err0(4), err0(5)
+		print *, "---------------------------------------------------"
+
+		caselabel = "xi0H"
+		parvec = (/nu,1.25*xizd23coef, 1.25*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
+		call cal_dist(parvec,err0,shk)
+		print *, "error with high xi ", err0(1), err0(2), err0(3), err0(4), err0(5)
+		print *, "---------------------------------------------------"
+
+		call gen_new_wgtrend(wage_trend,wage_coef)
+
+		!now do it with end-period wage trends
+
+		deallocate(wage_coef_0chng)
+
+	endif
 
 	if((nodei == 0) .and. (run_experiments .eqv. .true.) .and. (dbg_skip .eqv. .false.)) then
 
