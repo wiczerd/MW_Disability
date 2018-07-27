@@ -50,12 +50,14 @@ module helper_funs
 	! a) val_struct: VR, VD, VN, VW, VU, V
 	!------------------------------------------------------------------
 	type val_struct
+		! see alloc_valpol  for dimensions' definitions
 		real(dp), allocatable:: 	VR(:,:,:,:), &		!Retirement
 					VD(:,:,:,:), &		!Disabled
 					VN(:,:,:,:,:,:,:), &	!Long-term Unemployed
 					VW(:,:,:,:,:,:,:), &	!Working
 					VU(:,:,:,:,:,:,:), &	!Unemployed
-					V(:,:,:,:,:,:,:)	!Participant
+					V(:,:,:,:,:,:,:), &		!Participant
+					V_CF(:,:,:,:,:,:,:)		!Counter-factual w/o DI
 		integer :: alloced 	! status indicator
 		integer :: inited 	! intiialized indicator
 
@@ -94,6 +96,7 @@ module helper_funs
 		integer, allocatable :: hlth_voc_hist(:,:)
 		real(dp), allocatable :: hlthprob_hist(:,:)
 		real(dp), allocatable :: wage_hist(:,:) !realized wages
+		real(dp), allocatable :: welfare_hist(:,:)
 		integer, allocatable :: z_jt_macroint(:) !endogenous realization of shocks given a sequence
 		real(dp), allocatable :: z_jt_panel(:,:)
 		! a bunch of explanitory variables to be stacked on each other
@@ -640,6 +643,7 @@ module helper_funs
 		type(hist_struct) :: hst
 
 		allocate(hst%wage_hist(Nsim,Tsim), stat=hst%alloced)
+		allocate(hst%welfare_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%work_dif_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%app_dif_hist(Nsim,Tsim), stat=hst%alloced)
 		allocate(hst%di_prob_hist(Nsim,Tsim), stat=hst%alloced)
@@ -660,6 +664,7 @@ module helper_funs
 		type(hist_struct) :: hst
 
 		hst%wage_hist = 0.
+		hst%welfare_hist = 0.
 		hst%work_dif_hist = 0.
 		hst%app_dif_hist = 0.
 		hst%di_prob_hist  = 0.
@@ -673,17 +678,14 @@ module helper_funs
 
 	end subroutine clean_hist
 
-
-	subroutine alloc_econ(vfs, pfs,hst)
-
-	! Structure to communicate everything
+	subroutine alloc_valpol(vfs, pfs)
 		type(val_struct)   :: vfs
 		type(pol_struct)   :: pfs
-		type(hist_struct)  :: hst
+
 		!************************************************************************************************!
 		! Allocate phat matrices
 		!************************************************************************************************!
-		! (disability extent, earn hist, assets)
+		! (early retirement, disability extent, earn hist, assets)
 		allocate(vfs%VR(2,nd,ne,na), stat=vfs%alloced)
 		allocate(pfs%aR(2,nd,ne,na), stat=pfs%alloced)
 
@@ -696,6 +698,7 @@ module helper_funs
 		allocate(vfs%VU(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
 		allocate(vfs%VW(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
 		allocate(vfs%V(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
+		allocate(vfs%V_CF(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=vfs%alloced)
 		allocate(pfs%aN(nl*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
 		allocate(pfs%aW(nl*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
 		allocate(pfs%aU(nl*ntr,ndi*nal,nd,ne,na,nz,TT-1), stat=pfs%alloced)
@@ -705,6 +708,16 @@ module helper_funs
 		allocate(pfs%gapp_dif(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=pfs%alloced)
 		allocate(pfs%gwork_dif(nl*ntr,ndi*nal,nd,ne,na,nz,TT), stat=pfs%alloced)
 
+	end subroutine
+
+	subroutine alloc_econ(vfs, pfs,hst)
+
+	! Structure to communicate everything
+		type(val_struct)   :: vfs
+		type(pol_struct)   :: pfs
+		type(hist_struct)  :: hst
+
+		call alloc_valpol(vfs,pfs)
 		call alloc_hist(hst)
 
 	end subroutine alloc_econ
@@ -745,13 +758,14 @@ module helper_funs
 
 		type(hist_struct) :: hst
 
-		deallocate(hst%wage_hist , stat=hst%alloced)
+		deallocate(hst%wage_hist     , stat=hst%alloced)
+		deallocate(hst%welfare_hist  , stat=hst%alloced)
 		deallocate(hst%work_dif_hist , stat=hst%alloced)
 		deallocate(hst%app_dif_hist , stat=hst%alloced)
 		deallocate(hst%di_prob_hist , stat=hst%alloced)
 		deallocate(hst%hlth_voc_hist, stat=hst%alloced)
 		deallocate(hst%hlthprob_hist, stat=hst%alloced)
-		deallocate(hst%status_hist , stat=hst%alloced)
+		deallocate(hst%status_hist  , stat=hst%alloced)
 		deallocate(hst%a_hist , stat=hst%alloced)
 		deallocate(hst%z_jt_macroint, stat=hst%alloced)
 		deallocate(hst%z_jt_panel, stat=hst%alloced)
@@ -762,34 +776,48 @@ module helper_funs
 
 	end subroutine dealloc_hist
 
+	subroutine dealloc_valpol(vfs,pfs)
+		! Structure to communicate everything
+			type(val_struct) :: vfs
+			type(pol_struct) :: pfs
+			deallocate(vfs%VR, stat=vfs%alloced)
+			deallocate(pfs%aR, stat=pfs%alloced)
+
+			! (disability extent, earn hist, assets, age)
+			deallocate(vfs%VD, stat=vfs%alloced)
+			deallocate(pfs%aD, stat=pfs%alloced)
+
+			! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
+			deallocate(vfs%VN  , stat=vfs%alloced)
+			deallocate(vfs%VU  , stat=vfs%alloced)
+			deallocate(vfs%VW  , stat=vfs%alloced)
+			deallocate(vfs%V   , stat=vfs%alloced)
+			deallocate(vfs%V_CF, stat=vfs%alloced)
+			deallocate(pfs%aN, stat=pfs%alloced)
+			deallocate(pfs%aW, stat=pfs%alloced)
+			deallocate(pfs%aU, stat=pfs%alloced)
+			deallocate(pfs%gwork, stat=pfs%alloced)
+			deallocate(pfs%gapp, stat=pfs%alloced)
+
+			deallocate(pfs%gapp_dif , stat=pfs%alloced)
+			deallocate(pfs%gwork_dif , stat=pfs%alloced)
+
+			vfs%alloced = 0
+			pfs%alloced = 0
+
+	end subroutine dealloc_valpol
+
 	subroutine dealloc_econ(vfs,pfs,hst)
 
 	! Structure to communicate everything
 		type(val_struct) :: vfs
 		type(pol_struct) :: pfs
 		type(hist_struct):: hst
-		deallocate(vfs%VR, stat=vfs%alloced)
-		deallocate(pfs%aR, stat=pfs%alloced)
 
-		! (disability extent, earn hist, assets, age)
-		deallocate(vfs%VD, stat=vfs%alloced)
-		deallocate(pfs%aD, stat=pfs%alloced)
-
-		! (occupation X ind exposure, ind disb. risk X ind. wage, disab. extent, earn hist, assets, agg shock, age)
-		deallocate(vfs%VN , stat=vfs%alloced)
-		deallocate(vfs%VU , stat=vfs%alloced)
-		deallocate(vfs%VW , stat=vfs%alloced)
-		deallocate(vfs%V , stat=vfs%alloced)
-		deallocate(pfs%aN, stat=pfs%alloced)
-		deallocate(pfs%aW, stat=pfs%alloced)
-		deallocate(pfs%aU, stat=pfs%alloced)
-		deallocate(pfs%gwork, stat=pfs%alloced)
-		deallocate(pfs%gapp, stat=pfs%alloced)
-
-		deallocate(pfs%gapp_dif , stat=pfs%alloced)
-		deallocate(pfs%gwork_dif , stat=pfs%alloced)
-
+		call dealloc_valpol(vfs,pfs)
 		call dealloc_hist(hst)
+
+
 	end subroutine dealloc_econ
 
 
@@ -3552,7 +3580,7 @@ module sim_hists
 
 
 		! read from vals
-		real(dp), pointer ::	V(:,:,:,:,:,:,:)	!Participant
+		real(dp), pointer ::	V(:,:,:,:,:,:,:),V_CF(:,:,:,:,:,:,:)	!Participant
 
 		! read from pols
 		real(dp), pointer ::	gapp_dif(:,:,:,:,:,:,:), gwork_dif(:,:,:,:,:,:,:) ! latent value of work/apply
@@ -3571,7 +3599,7 @@ module sim_hists
 		! Other
 		real(dp)	:: wage_hr=1.,al_hr=1., junk=1.,a_hr=1., e_hr=1., z_hr=1., alwt=1., ziwt=1., jwt=1., cumval=1., &
 					&	work_dif_hr=1., app_dif_hr=1.,js_ij=1., Nworkt=1., ep_hr=1.,apc_hr = 1., sepi=1.,fndi = 1., hlthprob,al_last_invol,&
-					&   triwt=1., ewt=0.,hatsig2,a_residj,e_residj
+					&   triwt=1., ewt=0.,hatsig2,a_residj,e_residj, welfare_dif_hr = 1.
 
 
 		integer :: ali_hr=1,aliH=1,d_hr=1,age_hr=1,del_hr=1, zi_hr=1, ziH=1,il_hr=1 ,j_hr=1,ial=1, ai_hr=1,api_hr=1,ei_hr=1,triH=1,eiH=1, &
@@ -3616,7 +3644,8 @@ module sim_hists
 		!************************************************************************************************!
 		! (disability extent, earn hist, assets)
 
-		V => vfs%V !need this for the career choice
+		V => vfs%V
+		V_CF => vfs%V_CF
 		aR => pfs%aR
 		aD => pfs%aD
 		aN => pfs%aN
@@ -3686,6 +3715,7 @@ module sim_hists
 		work_dif_it      = 0.
 		app_dif_it       = 0.
 		hst%hlth_voc_hist= 0
+		hst%welfare_hist = 0.
 		Ncol = size(drawi_ititer,2)
 		al_int_it_endog  = al_int_it
 		al_it_endog      = al_it
@@ -3891,7 +3921,7 @@ module sim_hists
 
 			!$OMP  parallel do &
 			!$OMP& private(i,interp_i,del_hr,j_hr,status_hr,it,it_old,age_hr,al_hr,ali_hr,d_hr,e_hr,a_hr,ei_hr,ai_hr,z_hr,zi_hr,api_hr,tri_hr,apc_hr,ep_hr, &
-			!$OMP& ewt, eiH, aliH, alwt, ziwt,ziH,triwt,triH,il,fndi_hr, sepi_hr, il_hr,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr, &
+			!$OMP& ewt, eiH, aliH, alwt, ziwt,ziH,triwt,triH,il,fndi_hr, sepi_hr, il_hr,cumval,jwt,wage_hr,al_last_invol,junk,app_dif_hr,work_dif_hr, welfare_dif_hr, &
 			!$OMP& hlthprob,ii,drawi,drawt,sepi,fndi,invol_un,dead,status_tmrw,brn_yr_hr)
 			do i=1,Nsim
 				!fixed traits
@@ -4051,7 +4081,6 @@ module sim_hists
 						endif
 						z_hr	= zgrid(zi_hr,j_hr)
 						il_hr   = fndi_hr(zi_hr)
-
 					else
 						z_hr	= z_jt_panel(j_hr,it)
 						do zi_hr = nz,1,-1
@@ -4179,6 +4208,46 @@ module sim_hists
 								work_dif_hr = gwork_dif( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
 							endif
 							work_dif_it(i,it) = work_dif_hr
+
+							!compute welfare difference if requested
+							if(welfare_cf .eqv. .true.) then
+								if((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .false.)) then
+									welfare_dif_hr= (ewt*   (alwt*V( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	    (1.-alwt)*V( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+aliH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) )+ &
+											& (1.-ewt)* (alwt*V( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,eiH,ai_hr,zi_hr,age_hr ) + &
+											&	    (1.-alwt)*V( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+aliH   ,d_hr,eiH,ai_hr,zi_hr,age_hr )) )&
+											&  / &
+											& (   ewt*  (alwt*V_CF( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	    (1.-alwt)*V_CF( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+aliH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) )+ &
+											& (1.-ewt)* (alwt*V_CF( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,eiH,ai_hr,zi_hr,age_hr ) + &
+											&	    (1.-alwt)*V_CF( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+aliH   ,d_hr,eiH,ai_hr,zi_hr,age_hr )) )
+								elseif((al_contin .eqv. .true.) .and. (zj_contin .eqv. .false.) .and. (w_strchng .eqv. .true.)) then
+									welfare_dif_hr =(ewt*(triwt    * alwt  *V( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	       triwt    *(1.-alwt) *V( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+aliH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	      (1.-triwt)* alwt     *V( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	      (1.-triwt)*(1.-alwt) *V( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+aliH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) + &
+											& (1.-ewt)*(triwt    * alwt    *V( (il_hr-1)*ntr + tri_hr,(del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+											&	  		triwt    *(1.-alwt)*V( (il_hr-1)*ntr + tri_hr,(del_hr-1)*nal+aliH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+											&	 	   (1.-triwt)* alwt    *V( (il_hr-1)*ntr + triH  ,(del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+											&		   (1.-triwt)*(1.-alwt)*V( (il_hr-1)*ntr + triH  ,(del_hr-1)*nal+aliH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr )) ) &
+											&  / &
+											&	    (ewt*(triwt    * alwt  *V_CF( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	       triwt    *(1.-alwt) *V_CF( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+aliH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	      (1.-triwt)* alwt     *V_CF( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) + &
+											&	      (1.-triwt)*(1.-alwt) *V_CF( (il_hr-1)*ntr + triH  , (del_hr-1)*nal+aliH   ,d_hr,ei_hr,ai_hr,zi_hr,age_hr )) + &
+											& (1.-ewt)*(triwt    * alwt    *V_CF( (il_hr-1)*ntr + tri_hr,(del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+											&	  		triwt    *(1.-alwt)*V_CF( (il_hr-1)*ntr + tri_hr,(del_hr-1)*nal+aliH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+											&	 	   (1.-triwt)* alwt    *V_CF( (il_hr-1)*ntr + triH  ,(del_hr-1)*nal+ali_hr,d_hr,eiH  ,ai_hr,zi_hr,age_hr ) + &
+											&		   (1.-triwt)*(1.-alwt)*V_CF( (il_hr-1)*ntr + triH  ,(del_hr-1)*nal+aliH   ,d_hr,eiH  ,ai_hr,zi_hr,age_hr )) )
+
+								else  !if(al_contin .eqv. .false. ) then
+									welfare_dif_hr = V( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr ) &
+										& / &
+										& V_CF( (il_hr-1)*ntr + tri_hr, (del_hr-1)*nal+ali_hr,d_hr,ei_hr,ai_hr,zi_hr,age_hr )
+								endif
+								hst%welfare_hist(i,it) = welfare_dif_hr
+
+							endif
 
 							!store the disability probability for the first group
 							if( (age_hr > 1) .or. ((ineligNoNu .eqv. .false.) .and. (age_hr==1))) then
@@ -4644,6 +4713,7 @@ module sim_hists
 
 		if(print_lev > 1) then
 				if( caselabel == "") then
+					call mat2csv (hst%welfare_hist,"welfare_hist.csv")
 					call mat2csv (ewt_it,"ewt_it_hist.csv")
 					call mati2csv(e_it_int,"e_int_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
@@ -5273,8 +5343,8 @@ module find_params
 		real(dp), intent(out) :: errvec(:)
 
 		type(shocks_struct) :: shk
-		type(val_struct) :: vfs
-		type(pol_struct) :: pfs
+		type(val_struct) :: vfs,vfs_cf
+		type(pol_struct) :: pfs,pfs_cf
 		type(hist_struct):: hst
 		type(moments_struct):: moments_sim
 		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app,napp_t,nu1,nu0
@@ -5307,6 +5377,18 @@ module find_params
 		! set up economy and solve it
 		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
 
+		!solve w/o DI, in case of welfare_cf .eqv. .true.
+		if(welfare_cf .eqv. .true. ) then
+			call alloc_valpol(vfs_cf,pfs_cf)
+			nu = 20 !so they will never use DI
+			call sol(vfs_cf,pfs_cf)
+			vfs%V_CF = vfs_cf%V
+			nu   = paramvec(1)
+
+			call dealloc_valpol(vfs_cf,pfs_cf)
+
+		endif
+
 		if(verbose >2) print *, "Solving the model"
 		call sol(vfs,pfs)
 
@@ -5317,7 +5399,6 @@ module find_params
 
 		fndgrid = fndrt_mul*fndgrid0
 		sepgrid = seprt_mul*sepgrid0
-
 
 		if(verbose >2) print *, "Simulating the model"
 		call sim(vfs, pfs, hst,shk,.false.)

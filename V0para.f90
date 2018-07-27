@@ -88,8 +88,8 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  occ_dat    = .true.,& ! do we
 					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
 					  RAS_pid    = .true.,& !balance the health transition matrix
-					  buscyc	 = .true. !turn on/off business cycles?
-
+					  buscyc	 = .true.,& !turn on/off business cycles?
+					  welfare_cf = .false.  !compute counter-factual w/o DI for welfare comparisons?
 
 logical			  ::  run_experiments = .false., &
 					  run_cal = .false., &
@@ -198,7 +198,7 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		xizd1coef  = 0.0, &	!change in acceptance rate with z deterioration if d=1
 		xizd23coef = 0.1, &	!change in acceptance rate with z deterioration if d=2 or 3
 		xiagecoef  = 0.,&	!increase in vocational acceptance due to age
-		voc_age	   = 0.25,&	!target for increase in vocation due to age
+		voc_age	   = 0.54,&	!target for increase in vocation due to age
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
 
