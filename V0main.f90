@@ -5441,7 +5441,7 @@ module find_params
 		totapp_dif_hist = totapp_dif_hist/ninsur_app
 		if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
 
-		print *, "age effect here: ", moments_sim%diaward_ageeffect
+		if(verbose >1) print *, "age effect here: ", moments_sim%diaward_ageeffect
 		errvec(1) = (moments_sim%init_diaward - diaward_target)/diaward_target
 		if(size(errvec)>1) &
 		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
@@ -5668,7 +5668,7 @@ module find_params
 						xopt = (x0-xl)/(xu-xl) !convert x0 draw into normalized (0,1) units
 						cal_on_iter_wgtrend = .false.
 						call bobyqa_h(nopt,ninterppt,xopt,zeros,ones, &
-						&	rhobeg,rhoend,iprint,110,wspace,nopt)
+						&	rhobeg,rhoend,iprint,70,wspace,nopt)
 
 						call dfovec(nopt,nopt,xopt,v_err)
 						cal_on_iter_wgtrend = .true.
@@ -6150,12 +6150,11 @@ program V0main
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
 	call mpi_comm_size(mpi_comm_world,nnode,ierr)
 
-	print *, "Running version July 31, 2018"
+	print *, "Running version August 11, 2018"
 	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
 
-	print *, "new target is", award_age_target
 
 	call gen_new_wgtrend(wage_trend,wage_coef)
 	call mat2csv(wage_trend,"wage_trend.csv")
@@ -6496,7 +6495,7 @@ program V0main
 		print *, "error 3: ",	(moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
 		print *, "error 4: ",	(moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/p1d2_target
 		print *, "error 5: ",	(moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/p1d3_target
-		print *, "error 6: ",	(moments_sim%diaward_ageeffect - award_age_target)/award_age_target
+		!print *, "error 6: ",	(moments_sim%diaward_ageeffect - award_age_target)/award_age_target
 
 		call dealloc_econ(vfs,pfs,hst)
 
@@ -6508,23 +6507,27 @@ program V0main
 	! xizcoef = 0.123992114316186
 
 	!bounds for paramvec:
+	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3)
+	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp, 0.001_dp, 0.001_dp/)
+	ub = (/ 0.50_dp, 0.990_dp, 0.990_dp, 0.750_dp, 3.000_dp/)
+
 	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3),xiagecoef
-	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp,    0.001_dp, 0.001_dp, 0.001_dp/)
-	ub = (/ 0.50_dp, 0.990_dp, 0.990_dp,    0.750_dp, 3.000_dp, 0.751_dp/)
+	!lb = (/ 0.00_dp, 0.050_dp, 0.001_dp,    0.001_dp, 0.001_dp, 0.001_dp/)
+	!ub = (/ 0.50_dp, 0.990_dp, 0.990_dp,    0.750_dp, 3.000_dp, 0.751_dp/)
 
 	if( (run_cal .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
 		call system_clock(count_rate=cr)
 		call system_clock(count_max=cm)
 		call system_clock(c1)
 		parvec = 0._dp !will store the optimal values. Will be over-written
-		call cal_mlsl( erval, parvec, 6, lb, ub, shk)
+		call cal_mlsl( erval, parvec, 5, lb, ub, shk)
 
 		nu         = parvec(1)
 		xizd23coef = parvec(2)
 		xizd1coef  = parvec(3)*xizd23coef
 		Fd(2)      = parvec(4)*parvec(5)
 		Fd(3)      = parvec(5)
-		xiagecoef  = parvec(6)
+
 
 		call system_clock(c2)
 		if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
@@ -6582,8 +6585,11 @@ program V0main
 
 
 	if (refine_cal .eqv. .true. ) then
+		if(nopt_tgts ==5) &
+		&	x0 = (/ nu,  xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3) /)
+		!if(nopt_tgts==6) &
+		!&	x0 = (/ nu,  xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3),xiagecoef /)
 
-		x0 = (/ nu,  xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3),xiagecoef /)
 		xopt = (x0-lb)/(ub-lb)
 		nopt = size(xopt)
 		ninterppt = 2*nopt+1
@@ -6619,7 +6625,8 @@ program V0main
 		welfare_cf = .true.
 
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3),xiagecoef /)
+		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
+		!if(nopt_tgts==6) parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3),xiagecoef /)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		caselabel = ""
 	 	print *, caselabel, " ---------------------------------------------------"
@@ -6629,8 +6636,9 @@ program V0main
 		buscyc = .true.
 		print_lev = 2
 		call cal_dist(parvec,err0,shk)
-	 	print *, "error in initial", err0(1), err0(2), err0(3), err0(4), err0(5),err0(6)
-		print *, "---------------------------------------------------"
+	 	print *, "error in initial", err0(1), err0(2), err0(3), err0(4), err0(5)
+		!if(nopt_tgts==6) print *, "error in initial", err0(1), err0(2), err0(3), err0(4), err0(5),err0(6)
+	 	print *, "---------------------------------------------------"
 
 		welfare_cf = .false.
 	endif
@@ -6665,13 +6673,13 @@ program V0main
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 
 		caselabel = "xi0L"
-		parvec = (/nu,0.75*xizd23coef, 0.75*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3), xiagecoef /)
+		parvec = (/nu,0.75*xizd23coef, 0.75*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
 		call cal_dist(parvec,err0,shk)
 		print *, "error with low xi ", err0(1), err0(2), err0(3), err0(4), err0(5)
 		print *, "---------------------------------------------------"
 
 		caselabel = "xi0H"
-		parvec = (/nu,1.25*xizd23coef, 1.25*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3), xiagecoef /)
+		parvec = (/nu,1.25*xizd23coef, 1.25*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
 		call cal_dist(parvec,err0,shk)
 		print *, "error with high xi ", err0(1), err0(2), err0(3), err0(4), err0(5)
 		print *, "---------------------------------------------------"
@@ -6687,7 +6695,7 @@ program V0main
 	if((nodei == 0) .and. (run_experiments .eqv. .true.) .and. (dbg_skip .eqv. .false.)) then
 
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3), xiagecoef /)
+		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
 
 
 		allocate(wage_coef_0chng(size(wage_coef)))
