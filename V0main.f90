@@ -85,7 +85,8 @@ module helper_funs
 		integer :: alloced
 		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+1,nj+1)
 		real(dp) :: s2,avg_di,init_di
-		real(dp) :: init_hlth_acc,init_diprob,avg_hlth_acc,d1_diawardfrac,init_diaward,init_diaward_discr
+		real(dp) :: init_hlth_acc,init_diprob,avg_hlth_acc,d1_diawardfrac,init_diaward,init_diaward_discr, &
+		&			diaward_ageeffect
 		real(dp) :: hlth_acc_rt(TT-1)
 
 	end type moments_struct
@@ -257,23 +258,25 @@ module helper_funs
 			!xifunV =  (1._dp-trqtl)*xizd23coef
 			xifunV =  xizd23coef*(maxval(trgrid)-trhr)/((maxval(trgrid)-minval(trgrid)))
 		endif
+
 		if(itin>=(TT-2)) &
-		&	xifunV = xifunV*(1._dp+xiagecoef)
+		&	xifunV = xifunV*(1._dp+xiagezcoef) + xiagecoef
+
 		!adjust for time aggregation in second stage?
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
 
-		xifun = xifunH+xifunV
+		xifun = min(xifunH+xifunV,1._dp)
 
 		hlthfrac = xifunH/xifun
 
 		xifun = max(min(xifun,1._dp),0._dp)
 
-		if(present(hlthprob) .eqv. .true.) &
-			hlthprob = hlthfrac*xifun
-
 		if((itin .eq. 1) .and. (ineligNoNu .eqv. .false.)) then
 			xifun = xifun*eligY
 		endif
+
+		if(present(hlthprob) .eqv. .true.) &
+			hlthprob = hlthfrac*xifun
 
 	end function
 
@@ -886,7 +889,8 @@ module model_data
 
 		real(dp) :: dD_age(TT), dD_t(Tsim),a_age(TT),a_t(Tsim),alworkdif(nal),alappdif(nal), &
 				& workdif_age(TT-1), appdif_age(TT-1), alD(nal), alD_age(nal,TT-1), &
-				& status_Nt(5,Tsim),DIatriskpop,napp_t,ninsur_app, dicont_hr=0.,init_diaward_discr,tot_apppr
+				& status_Nt(5,Tsim),DIatriskpop,napp_t,ninsur_app, dicont_hr=0., &
+				& init_diaward_discr,tot_apppr, vocprob_age(TT),diprob_age(TT)
 		real(dp) :: di_rateD_denom(nd) ,work_rateD_denom(nd),accept_rateD_denom(nd)
 
 		if(hst%alloced /= 0) then
@@ -913,6 +917,8 @@ module model_data
 		alD_age		= 0._dp
 		appdif_age 	= 0._dp
 		workdif_age 	= 0._dp
+		vocprob_age = 0._dp
+		diprob_age  = 0._dp
 		alworkdif	= 0._dp
 		alappdif	= 0._dp
 		status_Nt 	= 0._dp
@@ -978,7 +984,11 @@ module model_data
 							elseif(hst%status_hist(si,st) == 3) then
 								appdif_age(it) = appdif_age(age_hr) + hst%app_dif_hist(si,st)
 								tot3age(age_hr) = tot3age(age_hr) + 1
+								vocprob_age(it) = hst%di_prob_hist(si,st)-hst%hlthprob_hist(si,st) &
+								&	+ vocprob_age(it)
+								diprob_age(it)  = hst%di_prob_hist(si,st) + diprob_age(it)
 							endif
+
 						endif
 					enddo !it = 1,TT-1
 					! assets by age
@@ -1095,6 +1105,7 @@ module model_data
 		moments_sim%init_diaward = 0._dp
 		moments_sim%init_hlth_acc = 0._dp
 		moments_sim%init_diprob = 0._dp
+
 		do i=1,Nsim
 			dicont_hr = 0._dp
 			do it=((init0_yrs)*itlen+1),((init_yrs+init0_yrs)*itlen)
@@ -1146,10 +1157,14 @@ module model_data
 			init_diaward_discr = 0._dp
 		endif
 		moments_sim%init_diaward_discr = init_diaward_discr
-
+		! I am taking the difference in conditional probability of getting on voc, but converting into an annual rate.
+		moments_sim%diaward_ageeffect = sum( vocprob_age(TT-2:TT-1)/tot3age(TT-2:TT-1) ) / &
+			sum( vocprob_age(1:2)/tot3age(1:2) )
 		if(napp_t > 0._dp) then
 			!make hlth acc a conditional probability instead of the cumulative probability
 			moments_sim%init_hlth_acc= moments_sim%init_hlth_acc/moments_sim%init_diprob
+
+			!this line needs to be last because init_diprob is the denominator above
 			moments_sim%init_diprob  = moments_sim%init_diprob/napp_t
 		else
 			moments_sim%init_hlth_acc= 1._dp
@@ -1472,10 +1487,12 @@ module sol_val
 		!******************************************************
 		!***************** Discrete choice for application
 		!smthV = dexp(smthV0param*Vnapp)/( dexp(smthV0param*Vnapp) +dexp(smthV0param*Vapp) )
-		!if( smthV .lt. 1e-5 .or. smthV .gt. 0.999999 .or. isnan(smthV)) then
-			if( Vapp >  Vnapp  ) smthV =0.
-			if(Vnapp >=  Vapp  ) smthV =1._dp
-		!endif
+		if( Vapp >  Vnapp  ) smthV =0.
+		if(Vnapp >=  Vapp  ) smthV =1._dp
+		if (noDI .eqv. .true.) then
+			smthV = 1._dp
+		endif
+
 		if (Vapp > Vnapp) then
 			apol = aapp
 			gapp_pol = 1
@@ -4713,7 +4730,9 @@ module sim_hists
 
 		if(print_lev > 1) then
 				if( caselabel == "") then
-					call mat2csv (hst%welfare_hist,"welfare_hist.csv")
+					if(welfare_cf .eqv. .true.)then
+						call mat2csv (hst%welfare_hist,"welfare_hist.csv")
+					endif
 					call mat2csv (ewt_it,"ewt_it_hist.csv")
 					call mati2csv(e_it_int,"e_int_it_hist"//trim(caselabel)//".csv")
 					call mati2csv(a_it_int,"a_int_it_hist"//trim(caselabel)//".csv")
@@ -5366,6 +5385,9 @@ module find_params
 			Fd(2) = paramvec(4)*paramvec(5)
 			Fd(3) = paramvec(5)
 		endif
+		if( size(paramvec)>5 ) then
+			xiagecoef = paramvec(6)
+		endif
 
 		call alloc_econ(vfs,pfs,hst)
 
@@ -5380,11 +5402,11 @@ module find_params
 		!solve w/o DI, in case of welfare_cf .eqv. .true.
 		if(welfare_cf .eqv. .true. ) then
 			call alloc_valpol(vfs_cf,pfs_cf)
-			nu = 20 !so they will never use DI
+			noDI = .true.
+
 			call sol(vfs_cf,pfs_cf)
 			vfs%V_CF = vfs_cf%V
-			nu   = paramvec(1)
-
+			noDI = .false.
 			call dealloc_valpol(vfs_cf,pfs_cf)
 
 		endif
@@ -5419,7 +5441,7 @@ module find_params
 		totapp_dif_hist = totapp_dif_hist/ninsur_app
 		if(verbose >1) print *, "App rate (smooth)" , totapp_dif_hist
 
-
+		print *, "age effect here: ", moments_sim%diaward_ageeffect
 		errvec(1) = (moments_sim%init_diaward - diaward_target)/diaward_target
 		if(size(errvec)>1) &
 		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
@@ -5429,6 +5451,8 @@ module find_params
 		&	errvec(4) = (moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/(p1d2_target+p1d3_target)
 		if(size(errvec)>4) &
 		&	errvec(5) = (moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/(p1d2_target+p1d3_target)
+		if(size(errvec)>5) &
+		&	errvec(6) = (moments_sim%diaward_ageeffect - award_age_target)/award_age_target
 
 		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
 		write(rank_str, '(I2.2)') rank_hr
@@ -5627,7 +5651,9 @@ module find_params
 						endif
 
 						! only do BOBYQA if the starting point is good
-						if(nopt >=5) then
+						if(nopt >=6) then
+							print *, "Computing from: ",  x0(1), x0(2), x0(3),x0(4), x0(5), x0(6)," on node: ", rank, "after ", j, " tries"
+						elseif(nopt >=5) then
 							print *, "Computing from: ",  x0(1), x0(2), x0(3),x0(4), x0(5)," on node: ", rank, "after ", j, " tries"
 						else
 							print *, "Computing from: ",  x0(1), x0(2), x0(3)," on node: ", rank, "after ", j, " tries"
@@ -5642,7 +5668,7 @@ module find_params
 						xopt = (x0-xl)/(xu-xl) !convert x0 draw into normalized (0,1) units
 						cal_on_iter_wgtrend = .false.
 						call bobyqa_h(nopt,ninterppt,xopt,zeros,ones, &
-						&	rhobeg,rhoend,iprint,70,wspace,nopt)
+						&	rhobeg,rhoend,iprint,110,wspace,nopt)
 
 						call dfovec(nopt,nopt,xopt,v_err)
 						cal_on_iter_wgtrend = .true.
@@ -5682,6 +5708,15 @@ module find_params
 					Fd(2) = xopt(4)*xopt(5)
 					Fd(3) = xopt(5)
 					call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt" // rank_str //".csv")
+				elseif(nopt==6) then
+					xopt = xopt*(xu-xl)+xl !convert to input space
+					nu = xopt(1)
+					xizd1coef  = xopt(2)*xopt(3)
+					xizd23coef = xopt(2)
+					Fd(2) = xopt(4)*xopt(5)
+					Fd(3) = xopt(5)
+					xiagecoef = xopt(6)
+					call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),xiagecoef,wmean/)  , "nuxiw_opt" // rank_str //".csv")
 				endif
 			enddo ! dd = 1,nstartpn
 
@@ -5760,8 +5795,12 @@ module find_params
 			nu = xopt(1)
 			xizd1coef  = xopt(2)*xopt(3)
 			xizd23coef = xopt(2)
-			Fd(2) = xopt(4)*xopt(5)
-			Fd(3) = xopt(5)
+			if(nopt >3) then
+				Fd(2) = xopt(4)*xopt(5)
+				Fd(3) = xopt(5)
+			endif
+			if(nopt>5) &
+			&	xiagecoef = xopt(6)
 			!print them all
 			call mat2csv(wage_trend, "wage_trend_opt.csv")
 			call vec2csv(wage_coef, "wage_coef_opt.csv")
@@ -5771,6 +5810,8 @@ module find_params
 				call vec2csv( (/nu, xizd1coef,xizd23coef,wmean/)  , "nuxiw_opt.csv")
 			elseif(nopt==5) then
 				call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt.csv")
+			elseif(nopt==6) then
+				call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),xiagecoef,wmean/)  , "nuxiw_opt.csv")
 			endif
 			call mat2csv(fndgrid, "fndgrid_opt.csv")
 			call mat2csv(sepgrid, "sepgrid_opt.csv")
@@ -5938,14 +5979,6 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 			do i=1,Ncoef
 				wthr(i) = 1./(1._dp + occwg_datspline(i))
 			enddo
-			! do i=1,(Nknots-1)
-			! 	wthr(i+Nskill) = (tr_knots(Nknots)-tr_knots(i))/(tr_knots(Nknots)-tr_knots(1))
-			! enddo
-			! do ii=1,Nskill
-			! 	do i=1,(Nknots-1)
-			! 		wthr(i+ (ii-1)*(Nknots-1)+ (Nknots-1)+Nskill) = (tr_knots(Nknots)-tr_knots(i))/(tr_knots(Nknots)-tr_knots(1))
-			! 	enddo
-			! enddo
 		else
 			avwt = 0._dp
 			do i=1,NTpolyT
@@ -6101,10 +6134,10 @@ program V0main
 		logical :: sol_once = .true.
 	! NLopt/BOBYQA stuff
 		integer(8) :: calopt=0,ires=0, calopt_loc=0,ires_loc=0
-		real(dp) :: lb(5),ub(5),parvec(5), ervec(5), erval, param0(5)=1.,err0(5)=1.,lb_1(1),ub_1(1),parvec_1(1),ervec_1(1)
+		real(dp) :: lb(nopt_tgts),ub(nopt_tgts),parvec(nopt_tgts), ervec(nopt_tgts), erval, param0(nopt_tgts)=1.,err0(nopt_tgts)=1.,lb_1(1),ub_1(1),parvec_1(1),ervec_1(1)
 		integer  :: nodei,nnode,ierr
 		!for refinement
-		real(dp) :: rhobeg, rhoend,x0(5),xopt(5),zeros(5),ones(5)
+		real(dp) :: rhobeg, rhoend,x0(nopt_tgts),xopt(nopt_tgts),zeros(nopt_tgts),ones(nopt_tgts)
 		real(dp), allocatable :: wspace(:)
 		integer :: nopt,ninterppt
 		external dgemm, dfovec
@@ -6117,11 +6150,12 @@ program V0main
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
 	call mpi_comm_size(mpi_comm_world,nnode,ierr)
 
-	print *, "Running version June 9, 2018"
+	print *, "Running version July 31, 2018"
 	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
 
+	print *, "new target is", award_age_target
 
 	call gen_new_wgtrend(wage_trend,wage_coef)
 	call mat2csv(wage_trend,"wage_trend.csv")
@@ -6462,6 +6496,7 @@ program V0main
 		print *, "error 3: ",	(moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
 		print *, "error 4: ",	(moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/p1d2_target
 		print *, "error 5: ",	(moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/p1d3_target
+		print *, "error 6: ",	(moments_sim%diaward_ageeffect - award_age_target)/award_age_target
 
 		call dealloc_econ(vfs,pfs,hst)
 
@@ -6473,22 +6508,23 @@ program V0main
 	! xizcoef = 0.123992114316186
 
 	!bounds for paramvec:
-	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3)
-	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp, 0.001_dp, 0.001_dp/)
-	ub = (/ 0.50_dp, 0.990_dp, 0.990_dp, 0.750_dp, 3.000_dp/)
+	! nu, xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3),xiagecoef
+	lb = (/ 0.00_dp, 0.050_dp, 0.001_dp,    0.001_dp, 0.001_dp, 0.001_dp/)
+	ub = (/ 0.50_dp, 0.990_dp, 0.990_dp,    0.750_dp, 3.000_dp, 0.751_dp/)
 
 	if( (run_cal .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
 		call system_clock(count_rate=cr)
 		call system_clock(count_max=cm)
 		call system_clock(c1)
 		parvec = 0._dp !will store the optimal values. Will be over-written
-		call cal_mlsl( erval, parvec, 5, lb, ub, shk)
+		call cal_mlsl( erval, parvec, 6, lb, ub, shk)
 
 		nu         = parvec(1)
 		xizd23coef = parvec(2)
 		xizd1coef  = parvec(3)*xizd23coef
 		Fd(2)      = parvec(4)*parvec(5)
 		Fd(3)      = parvec(5)
+		xiagecoef  = parvec(6)
 
 		call system_clock(c2)
 		if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
@@ -6538,13 +6574,16 @@ program V0main
 			read(fread,*) Fd(2)
 			read(fread,*) Fd(3)
 		endif
+		if(size(parvec)>5) then
+			read(fread,*) xiagecoef
+		endif
 		read(fread,*) wmean
 	close(fread)
 
 
 	if (refine_cal .eqv. .true. ) then
 
-		x0 = (/ nu,  xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3) /)
+		x0 = (/ nu,  xizd23coef, xizd1coef/xizd23coef, Fd(2)/Fd(3), Fd(3),xiagecoef /)
 		xopt = (x0-lb)/(ub-lb)
 		nopt = size(xopt)
 		ninterppt = 2*nopt+1
@@ -6566,7 +6605,7 @@ program V0main
 		enddo
 		cal_on_iter_wgtrend = .false.
 		call bobyqa_h(nopt,ninterppt,xopt,zeros,ones, &
-		&	rhobeg,rhoend,1,100,wspace,nopt)
+		&	rhobeg,rhoend,1,50,wspace,nopt)
 
 		call vec2csv( (/nu, xizd1coef,xizd23coef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt_refine.csv")
 
@@ -6577,8 +6616,10 @@ program V0main
 
 
 	if (dbg_skip .eqv. .false.) then
+		welfare_cf = .true.
+
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
+		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3),xiagecoef /)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		caselabel = ""
 	 	print *, caselabel, " ---------------------------------------------------"
@@ -6588,8 +6629,10 @@ program V0main
 		buscyc = .true.
 		print_lev = 2
 		call cal_dist(parvec,err0,shk)
-	 	print *, "error in initial", err0(1), err0(2), err0(3), err0(4), err0(5)
+	 	print *, "error in initial", err0(1), err0(2), err0(3), err0(4), err0(5),err0(6)
 		print *, "---------------------------------------------------"
+
+		welfare_cf = .false.
 	endif
 
 	if( (elast_xi .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
@@ -6622,13 +6665,13 @@ program V0main
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 
 		caselabel = "xi0L"
-		parvec = (/nu,0.75*xizd23coef, 0.75*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
+		parvec = (/nu,0.75*xizd23coef, 0.75*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3), xiagecoef /)
 		call cal_dist(parvec,err0,shk)
 		print *, "error with low xi ", err0(1), err0(2), err0(3), err0(4), err0(5)
 		print *, "---------------------------------------------------"
 
 		caselabel = "xi0H"
-		parvec = (/nu,1.25*xizd23coef, 1.25*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
+		parvec = (/nu,1.25*xizd23coef, 1.25*xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3), xiagecoef /)
 		call cal_dist(parvec,err0,shk)
 		print *, "error with high xi ", err0(1), err0(2), err0(3), err0(4), err0(5)
 		print *, "---------------------------------------------------"
@@ -6644,7 +6687,7 @@ program V0main
 	if((nodei == 0) .and. (run_experiments .eqv. .true.) .and. (dbg_skip .eqv. .false.)) then
 
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
+		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3), xiagecoef /)
 
 
 		allocate(wage_coef_0chng(size(wage_coef)))

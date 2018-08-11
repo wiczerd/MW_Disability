@@ -36,9 +36,11 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		upd_wgtrnd = 0.01,&		! rate at which update wage_trend
 		smth_diaward = 0.05		! number between 0,1 for how much to mix the smoothed awards
 
+
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
-		itlen = 12		! just an integer version of tlen so I don't have to keep casting
+		itlen = 12,&		! just an integer version of tlen so I don't have to keep casting
+		nopt_tgts = 6		! number of calibration parameters/targets in main program
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
@@ -61,7 +63,7 @@ integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
 			yearT = 2013, &
 			TossYears = 5, & 		!number of years to run and throwaway
 			Tsim = itlen*(yearT - year0+1 + TossYears), &	!how many periods to solve for simulation
-			init_yrs = 1,&			!how many years for calibration to initial state of things
+			init_yrs = 2,&			!how many years for calibration to initial state of things
 			init0_yrs= TossYears,&	!how many years buffer before calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
@@ -76,6 +78,7 @@ logical            :: tr_spline  = .true.,& 	! use spline or global polynomials 
 					  dieyoung   = .true.,&		!do the young die (rate associated with health state)
 					  w_strchng	 = .true.,&     ! w gets fed a structural change sequence
 					  wglev_0	 = .false. ,&  	!should the initial wage level be 0 for all occupations
+					  noDI       = .false. ,&   !cannot get DI, even if they want it
 					  readshocks = .false.		!readshocks from disk?
 
 
@@ -197,8 +200,8 @@ real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount ra
 		xizcoef    = 0.1, &	!change in acceptance rate with z deterioration
 		xizd1coef  = 0.0, &	!change in acceptance rate with z deterioration if d=1
 		xizd23coef = 0.1, &	!change in acceptance rate with z deterioration if d=2 or 3
-		xiagecoef  = 0.,&	!increase in vocational acceptance due to age
-		voc_age	   = 0.54,&	!target for increase in vocation due to age
+		xiagecoef  = 0.247,&!OLD coefficient from Hu, Lahiri, Vaughan & Wixon
+		xiagezcoef = 0.279,&!OLD/LOWEDU coefficient from Hu, Lahiri, Vaughan & Wixon
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
 
@@ -240,6 +243,7 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		avg_unrt = 0.055,&	!average rate of unemployment over the period.
 		avg_undur = 3.,&	! average months of unemployment
 		avg_frt   = 0.4,&	! average rate of long-term unemployment
+		award_age_target  = 0.8/0.3,&	!target for increase in vocation due to age (from Chen & van der Klaauw page 771 ) In levels it's (0.093+0.287)
 		p1d2_target = -.197,&	! how much less d=2 participate
 		p1d3_target = -.649  	! how much less d=3 participate
 
@@ -1033,16 +1037,16 @@ subroutine setparams()
 
 
 	!DI Acceptance probability for each d,t status
-	xiagecoef = voc_age
-	xi_d1shift = (1491*.603+2211*0.546)/(1491+2211) - (347*.581+752*.655)/(347+752) !differences from Lahiri, Vaughn, Wixon : denial rate for hlth 1,2 vs. 3,4
-	xi_d3shift = (1491*.603+2211*0.546)/(1491+2211) - .484
+	!xi_d1shift = (1491*.603+2211*0.546)/(1491+2211) - (347*.581+752*.655)/(347+752) !differences from Lahiri, Vaughn, Wixon : denial rate for hlth 1,2 vs. 3,4
+	!xi_d3shift = (1491*.603+2211*0.546)/(1491+2211) - .484
 
 	! initialize a few starting values
 	xi_d(1) = 0.001!xi_d(2)+xi_d1shift	!
-	xi_d(2) = xi_d(1)-xi_d1shift !xi_d(3)-xi_d3shift
-	xi_d(3) = xi_d(2)+xi_d3shift !
+	!xi_d(2) = xi_d(1)-xi_d1shift !xi_d(3)-xi_d3shift
+	!xi_d(3) = xi_d(2)+xi_d3shift !
 
-
+	xi_d(2)= 1.-(1.-0.2329423)**(1/proc_time1)
+	xi_d(3)= 1.-(1.-0.3083954)**(1/proc_time1)
 
 	if(xizcoef == 0.) then
 		xizcoef = (0.4_dp - xi_d(3))/0.5_dp !dlog((0.4_dp - xi_d(2))/(1._dp - xi_d(2)))/dlog(0.5_dp) !using d=2 for the average health of applicant and 0.5 for average wage between minwage maxwage
@@ -2322,3 +2326,57 @@ PURE FUNCTION locate(xx,x)
 END FUNCTION locate
 
 end module V0para
+
+
+
+! Desctiption of Hu, Lahiri Vaughan & Wixon paper calculations:
+! Average effect of d=1 in stage 3 (conditional prob of getting past 2)
+! 0.078*0.61+0.104*0.17+0.149*0.22+.001*140.6
+! =
+! 0.23864
+!
+! Average effect of d=2 in stage 3 (conditional prob of getting past 2)
+! 0.109*0.24+0.248*0.03+0.161*0.22+0.211*0.06+.195*0.06
+! =
+! 0.09338
+!
+! Average effect of d=2 on stage 2
+! 0.19*0.03+0.091*0.09+0.087*0.28+0.139*0.13+0.152*0.03+0.049*0.71
+! =
+! 0.09567
+!
+! Average effect of d=1 on stage 2
+! 0.057*0.18+.107*.07+.127*.03+0.039*.24+.087*.2+.091*.11
+! =
+! 0.05833
+!
+!
+! Overall probability of going from stage 2->stage 3
+! 751/(751+176)
+! =0.8101402
+!
+!
+! Prob allowed @stage 3 & d=2:
+! (0.8101402*(1+0.09567))*0.09338
+! =
+! 0.08288841
+!
+! Prob allowed @stage 3 & d=1:
+! (0.8101402*(1-0.05833))*0.23864
+! =
+! 0.1820548
+!
+! Overall probability allowed:
+! 264/(751+176)
+! =
+! 0.2847896
+!
+! D2, avg acceptance rate in T1 periods:
+! 0.2847896*(1+0.08288841)
+! =
+! 0.3083954
+!
+! D1, avg acceptance rate in T1 periods:
+! 0.2847896*(1-0.1820548)
+! =
+! 0.2329423
