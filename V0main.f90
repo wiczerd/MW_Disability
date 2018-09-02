@@ -1,8 +1,8 @@
 ! V0main.f90
 
 !************************************************************************************************!
-! @ Amanda Michaud, v1: 10/6/2014
-! @ David Wiczer, v2: 10/17/2017
+
+
 !-----------------------------------------------------
 !************************************************************************************************!
 ! compiler line: gfortran -fopenmp -ffree-line-length-none -g V0para.f90 V0main.f90 -lblas -llapack -lgomp -lnlopt -o V0main.out
@@ -180,13 +180,13 @@ module helper_funs
 
 		!Follows Pistafferi & Low '15
 		if (e_eval<DItest1*wmean) then
-			SSDI = 0.9*e_eval
+			SSDI = 0.9_dp*e_eval
 		elseif (e_eval<DItest2*wmean) then
-			SSDI = 0.9*DItest1*wmean + 0.32*(e_eval-DItest1*wmean)
+			SSDI = 0.9_dp*DItest1*wmean + 0.32_dp*(e_eval-DItest1*wmean)
 		elseif (e_eval<DItest3*wmean) then
-			SSDI = 0.9*DItest1*wmean + 0.32*(DItest2-DItest1)*wmean+0.15*(e_eval-DItest2*wmean)
+			SSDI = 0.9_dp*DItest1*wmean + 0.32_dp*(DItest2-DItest1)*wmean+0.15_dp*(e_eval-DItest2*wmean)
 		else
-			SSDI = 0.9*DItest1*wmean + 0.32*(DItest2-DItest1)*wmean+0.15*(DItest3*wmean-DItest2*wmean)
+			SSDI = 0.9_dp*DItest1*wmean + 0.32_dp*(DItest2-DItest1)*wmean+0.15_dp*(DItest3*wmean-DItest2*wmean)
 		endif
 
 	end function
@@ -254,13 +254,16 @@ module helper_funs
 		if( idin ==1 ) then
 			!xifunV =  (1._dp-trqtl)*xizd1coef
 			xifunV =  xizd1coef*(maxval(trgrid)-trhr)/((maxval(trgrid)-minval(trgrid)))
+			if(itin>=(TT-2)) &
+			&	xifunV = xifunV*(1._dp+xiagezcoef) + xizd1coef*xiagecoef
 		else
 			!xifunV =  (1._dp-trqtl)*xizd23coef
 			xifunV =  xizd23coef*(maxval(trgrid)-trhr)/((maxval(trgrid)-minval(trgrid)))
+			if(itin>=(TT-2)) &
+			&	xifunV = xifunV*(1._dp+xiagezcoef) + xizd23coef*xiagecoef
 		endif
 
-		if(itin>=(TT-2)) &
-		&	xifunV = xifunV*(1._dp+xiagezcoef) + xiagecoef
+
 
 		!adjust for time aggregation in second stage?
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
@@ -379,7 +382,7 @@ module helper_funs
 	! A: name of matrix
 	! fname: name of file, should end in ".csv"
 	! append: a 1 or 0.  1 if matrx should add to end of existing file, 0, to overwrite.
-
+	implicit none
 	real(dp), dimension(:,:), intent(in) :: A
 	character(LEN=*), intent(in) :: fname
 	integer, intent(in), optional :: append
@@ -416,7 +419,7 @@ module helper_funs
 	!--------------------
 	subroutine mati2csv(A,fname,append)
 	!--------------------
-
+	implicit none
 	integer, dimension(:,:), intent(in) :: A
 	character(LEN=*), intent(in) :: fname
 	integer, intent(in), optional :: append
@@ -4827,21 +4830,21 @@ module find_params
 		real(dp) :: Nunemp,Nlf, Nsep,Nfnd,ltu
 		integer :: i, j, it,duri
 
-		ltu  = 0.
-		urt  = 0.
-		Nlf  = 0.
-		Nunemp = 0.
-		Nsep = 0.
-		Nfnd = 0.
+		ltu  = 0._dp
+		urt  = 0._dp
+		Nlf  = 0._dp
+		Nunemp = 0._dp
+		Nsep = 0._dp
+		Nfnd = 0._dp
 		do i = 1,Nsim
 			duri = 0
 			do it=1,Tsim
 				if((hst%status_hist(i,it)<=2) .and. (hst%status_hist(i,it)>0) .and. (shk%age_hist(i,it)>0)) then
-					Nlf = Nlf+1.
+					Nlf = Nlf+1._dp
 					if(hst%status_hist(i,it) == 2) then
-						Nunemp = Nunemp + 1.
+						Nunemp = Nunemp + 1._dp
 						if(duri == 0 .and. it>1) & !count a new spell
-							& Nsep = Nsep+1.
+							& Nsep = Nsep+1._dp
 						duri = duri+1
 						if(duri < 6) ltu = ltu + 1._dp !counted as the fraction of short-term unemployed
 					else
@@ -4856,7 +4859,7 @@ module find_params
 		urt  = Nunemp/Nlf
 		Esrt = Nsep/(Nlf-Nunemp)
 		if(Nunemp > 0._dp) then
-			ltu  = 1. - ltu/Nunemp
+			ltu  = 1._dp - ltu/Nunemp
 			Efrt = Nfnd/Nunemp
 		else
 			ltu  = 0._dp
@@ -4905,12 +4908,12 @@ module find_params
 		do it=(TossYears*itlen+1),Tsim
 			tbase(it,1) = (dble(it)/tlen - dble(TossYears))
 			do ip=1,(Nknots-2)
-				if((dble(it)/tlen - dble(TossYears) - tr_knots(ip)) > 0.) &
+				if((dble(it)/tlen - dble(TossYears) - tr_knots(ip)) > 0._dp) &
 				& 	tbase(it,ip+1) = (dble(it)/tlen - dble(TossYears) - tr_knots(ip))**3 + tbase(it,ip+1)
-				if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1) >0.) &
+				if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1) >0._dp) &
 				&	tbase(it,ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots-1))**3 *(tr_knots(Nknots)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
 					&  + tbase(it,ip+1)
-				if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) >0. ) &
+				if( dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) >0._dp ) &
 				& 	tbase(it,ip+1) = -(dble(it)/tlen - dble(TossYears) - tr_knots(Nknots) )**3 *(tr_knots(Nknots-1)-tr_knots(ip))/(tr_knots(Nknots)-tr_knots(Nknots-1)) &
 					&  + tbase(it,ip+1)
 				tbase(it,ip+1) = tbase(it,ip+1)*(tr_knots(Nknots)-tr_knots(1))**(-2)
@@ -5333,14 +5336,11 @@ module find_params
 		print_lev = plO
 		verbose = vO
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! Come back to uncomment this
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!		if(print_lev .ge. 2) then
+		if(print_lev .ge. 2) then
 			call mat2csv(wage_trend,"wage_trend_jt.csv")
 			call vec2csv(wage_lev,"wage_lev_j.csv")
 			call vec2csv(wage_coef,"wage_coef.csv")
-!		endif
+		endif
 
 
 		dfbols_nuxi_trproc = 1
@@ -5930,6 +5930,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 	use V0para
 	use find_params
 
+	implicit none
 
 	integer, intent(in) 	:: ntheta,mv
 	real(dp), dimension(mv)	:: v_err
@@ -5943,7 +5944,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 	integer :: Ncoef,i,j,ri,ci,ii
 	integer :: print_lev_old,verbose_old
 	real(dp):: avwt,avonet(Nskill),urt,Efrt,Esrt
-	real(dp):: paramwt(mv)
+	real(dp):: paramwt(mv),dist_urt,dist_frt
 	real(dp):: wage_trend_out(Tsim,nj)
 	character(len=10) :: char_solcoefiter
 
@@ -6081,7 +6082,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		enddo
 
 		print_lev = print_lev_old
-		verbose = verobse_old
+		verbose = verbose_old
 
 	endif
 
@@ -6150,7 +6151,7 @@ program V0main
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
 	call mpi_comm_size(mpi_comm_world,nnode,ierr)
 
-	print *, "Running version August 11, 2018"
+	print *, "Running version August 19, 2018"
 	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
@@ -6409,8 +6410,8 @@ program V0main
 						wc_guess_nolev(ii) = wage_coef(i)/occwg_datspline(i)
 						ii = ii+1
 					endif
-					wc_guess_nolev(ii +1) = fndrt_mul
-					wc_guess_nolev(ii +2) = seprt_mul
+					wc_guess_nolev(ii   ) = fndrt_mul
+					wc_guess_nolev(ii +1) = seprt_mul
 				enddo
 				do i=1,(Nknots-1 + Nskill*Nknots)
 					wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
@@ -6424,8 +6425,8 @@ program V0main
 						ii = ii+1
 					endif
 				enddo
-				wc_guess_nolev(ii +1) = fndrt_mul
-				wc_guess_nolev(ii +2) = seprt_mul
+				wc_guess_nolev(ii   ) = fndrt_mul
+				wc_guess_nolev(ii +1) = seprt_mul
 				do i=1,(NTpolyT + 2*Nskill)
 					wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
 				enddo
