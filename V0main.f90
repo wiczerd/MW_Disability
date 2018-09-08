@@ -6644,7 +6644,42 @@ program V0main
 		welfare_cf = .false.
 	endif
 
-	if( (elast_xi .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
+	if( (nodei == 0) .and. (dbg_skip .eqv. .false.) ) then
+		!compute counter-factual with 0 correlation between occupation and health risk
+		welfare_cf = .true.
+
+		del_by_occ = .false.
+		cal_on_iter_wgtrend = .false.
+		parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3) /)
+		!if(nopt_tgts==6) parvec = (/nu,xizd23coef, xizd1coef/xizd23coef,Fd(2)/Fd(3),Fd(3),xiagecoef /)
+		call gen_new_wgtrend(wage_trend,wage_coef)
+		caselabel = "delocc_CF"
+	 	print *, caselabel, " ---------------------------------------------------"
+		occ_dat = .true.
+		wtr_by_occ = .true.
+		demog_dat = .true.
+		buscyc = .true.
+
+		call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+
+		print_lev = 2
+		call cal_dist(parvec,err0,shk)
+	 	print *, "error in initial", err0(1), err0(2), err0(3), err0(4), err0(5)
+		!if(nopt_tgts==6) print *, "error in initial", err0(1), err0(2), err0(3), err0(4), err0(5),err0(6)
+	 	print *, "---------------------------------------------------"
+
+		del_by_occ = .true.
+		welfare_cf = .false.
+
+		call set_deli( shk%del_i_int,shk%del_i_draw,shk%j_i)
+		call set_dit( shk%d_hist, shk%health_it_innov, shk%del_i_int, shk%age_hist)
+		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
+
+	endif
+
+	if((nodei == 0) .and. (elast_xi .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
 		cal_on_iter_wgtrend = .false.
 		allocate(wage_coef_0chng(size(wage_coef)))
    	 	wage_coef_0chng = wage_coef
