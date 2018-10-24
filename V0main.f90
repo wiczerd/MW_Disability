@@ -895,6 +895,7 @@ module model_data
 				& status_Nt(5,Tsim),DIatriskpop,napp_t,ninsur_app, dicont_hr=0., &
 				& init_diaward_discr,tot_apppr, vocprob_age(TT),diprob_age(TT)
 		real(dp) :: di_rateD_denom(nd) ,work_rateD_denom(nd),accept_rateD_denom(nd)
+		real(dp) :: d1_diawardfrac_disc,diawrd_denom
 
 		if(hst%alloced /= 0) then
 			if(verbose >= 1) print *, "not correctly passing hists_struct to moments"
@@ -925,6 +926,8 @@ module model_data
 		alworkdif	= 0._dp
 		alappdif	= 0._dp
 		status_Nt 	= 0._dp
+		d1_diawardfrac_disc = 0._dp
+		diawrd_denom = 0._dp
 		moments_sim%hlth_acc_rt = 0._dp
 		moments_sim%avg_hlth_acc = 0._dp
 		moments_sim%d1_diawardfrac = 0._dp
@@ -936,7 +939,7 @@ module model_data
 		accept_rateD_denom = 0._dp
 
 		do si = 1,Nsim
-			do st = 1,Tsim
+			do st = (TossYears*itlen),Tsim
 				if((hst%status_hist(si,st)>0) .and. (shk%age_hist(si,st) >0) ) then
 					age_hr = shk%age_hist(si,st)
 					totage_st(age_hr,st) = totage_st(age_hr,st) + 1
@@ -1000,6 +1003,16 @@ module model_data
 							a_age(it) = hst%a_hist(si,st) +a_age(it)
 						endif
 					enddo
+
+					! Fraction of awards to good health
+					if(st>1) then
+						if( hst%status_hist(si,st) == 4  .and. hst%status_hist(si,st-1) ==3) then
+							diawrd_denom = diawrd_denom + 1._dp
+							if( shk%d_hist(si,st)==1 ) &
+							& 	d1_diawardfrac_disc = d1_diawardfrac_disc+1._dp
+						endif
+					endif
+
 					if( hst%status_hist(si,st) == 3 .and. hst%app_dif_hist(si,st) >0 ) then
 						tot_apppr = tot_apppr+hst%di_prob_hist(si,st)
 						if( shk%d_hist(si,st)==1) then
@@ -1046,8 +1059,11 @@ module model_data
 		else
 			moments_sim%avg_hlth_acc = 0._dp
 		endif
+		if( diawrd_denom >0 ) &
+		&	d1_diawardfrac_disc = d1_diawardfrac_disc/diawrd_denom
 		if(tot_apppr>0) then
-			moments_sim%d1_diawardfrac = 1._dp - (1._dp-moments_sim%d1_diawardfrac/tot_apppr)**tlen !annual rate
+			moments_sim%d1_diawardfrac = smth_diaward*moments_sim%d1_diawardfrac/tot_apppr &
+			&	+ (1._dp - smth_diaward) * d1_diawardfrac_disc
 		else
 			moments_sim%d1_diawardfrac = 0._dp
 		endif

@@ -31,7 +31,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		Longev = 82.- 30.,&	!Median longevity
 		UIrr = 0.8, &		!Replacement Rate in UI
 		eligY  = 0.834,&	!Fraction young who are eligable
-		R = dexp(.02/tlen),&	!People can save in the backyard
+		R = dexp(.016/tlen),&	!People can save in the backyard
 		upd_zscl = 0.1,&		! rate at which to update zshift
 		upd_wgtrnd = 0.01,&		! rate at which update wage_trend
 		smth_diaward = 0.05		! number between 0,1 for how much to mix the smoothed awards
@@ -63,7 +63,7 @@ integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
 			yearT = 2013, &
 			TossYears = 5, & 		!number of years to run and throwaway
 			Tsim = itlen*(yearT - year0+1 + TossYears), &	!how many periods to solve for simulation
-			init_yrs = 2,&			!how many years for calibration to initial state of things
+			init_yrs = 3,&			!how many years for calibration to initial state of things
 			init0_yrs= TossYears,&	!how many years buffer before calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
@@ -170,7 +170,7 @@ integer :: 	dgrid(nd)	! just enumerate the d states
 real(8)	::	agegrid(TT)		! the mid points of the ages
 
 !***preferences and technologies that may change
-real(8) :: 	beta= dexp(-.05/tlen),&	!People are impatient (5% annual discount rate to start)
+real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount rate to start)
 		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential wage
 		util_const = 0.,&	!Give life some value
 		Fd(nd) = 0.,&			! Fixed cost of participating in labor
@@ -224,7 +224,6 @@ logical  :: cal_on_iter_wgtrend = .true.
 integer  :: cal_niter = 0
 real(8)  :: cal_obj = 1.
 
-
 real(8), allocatable  :: wc_guess_nolev(:), wc_guess_lev(:)
 
 logical  :: cal_on_grad = .false.
@@ -232,12 +231,11 @@ logical  :: cal_on_grad = .false.
 !remove this!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 real(8) :: tbase_out(Tsim, Nknots-1)
 
-
 !**** calibration targets
 real(8) :: apprt_target = .01,&	!target for application rates (to be filled below)
 		dirt_target = 0.018,&	!target for di rates
-		diaward_target = 0.0034,& !target for new award rate
-		d1_diawardfrac_target = 0.16,&
+		diaward_target = 0.00337,& !target for new award rate (3-yr average)
+		d1_diawardfrac_target = 0.20,&
 		voc_acc_target = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_acc_target = 0.75,&		!fraction taken based on health criteria, target 1985
 		avg_unrt = 0.055,&	!average rate of unemployment over the period.
@@ -253,8 +251,8 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
 
 real(8) :: 	gam	= 1.5, &	!IES
-		eta 	= -0.197, &	!Util cost of participation
-		theta 	= -0.224		!Util cost of disability
+		eta 	= -0.185, &	!Util cost of participation
+		theta 	= -0.448	!Util cost of disability
 
 integer :: print_lev, verbose
 logical :: simp_concav = .false.
