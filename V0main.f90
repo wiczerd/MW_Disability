@@ -6174,8 +6174,9 @@ program V0main
 	call mpi_init(ierr)
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
 	call mpi_comm_size(mpi_comm_world,nnode,ierr)
+	nopt = nopt_tgts
 
-	print *, "Running version Nov 5, 2018"
+	print *, "Running version Nov 7, 2018"
 	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
@@ -6591,7 +6592,6 @@ program V0main
 	!read in xi, nu
 	open(unit= fread, file="nuxiw_opt.csv")
 		read(fread,*) nu
-!		read(fread,*) xiagecoef
 		read(fread,*) xizcoef
 		if(size(parvec)>2) then
 			read(fread,*) Fd(2)
