@@ -3587,7 +3587,7 @@ module sim_hists
 
 		integer, allocatable :: work_it(:,:), app_it(:,:) !choose work or not, apply or not
 		integer, allocatable :: a_it_int(:,:),e_it_int(:,:),invol_it(:,:)
-!		integer, allocatable :: hlthvocSSDI(:,:) ! got into ssdi on health or vocational considerations, 0= no ssdi, 1=health, 2=vocation
+		!integer, allocatable :: hlthvocSSDI(:,:) ! got into ssdi on health or vocational considerations, 0= no ssdi, 1=health, 2=vocation
 		real(dp), allocatable :: e_it(:,:)
 		integer, allocatable :: brn_drawi_drawt(:,:,:)
 
@@ -3682,7 +3682,7 @@ module sim_hists
 		allocate(trX_it(Nsim,Tsim))
 		allocate(brn_drawi_drawt(Nsim,Tsim,2))
 		allocate(invol_it(Nsim,Tsim))
-!		allocate(hlthvocSSDI(Nsim,Tsim))
+		!allocate(hlthvocSSDI(Nsim,Tsim))
 
 		!!!!!!!!!!!!!!! DEBUGGING
 		allocate(ewt_it(Nsim,Tsim))
@@ -4852,6 +4852,9 @@ module find_params
 
 	subroutine comp_ustats(hst,shk,urt,Efrt,Esrt)
 
+		! Takes in structures hst and shk, both of which should already have simulation results in them
+		! Outputs urt,Efrt,Esrt
+
 		type(shocks_struct) :: shk
 		type(hist_struct):: hst
 		real(dp), intent(out) :: urt,Efrt,Esrt
@@ -5306,14 +5309,7 @@ module find_params
 
 		mod_solcoefiter = 0
 
-!		Maximizing on scale vector on wc
-!		if( (wglev_0 .eqv. .true.) .and. (sum(wc_guess_nolev**2)>1e-5) ) then
-!			wc0 = wc_guess_nolev
-!		elseif(  (wglev_0 .eqv. .false.) .and. (sum(wc_guess_lev**2)>1e-5) ) then
-!			wc0 = wc_guess_lev
-!		else
-			wc0 =  1.0_dp
-!		endif
+		wc0 =  1.0_dp
 		wcL = 0._dp
 		wcL(Ncoef_active+1) = 0.1_dp !for fndrt_mul
 		wcL(Ncoef_active+2) = 0.1_dp !for seprt_mul
@@ -5321,15 +5317,15 @@ module find_params
 		wcU(Ncoef_active+1) = 2.9_dp !for fndrt_mul
 		wcU(Ncoef_active+2) = 2.9_dp !for seprt_mul
 
-	!	if(print_lev .ge. 2) then
+		if(print_lev .ge. 2) then
 			call dfovec(Nobj,Nobj, wc0,fval)
 			call vec2csv(fval,"fdfbols0_wage_coef.csv")
 
-	!		call dfovec(Nobj,Nobj, wcU,fval)
-	!		call vec2csv(fval,"fdfbolsU_wage_coef.csv")
-	!		call dfovec(Nobj,Nobj, wcL,fval)
-	!		call vec2csv(fval,"fdfbolsL_wage_coef.csv")
-	!	endif
+			call dfovec(Nobj,Nobj, wcU,fval)
+			call vec2csv(fval,"fdfbolsU_wage_coef.csv")
+			call dfovec(Nobj,Nobj, wcL,fval)
+			call vec2csv(fval,"fdfbolsL_wage_coef.csv")
+		endif
 
 		rhobeg = minval( wcU - wcL )/10._dp	!loosen this up?
 		if( verbose >=2) print *, "rhobeg in iter_wg: ", rhobeg
@@ -5396,6 +5392,7 @@ module find_params
 		type(moments_struct):: moments_sim
 		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app,napp_t,nu1,nu0
 		real(dp) :: fndgrid0(nl,nz),sepgrid0(nl,nz)
+		real(dp) :: dist_urt,dist_frt,Efrt,Esrt,urt !moments fro the unemployment rate calibration
 		integer :: ij=1,t0tT(2),it,i
 		integer :: rank_hr,ierr,fcal_eval
 		character(2) :: rank_str
@@ -5411,9 +5408,11 @@ module find_params
 			Fd(2) = paramvec(3)*paramvec(4)
 			Fd(3) = paramvec(4)
 		endif
-		if( size(paramvec)>5 ) then
-			xiagecoef = paramvec(6)
+		if( size(paramvec)>=5 ) then
+			xiagecoef = paramvec(5)
 		endif
+		fndrt_mul = paramvec(6)
+		seprt_mul = paramvec(7)
 
 		call alloc_econ(vfs,pfs,hst)
 
@@ -5434,7 +5433,6 @@ module find_params
 			vfs%V_CF = vfs_cf%V
 			noDI = .false.
 			call dealloc_valpol(vfs_cf,pfs_cf)
-
 		endif
 
 		if(verbose >2) print *, "Solving the model"
@@ -5442,7 +5440,8 @@ module find_params
 
 		!I only want to iterate on the wage trend if I have a good set of parameters
 		if( cal_on_iter_wgtrend .eqv. .true. )  then
-			call iter_wgtrend(vfs, pfs, hst,shk)
+		!	call iter_wgtrend(vfs, pfs, hst,shk)
+			if(verbose >1 ) print *, "Was going to search for a wage trend"
 		endif
 
 		fndgrid = fndrt_mul*fndgrid0
@@ -5453,6 +5452,11 @@ module find_params
 		if(verbose >2) print *, "Computing moments"
 		call moments_compute(hst,moments_sim,shk)
 		if(verbose >1) print *, "DI rate" , moments_sim%avg_di
+
+		!unemployment stats
+		call comp_ustats(mod_hst,mod_shk,urt,Efrt,Esrt)
+		dist_urt = (urt - avg_unrt)/avg_unrt
+		dist_frt = (Efrt - avg_frt)/avg_frt
 
 		totapp_dif_hist = 0.
 		ninsur_app = 0.
@@ -5471,12 +5475,14 @@ module find_params
 		errvec(1) = (moments_sim%init_diaward - diaward_target)/diaward_target
 		if(size(errvec)>1) &
 		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
-		! if(size(errvec)>2) &
-		! &	errvec(3) = (moments_sim%old_diawardfrac - old_target)/old_target
 		if(size(errvec)>2) &
 		&	errvec(3) = (moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/(p1d2_target+p1d3_target)
 		if(size(errvec)>3) &
 		&	errvec(4) = (moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/(p1d2_target+p1d3_target)
+		errvec(5) = (moments_sim%diaward_ageeffect - award_age_target)/award_age_target
+		errvec(6) = dist_urt
+		errvec(7) = dist_frt
+
 
 		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
 		write(rank_str, '(I2.2)') rank_hr
@@ -5697,7 +5703,7 @@ module find_params
 						&	rhobeg,rhoend,iprint,70,wspace,nopt)
 
 						call dfovec(nopt,nopt,xopt,v_err)
-						cal_on_iter_wgtrend = .true.
+						!cal_on_iter_wgtrend = .true.
 						exit
 					endif
 				enddo !j=1,5 to loop over starting points
@@ -5733,7 +5739,7 @@ module find_params
 					Fd(2) = xopt(3)*xopt(4)
 					Fd(3) = xopt(4)
 					call vec2csv( (/nu, xizcoef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt" // rank_str //".csv")
-				elseif(nopt==6) then
+				elseif(nopt>=6) then
 					xopt = xopt*(xu-xl)+xl !convert to input space
 					nu = xopt(1)
 					xiagecoef  = xopt(3)
@@ -5979,12 +5985,6 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		coef_loc = 0._dp !have actually over-sized this one. There will be a few last that are not used
 
 		coef_loc(1:ncoef_active) = theta0(1:ncoef_active)  !coef loc are multipliers for the coefficients
-		fndrt_mul = theta0(1+ncoef_active)
-		seprt_mul = theta0(2+ncoef_active)
-
-
-		fndgrid = fndgrid*fndrt_mul
-		sepgrid = sepgrid*seprt_mul
 
 		if(wglev_0 .eqv. .false.) then
 			Ncoef = ncoef_active+Nnuisance
@@ -6064,10 +6064,6 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		dist_urt = (urt - avg_unrt)/avg_unrt
 		dist_frt = (Efrt - avg_frt)/avg_frt
 
-		!put the global varaibles (the grids) back
-		fndgrid = fndgrid/fndrt_mul
-		sepgrid = sepgrid/seprt_mul
-
 		v_err(1:ncoef_active) = fval(1:ncoef_active)
 		v_err(1+ncoef_active) = dist_urt
 		v_err(2+ncoef_active) = dist_frt
@@ -6097,6 +6093,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 		paramvec = theta0*(mod_xu-mod_xl)+mod_xl
 		!if(smth_dicont .le. 20._dp) smth_dicont = smth_dicont*1.05_dp
 		call cal_dist(paramvec, errvec,mod_shk)
+
 
 		paramwt = 1._dp
 		paramwt(1) = 2.0_dp
@@ -6402,7 +6399,7 @@ program V0main
 		call sol(vfs,pfs)
 
      ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     ! THIS IS AN ENGINEERING FIX AND SHOULD BE REPLACED
+     ! THIS IS AN ENGINEERING FIX TO GET POPULATIONS STABLE
 		call sim(vfs, pfs, hst,shk,.false.) !---- lingering issue that 1st stage seems to have correlated results
 		xsec_PrDageDel = 0._dp
 		do i=1,Nsim
@@ -6425,40 +6422,35 @@ program V0main
 		call set_dit(shk%d_hist,shk%health_it_innov,shk%del_i_int,shk%age_hist)
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 		!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-		if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
-			if(verbose>1) print *, "iterating to find wage trend"
-			call iter_wgtrend(vfs, pfs, hst,shk)
-			ii = 1
-			if( tr_spline .eqv. .true. ) then
-				do i=1,(Nknots-1 + Nskill*Nknots)
-					if( (i .gt. Nskill) ) then
-						wc_guess_nolev(ii) = wage_coef(i)/occwg_datspline(i)
-						ii = ii+1
-					endif
-					wc_guess_nolev(ii   ) = fndrt_mul
-					wc_guess_nolev(ii +1) = seprt_mul
-				enddo
-				do i=1,(Nknots-1 + Nskill*Nknots)
-					wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
-				enddo
-				wc_guess_lev(Nknots-1 + Nskill*Nknots +1) = fndrt_mul
-				wc_guess_lev(Nknots-1 + Nskill*Nknots +2) = seprt_mul
-			else
-				do i=1,(NTpolyT + 2*Nskill)
-					if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
-						wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
-						ii = ii+1
-					endif
-				enddo
-				wc_guess_nolev(ii   ) = fndrt_mul
-				wc_guess_nolev(ii +1) = seprt_mul
-				do i=1,(NTpolyT + 2*Nskill)
-					wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
-				enddo
-				wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
-				wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
-			endif
-		endif ! dbg_skip == F
+		! NOT ITERATING ON WAGES!
+		! if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
+		! !	if(verbose>1) print *, "iterating to find wage trend"
+		! !	call iter_wgtrend(vfs, pfs, hst,shk)
+		! 	if(verbose>1) print *, "feeding in wage trend"
+		! 	ii = 1
+		! 	if( tr_spline .eqv. .true. ) then
+		! 		do i=1,(Nknots-1 + Nskill*Nknots)
+		! 			if( (i .gt. Nskill) ) then
+		! 				wc_guess_nolev(ii) = wage_coef(i)/occwg_datspline(i)
+		! 				ii = ii+1
+		! 			endif
+		! 		enddo
+		! 		do i=1,(Nknots-1 + Nskill*Nknots)
+		! 			wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
+		! 		enddo
+		! 	else
+		! 		!use polynomials
+		! 		do i=1,(NTpolyT + 2*Nskill)
+		! 			if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
+		! 				wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
+		! 				ii = ii+1
+		! 			endif
+		! 		enddo
+		! 		do i=1,(NTpolyT + 2*Nskill)
+		! 			wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
+		! 		enddo
+		! 	endif
+		! endif ! dbg_skip == F
 
 		if(print_lev>1) then
 			call vec2csv(wc_guess_lev,"wc_guess_lev.csv")
@@ -6521,7 +6513,7 @@ program V0main
 		print *, "error 3: ",	(moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
 		print *, "error 4: ",	(moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/p1d2_target
 		print *, "error 5: ",	(moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/p1d3_target
-		!print *, "error 6: ",	(moments_sim%diaward_ageeffect - award_age_target)/award_age_target
+		print *, "error 6: ",	(moments_sim%diaward_ageeffect - award_age_target)/award_age_target
 
 		call dealloc_econ(vfs,pfs,hst)
 
@@ -6529,9 +6521,9 @@ program V0main
 
 
 	!bounds for paramvec:
-	!            nu, xizcoef, Fd(2)/Fd(3), Fd(3)
-	lb = (/ 0.00_dp, 0.010_dp, 0.001_dp,   0.001_dp/)
-	ub = (/ 0.50_dp, 0.999_dp, 0.750_dp,   3.000_dp/)
+	!            nu, xizcoef, Fd(2)/Fd(3), Fd(3)  , xiagecoef, fndrt_mul , seprt_mul
+	lb = (/ 0.00_dp, 0.010_dp, 0.001_dp,   0.001_dp, 0.00_dp,  0.25_dp   , 0.25_dp  /)
+	ub = (/ 0.50_dp, 0.999_dp, 0.750_dp,   3.000_dp, 0.10_dp,  2.00_dp   , 2.00_dp  /)
 
 	! nu, xizcoef, xiagecoef, Fd(2)/Fd(3), Fd(3),xiagecoef
 	!lb = (/ 0.00_dp, 0.050_dp, 0.001_dp,    0.001_dp, 0.001_dp, 0.001_dp/)
@@ -6548,7 +6540,9 @@ program V0main
 		xizcoef = parvec(2)
 		Fd(2)      = parvec(3)*parvec(4)
 		Fd(3)      = parvec(4)
-
+		xiagecoef  = parvec(5)
+		fndrt_mul  = parvec(6)
+		seprt_mul  = parvec(7)
 
 		call system_clock(c2)
 		if(nodei ==0)  print *, "Calibration, Wall Time in hours ", dble(c2-c1)/dble(cr)/360._dp
@@ -6606,7 +6600,7 @@ program V0main
 
 	if (refine_cal .eqv. .true. ) then
 		if(nopt_tgts ==4) &
-		&	x0 = (/ nu,  xizcoef, Fd(2)/Fd(3), Fd(3) /)
+		&	x0 = (/ nu,  xizcoef, Fd(2)/Fd(3), Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
 		! if(nopt_tgts==5) &
 		! &	x0 = (/ nu,  xizcoef, Fd(2)/Fd(3), Fd(3),xiagecoef /)
 
@@ -6645,7 +6639,7 @@ program V0main
 		welfare_cf = .true.
 
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizcoef, Fd(2)/Fd(3),Fd(3) /)
+		parvec = (/nu,xizcoef, Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
 		!if(nopt_tgts==6) parvec = (/nu,xizcoef, xiagecoef,Fd(2)/Fd(3),Fd(3),xiagecoef /)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		caselabel = ""
@@ -6669,7 +6663,7 @@ program V0main
 
 		del_by_occ = .false.
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizcoef,Fd(2)/Fd(3),Fd(3) /)
+		parvec = (/nu,xizcoef,Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
 		!if(nopt_tgts==6) parvec = (/nu,xizcoef, ,Fd(2)/Fd(3),Fd(3),xiagecoef /)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		caselabel = "delocc_CF"
@@ -6728,13 +6722,13 @@ program V0main
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 
 		caselabel = "xi0L"
-		parvec = (/nu,0.75*xizcoef, Fd(2)/Fd(3),Fd(3) /)
+		parvec = (/nu,0.75*xizcoef, Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
 		call cal_dist(parvec,err0,shk)
 		print *, "error with low xi ", err0(1), err0(2), err0(3), err0(4)
 		print *, "---------------------------------------------------"
 
 		caselabel = "xi0H"
-		parvec = (/nu,1.25*xizcoef, Fd(2)/Fd(3),Fd(3) /)
+		parvec = (/nu,1.25*xizcoef, Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
 		call cal_dist(parvec,err0,shk)
 		print *, "error with high xi ", err0(1), err0(2), err0(3), err0(4)
 		print *, "---------------------------------------------------"
@@ -6750,7 +6744,7 @@ program V0main
 	if((nodei == 0) .and. (run_experiments .eqv. .true.) .and. (dbg_skip .eqv. .false.)) then
 
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizcoef, Fd(2)/Fd(3),Fd(3) /)
+		parvec = (/nu,xizcoef, Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
 
 
 		allocate(wage_coef_0chng(size(wage_coef)))
