@@ -257,8 +257,8 @@ module helper_funs
 		! 	&	xifunV = xifunV*(1._dp+xiagezcoef) + xizd23coef*xiagecoef
 		! endif
 		xifunV =  xizcoef*(maxval(trgrid)-trhr)/((maxval(trgrid)-minval(trgrid)))
-		! if(itin>=(TT-2)) &
-		! 	&	xifunV = xifunV + xiagecoef
+		if(itin>=(TT-2)) &
+		 	&	xifunV = xifunV*(1. + xiagezcoef)
 
 		!adjust for time aggregation in second stage?
 		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
@@ -274,7 +274,7 @@ module helper_funs
 
 		xifun = max(min(xifun,1._dp),0._dp)
 
-		if((itin .eq. 1) .and. (ineligNoNu .eqv. .false.)) then
+		if((itin == 1) .and. (ineligNoNu .eqv. .false.)) then
 			xifun = xifun*eligY
 		endif
 
@@ -4844,7 +4844,7 @@ module find_params
 	type(pol_struct), pointer :: mod_pfs
 	type(hist_struct), pointer :: mod_hst
 	type(shocks_struct), pointer :: mod_shk
-	integer :: dfbols_nuxi_trproc = 2 !indicator for whether dfovec should solve for nuxi or for the zprocess
+	integer :: dfbols_nuxi_trproc = 1 !indicator for whether dfovec should solve for nuxi or for the zprocess
 	real(dp) :: mod_prob_target
 	real(dp), allocatable :: mod_xl(:),mod_xu(:)
 
@@ -5454,7 +5454,7 @@ module find_params
 		if(verbose >1) print *, "DI rate" , moments_sim%avg_di
 
 		!unemployment stats
-		call comp_ustats(mod_hst,mod_shk,urt,Efrt,Esrt)
+		call comp_ustats(hst,shk,urt,Efrt,Esrt)
 		dist_urt = (urt - avg_unrt)/avg_unrt
 		dist_frt = (Efrt - avg_frt)/avg_frt
 
@@ -5566,7 +5566,7 @@ module find_params
 
 		call mpi_comm_size(mpi_comm_world,nnode,ierr)
 		call mpi_comm_rank(mpi_comm_world,rank,ierr)
-
+		print *, "Starting on node ", rank, "out of ", nnode
 		!set ndraw to do it only once:
 		ndraw = nnode*nstartpn
 		allocate( internalopt_hist(size(wage_coef)+2,500) )
@@ -5644,44 +5644,48 @@ module find_params
 						enddo
 					else
 						! set initial guess
-						ii = 1
-						wc_guess_lev = 1._dp
-						wc_guess_nolev = 1._dp
-						if(tr_spline .eqv. .true.) then
-							do i=1,((Nknots-1)+Nskill*Nknots)
-								if( i .gt. Nskill)  then
-									wc_guess_nolev(ii) = wage_coef(i)/occwg_datspline(i)
-									ii = ii+1
-								endif
-							enddo
-							do i=1,(Nknots-1+Nskill*Nknots)
-								wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
-							enddo
-							wc_guess_nolev((Nknots-1)+Nskill*Nknots +1) = fndrt_mul
-							wc_guess_nolev((Nknots-1)+Nskill*Nknots +2) = seprt_mul
+						! ii = 1
+						! wc_guess_lev = 1._dp
+						! wc_guess_nolev = 1._dp
+						! if(tr_spline .eqv. .true.) then
+						! 	do i=1,((Nknots-1)+Nskill*Nknots)
+						! 		if( i .gt. Nskill)  then
+						! 			wc_guess_nolev(ii) = wage_coef(i)/occwg_datspline(i)
+						! 			ii = ii+1
+						! 		endif
+						! 	enddo
+						! 	do i=1,(Nknots-1+Nskill*Nknots)
+						! 		wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
+						! 	enddo
+						! 	wc_guess_nolev((Nknots-1)+Nskill*Nknots +1) = fndrt_mul
+						! 	wc_guess_nolev((Nknots-1)+Nskill*Nknots +2) = seprt_mul
 
-							wc_guess_lev(Nknots-1+Nskill*Nknots +1) = fndrt_mul !Nskill + Nknots-1 + NKsill*(Nknots-1)
-							wc_guess_lev(Nknots-1+Nskill*Nknots +2) = seprt_mul
-						else
-							do i=1,(NTpolyT + 2*Nskill)
-								if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
-									wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
-									ii = ii+1
-								endif
-							enddo
-							do i=1,(NTpolyT + 2*Nskill)
-								wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
-							enddo
+						! 	wc_guess_lev(Nknots-1+Nskill*Nknots +1) = fndrt_mul !Nskill + Nknots-1 + NKsill*(Nknots-1)
+						! 	wc_guess_lev(Nknots-1+Nskill*Nknots +2) = seprt_mul
+						! else
+						! 	do i=1,(NTpolyT + 2*Nskill)
+						! 		if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
+						! 			wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
+						! 			ii = ii+1
+						! 		endif
+						! 	enddo
+						! 	do i=1,(NTpolyT + 2*Nskill)
+						! 		wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
+						! 	enddo
 
-							wc_guess_nolev(Nskill + NTpolyT +1) = fndrt_mul
-							wc_guess_nolev(Nskill + NTpolyT +2) = seprt_mul
+						! 	wc_guess_nolev(Nskill + NTpolyT +1) = fndrt_mul
+						! 	wc_guess_nolev(Nskill + NTpolyT +2) = seprt_mul
 
-							wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
-							wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
-						endif
+						! 	wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
+						! 	wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
+						! endif
 
 						! only do BOBYQA if the starting point is good
-						if(nopt >=6) then
+						if(nopt >=8) then
+							print *, "Computing from: ",  x0(1), x0(2), x0(3),x0(4), x0(5), x0(6), x0(7), x0(8)," on node: ", rank, "after ", j, " tries"
+						elseif(nopt >=7) then
+								print *, "Computing from: ",  x0(1), x0(2), x0(3),x0(4), x0(5), x0(6), x0(7)," on node: ", rank, "after ", j, " tries"
+						elseif(nopt >=6) then
 							print *, "Computing from: ",  x0(1), x0(2), x0(3),x0(4), x0(5), x0(6)," on node: ", rank, "after ", j, " tries"
 						elseif(nopt >=5) then
 							print *, "Computing from: ",  x0(1), x0(2), x0(3),x0(4), x0(5)," on node: ", rank, "after ", j, " tries"
@@ -5820,9 +5824,9 @@ module find_params
 			!output global wage_trend  in optimal
 			call gen_new_wgtrend(wage_trend, wage_coef)
 			fndgrid = fndgrid0*fndrt_mul
-			fndrt_mul =1._dp
+			!fndrt_mul =1._dp
 			sepgrid = sepgrid0*seprt_mul
-			seprt_mul =1._dp
+			!seprt_mul =1._dp
 			nu = xopt(1)
 			xizcoef = xopt(2)
 			if(nopt > 3) then
@@ -5842,7 +5846,10 @@ module find_params
 				call vec2csv( (/nu,xizcoef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt.csv")
 			elseif(nopt==5) then
 				call vec2csv( (/nu,xizcoef,Fd(2),Fd(3),xiagecoef,wmean/)  , "nuxiw_opt.csv")
+			elseif(nopt>5) then
+				call vec2csv( (/nu,xizcoef,Fd(2),Fd(3),xiagecoef,fndrt_mul,seprt_mul,wmean /)  , "nuxiw_opt.csv")
 			endif
+
 			call mat2csv(fndgrid, "fndgrid_opt.csv")
 			call mat2csv(sepgrid, "sepgrid_opt.csv")
 
@@ -6163,17 +6170,19 @@ program V0main
 		real(dp), allocatable :: wspace(:)
 		integer :: nopt,ninterppt
 		external dgemm, dfovec
+		!for ustats
+		real(dp) :: urt,Efrt,Esrt, dist_urt,dist_frt
 
 	moments_sim%alloced = 0
 
 !	occ_dat = .false.
-
+	ierr =0
 	call mpi_init(ierr)
 	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
 	call mpi_comm_size(mpi_comm_world,nnode,ierr)
 	nopt = nopt_tgts
 
-	print *, "Running version Nov 7, 2018"
+	print *, "Running version Sep 25, 2018"
 	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
@@ -6390,8 +6399,8 @@ program V0main
 
 		Vtol = 5e-5
 		cal_niter = 0
-		wc_guess_lev = 0._dp
-		wc_guess_nolev = 0._dp
+		! wc_guess_lev = 0._dp
+		! wc_guess_nolev = 0._dp
 		call vec2csv(shk%z_jt_innov,"z_jt_innov_hist_2.csv")
 		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
 
@@ -6421,47 +6430,20 @@ program V0main
 		PrDageDel = xsec_PrDageDel
 		call set_dit(shk%d_hist,shk%health_it_innov,shk%del_i_int,shk%age_hist)
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
-		!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-		! NOT ITERATING ON WAGES!
-		! if( (dbg_skip .eqv. .false.) .and. (w_strchng .eqv. .true.) ) then
-		! !	if(verbose>1) print *, "iterating to find wage trend"
-		! !	call iter_wgtrend(vfs, pfs, hst,shk)
-		! 	if(verbose>1) print *, "feeding in wage trend"
-		! 	ii = 1
-		! 	if( tr_spline .eqv. .true. ) then
-		! 		do i=1,(Nknots-1 + Nskill*Nknots)
-		! 			if( (i .gt. Nskill) ) then
-		! 				wc_guess_nolev(ii) = wage_coef(i)/occwg_datspline(i)
-		! 				ii = ii+1
-		! 			endif
-		! 		enddo
-		! 		do i=1,(Nknots-1 + Nskill*Nknots)
-		! 			wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
-		! 		enddo
-		! 	else
-		! 		!use polynomials
-		! 		do i=1,(NTpolyT + 2*Nskill)
-		! 			if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
-		! 				wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
-		! 				ii = ii+1
-		! 			endif
-		! 		enddo
-		! 		do i=1,(NTpolyT + 2*Nskill)
-		! 			wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
-		! 		enddo
-		! 	endif
-		! endif ! dbg_skip == F
 
-		if(print_lev>1) then
-			call vec2csv(wc_guess_lev,"wc_guess_lev.csv")
-			call vec2csv(wc_guess_nolev,"wc_guess_nolev.csv")
-		endif
+		! if(print_lev>1) then
+		! 	call vec2csv(wc_guess_lev,"wc_guess_lev.csv")
+		! 	call vec2csv(wc_guess_nolev,"wc_guess_nolev.csv")
+		! endif
 
 		if(verbose >=1) print *, "Simulating the model"
 		call sim(vfs, pfs, hst,shk)
 		if(verbose >=1) print *, "Computing moments"
 		call moments_compute(hst,moments_sim,shk)
 		if(verbose >=1) print *, "DI rate" , moments_sim%avg_di
+		call comp_ustats(hst,shk,urt,Efrt,Esrt)
+		dist_urt = (urt - avg_unrt)/avg_unrt
+		dist_frt = (Efrt - avg_frt)/avg_frt
 		!	set mean wage:
 		wmean = 0._dp
 		junk = 0._dp
@@ -6510,10 +6492,13 @@ program V0main
 		endif
 		print *, "error 1: ",	(moments_sim%init_diaward - diaward_target)/diaward_target
 		print *, "error 2: ",	(moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
-		print *, "error 3: ",	(moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
-		print *, "error 4: ",	(moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/p1d2_target
-		print *, "error 5: ",	(moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/p1d3_target
-		print *, "error 6: ",	(moments_sim%diaward_ageeffect - award_age_target)/award_age_target
+		!print *, "error 3: ",	(moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
+		print *, "error 3: ",	(moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/p1d2_target
+		print *, "error 4: ",	(moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/p1d3_target
+		print *, "error 5: ",	(moments_sim%diaward_ageeffect - award_age_target)/award_age_target
+		print *, "error 6: ",	dist_urt
+		print *, "error 7: ",	dist_frt
+
 
 		call dealloc_econ(vfs,pfs,hst)
 
@@ -6522,8 +6507,8 @@ program V0main
 
 	!bounds for paramvec:
 	!            nu, xizcoef, Fd(2)/Fd(3), Fd(3)  , xiagecoef, fndrt_mul , seprt_mul
-	lb = (/ 0.00_dp, 0.010_dp, 0.001_dp,   0.001_dp, 0.00_dp,  0.25_dp   , 0.25_dp  /)
-	ub = (/ 0.50_dp, 0.999_dp, 0.750_dp,   3.000_dp, 0.10_dp,  2.00_dp   , 2.00_dp  /)
+	lb = (/ 0.00_dp, 0.010_dp, 0.001_dp,   0.001_dp, 0.01_dp,  0.25_dp   , 0.25_dp  /)
+	ub = (/ 0.50_dp, 0.999_dp, 0.750_dp,   3.000_dp, 0.76_dp,  2.00_dp   , 2.00_dp  /)
 
 	! nu, xizcoef, xiagecoef, Fd(2)/Fd(3), Fd(3),xiagecoef
 	!lb = (/ 0.00_dp, 0.050_dp, 0.001_dp,    0.001_dp, 0.001_dp, 0.001_dp/)
