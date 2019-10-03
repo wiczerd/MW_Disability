@@ -5409,7 +5409,7 @@ module find_params
 			Fd(3) = paramvec(4)
 		endif
 		if( size(paramvec)>=5 ) then
-			xiagecoef = paramvec(5)
+			xiagezcoef = paramvec(5)
 		endif
 		fndrt_mul = paramvec(6)
 		seprt_mul = paramvec(7)
@@ -5643,42 +5643,6 @@ module find_params
 							x0(i) = x0(i)*( xu(i)-xl(i) ) + xl(i)
 						enddo
 					else
-						! set initial guess
-						! ii = 1
-						! wc_guess_lev = 1._dp
-						! wc_guess_nolev = 1._dp
-						! if(tr_spline .eqv. .true.) then
-						! 	do i=1,((Nknots-1)+Nskill*Nknots)
-						! 		if( i .gt. Nskill)  then
-						! 			wc_guess_nolev(ii) = wage_coef(i)/occwg_datspline(i)
-						! 			ii = ii+1
-						! 		endif
-						! 	enddo
-						! 	do i=1,(Nknots-1+Nskill*Nknots)
-						! 		wc_guess_lev(i) = wage_coef(i)/occwg_datspline(i)
-						! 	enddo
-						! 	wc_guess_nolev((Nknots-1)+Nskill*Nknots +1) = fndrt_mul
-						! 	wc_guess_nolev((Nknots-1)+Nskill*Nknots +2) = seprt_mul
-
-						! 	wc_guess_lev(Nknots-1+Nskill*Nknots +1) = fndrt_mul !Nskill + Nknots-1 + NKsill*(Nknots-1)
-						! 	wc_guess_lev(Nknots-1+Nskill*Nknots +2) = seprt_mul
-						! else
-						! 	do i=1,(NTpolyT + 2*Nskill)
-						! 		if( (i .le. NTpolyT) .or. (i .gt. Nskill+NTpolyT) ) then
-						! 			wc_guess_nolev(ii) = wage_coef(i)/occwg_datcoef(i)
-						! 			ii = ii+1
-						! 		endif
-						! 	enddo
-						! 	do i=1,(NTpolyT + 2*Nskill)
-						! 		wc_guess_lev(i) = wage_coef(i)/occwg_datcoef(i)
-						! 	enddo
-
-						! 	wc_guess_nolev(Nskill + NTpolyT +1) = fndrt_mul
-						! 	wc_guess_nolev(Nskill + NTpolyT +2) = seprt_mul
-
-						! 	wc_guess_lev(Nskill*2 + NTpolyT +1) = fndrt_mul
-						! 	wc_guess_lev(Nskill*2 + NTpolyT +2) = seprt_mul
-						! endif
 
 						! only do BOBYQA if the starting point is good
 						if(nopt >=8) then
@@ -5746,12 +5710,11 @@ module find_params
 				elseif(nopt>=6) then
 					xopt = xopt*(xu-xl)+xl !convert to input space
 					nu = xopt(1)
-					xiagecoef  = xopt(3)
 					xizcoef = xopt(2)
-					Fd(2) = xopt(4)*xopt(5)
-					Fd(3) = xopt(5)
-					xiagecoef = xopt(6)
-					call vec2csv( (/nu, xizcoef,Fd(2),Fd(3),xiagecoef,wmean/)  , "nuxiw_opt" // rank_str //".csv")
+					Fd(2) = xopt(3)*xopt(4)
+					Fd(3) = xopt(4)
+					xiagezcoef = xopt(5)
+					call vec2csv( (/nu, xizcoef,Fd(2),Fd(3),xiagezcoef,fndrt_mul,seprt_mul,wmean/)  , "nuxiw_opt" // rank_str //".csv")
 				endif
 			enddo ! dd = 1,nstartpn
 
@@ -5834,7 +5797,7 @@ module find_params
 				Fd(3) = xopt(4)
 			endif
 			if(nopt>4) &
-			&	xiagecoef = xopt(5)
+			&	xiagezcoef = xopt(5)
 			!print them all
 			call mat2csv(wage_trend, "wage_trend_opt.csv")
 			call vec2csv(wage_coef, "wage_coef_opt.csv")
@@ -5845,9 +5808,9 @@ module find_params
 			elseif(nopt==4) then
 				call vec2csv( (/nu,xizcoef,Fd(2),Fd(3),wmean/)  , "nuxiw_opt.csv")
 			elseif(nopt==5) then
-				call vec2csv( (/nu,xizcoef,Fd(2),Fd(3),xiagecoef,wmean/)  , "nuxiw_opt.csv")
+				call vec2csv( (/nu,xizcoef,Fd(2),Fd(3),xiagezcoef,wmean/)  , "nuxiw_opt.csv")
 			elseif(nopt>5) then
-				call vec2csv( (/nu,xizcoef,Fd(2),Fd(3),xiagecoef,fndrt_mul,seprt_mul,wmean /)  , "nuxiw_opt.csv")
+				call vec2csv( (/nu,xizcoef,Fd(2),Fd(3),xiagezcoef,fndrt_mul,seprt_mul,wmean /)  , "nuxiw_opt.csv")
 			endif
 
 			call mat2csv(fndgrid, "fndgrid_opt.csv")
@@ -6199,7 +6162,7 @@ program V0main
 		if(narg_in > 1) then
 			call getarg(2, arg_in)
 			print *, "initial xiage=", arg_in
-			read( arg_in, * ) xiagecoef
+			read( arg_in, * ) xiagezcoef
 
 			call getarg(3, arg_in)
 			print *, "initial xiz =", arg_in
@@ -6506,11 +6469,11 @@ program V0main
 
 
 	!bounds for paramvec:
-	!            nu, xizcoef, Fd(2)/Fd(3), Fd(3)  , xiagecoef, fndrt_mul , seprt_mul
+	!            nu, xizcoef, Fd(2)/Fd(3), Fd(3)  , xiagezcoef, fndrt_mul , seprt_mul
 	lb = (/ 0.00_dp, 0.010_dp, 0.001_dp,   0.001_dp, 0.01_dp,  0.25_dp   , 0.25_dp  /)
 	ub = (/ 0.50_dp, 0.999_dp, 0.750_dp,   3.000_dp, 0.76_dp,  2.00_dp   , 2.00_dp  /)
 
-	! nu, xizcoef, xiagecoef, Fd(2)/Fd(3), Fd(3),xiagecoef
+	! nu, xizcoef, xiagezcoef, Fd(2)/Fd(3), Fd(3),xiagezcoef
 	!lb = (/ 0.00_dp, 0.050_dp, 0.001_dp,    0.001_dp, 0.001_dp, 0.001_dp/)
 	!ub = (/ 0.50_dp, 0.990_dp, 0.990_dp,    0.750_dp, 3.000_dp, 0.751_dp/)
 
@@ -6525,7 +6488,7 @@ program V0main
 		xizcoef = parvec(2)
 		Fd(2)      = parvec(3)*parvec(4)
 		Fd(3)      = parvec(4)
-		xiagecoef  = parvec(5)
+		xiagezcoef  = parvec(5)
 		fndrt_mul  = parvec(6)
 		seprt_mul  = parvec(7)
 
@@ -6577,7 +6540,7 @@ program V0main
 			read(fread,*) Fd(3)
 		endif
 		if(size(parvec)>4) then
-			read(fread,*) xiagecoef
+			read(fread,*) xiagezcoef
 		endif
 		read(fread,*) wmean
 	close(fread)
@@ -6585,7 +6548,7 @@ program V0main
 
 	if (refine_cal .eqv. .true. ) then
 		if(nopt_tgts ==4) &
-		&	x0 = (/ nu,  xizcoef, Fd(2)/Fd(3), Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
+		&	x0 = (/ nu,  xizcoef, Fd(2)/Fd(3), Fd(3), xiagezcoef,fndrt_mul,seprt_mul /)
 		! if(nopt_tgts==5) &
 		! &	x0 = (/ nu,  xizcoef, Fd(2)/Fd(3), Fd(3),xiagecoef /)
 
@@ -6624,7 +6587,7 @@ program V0main
 		welfare_cf = .true.
 
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizcoef, Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
+		parvec = (/nu,xizcoef, Fd(2)/Fd(3),Fd(3), xiagezcoef,fndrt_mul,seprt_mul /)
 		!if(nopt_tgts==6) parvec = (/nu,xizcoef, xiagecoef,Fd(2)/Fd(3),Fd(3),xiagecoef /)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		caselabel = ""
@@ -6648,7 +6611,7 @@ program V0main
 
 		del_by_occ = .false.
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizcoef,Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
+		parvec = (/nu,xizcoef,Fd(2)/Fd(3),Fd(3), xiagezcoef,fndrt_mul,seprt_mul /)
 		!if(nopt_tgts==6) parvec = (/nu,xizcoef, ,Fd(2)/Fd(3),Fd(3),xiagecoef /)
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		caselabel = "delocc_CF"
@@ -6707,13 +6670,13 @@ program V0main
 		call set_alit(shk%al_hist,shk%al_int_hist, shk%al_it_innov,shk%d_hist, status)
 
 		caselabel = "xi0L"
-		parvec = (/nu,0.75*xizcoef, Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
+		parvec = (/nu,0.75*xizcoef, Fd(2)/Fd(3),Fd(3), xiagezcoef,fndrt_mul,seprt_mul /)
 		call cal_dist(parvec,err0,shk)
 		print *, "error with low xi ", err0(1), err0(2), err0(3), err0(4)
 		print *, "---------------------------------------------------"
 
 		caselabel = "xi0H"
-		parvec = (/nu,1.25*xizcoef, Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
+		parvec = (/nu,1.25*xizcoef, Fd(2)/Fd(3),Fd(3), xiagezcoef,fndrt_mul,seprt_mul /)
 		call cal_dist(parvec,err0,shk)
 		print *, "error with high xi ", err0(1), err0(2), err0(3), err0(4)
 		print *, "---------------------------------------------------"
@@ -6729,7 +6692,7 @@ program V0main
 	if((nodei == 0) .and. (run_experiments .eqv. .true.) .and. (dbg_skip .eqv. .false.)) then
 
 		cal_on_iter_wgtrend = .false.
-		parvec = (/nu,xizcoef, Fd(2)/Fd(3),Fd(3), xiagecoef,fndrt_mul,seprt_mul /)
+		parvec = (/nu,xizcoef, Fd(2)/Fd(3),Fd(3), xiagezcoef,fndrt_mul,seprt_mul /)
 
 
 		allocate(wage_coef_0chng(size(wage_coef)))

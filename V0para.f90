@@ -200,7 +200,6 @@ real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount r
 		xizcoef    = 0.1, &	!change in acceptance rate with z deterioration
 		xizd1coef  = 0.0, &	!change in acceptance rate with z deterioration if d=1
 		xizd23coef = 0.1, &	!change in acceptance rate with z deterioration if d=2 or 3
-		xiagecoef  = 0.247,&!OLD coefficient from Hu, Lahiri, Vaughan & Wixon
 		xiagezcoef = 0.279,&!OLD/LOWEDU coefficient from Hu, Lahiri, Vaughan & Wixon
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
