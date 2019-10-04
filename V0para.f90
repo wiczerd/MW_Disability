@@ -195,8 +195,8 @@ real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount r
 		dRiskH	= 1.05,&		!Upper bound on occupation-related extra disability risk
 		wmean	= 1.,&		! to set the average wage on which disability stuff is set
 !
-		proc_time1 = 13.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
-		proc_time2 = 13.5,&!The average time to decision	(could be 28.05 for appeal that continues)
+		proc_time1 = 8.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
+		proc_time2 = 8.5,&!The average time to decision	(could be 28.05 for appeal that continues)
 		xizcoef    = 0.1, &	!change in acceptance rate with z deterioration
 		xizd1coef  = 0.0, &	!change in acceptance rate with z deterioration if d=1
 		xizd23coef = 0.1, &	!change in acceptance rate with z deterioration if d=2 or 3
@@ -361,7 +361,7 @@ subroutine setparams()
 			close(fread)
 		else
 			open(unit= fread, file = "OLSWageTrend_CS1.csv")
-			do j=1,17
+			do j=1,19
 				read(fread,*) wage_coef_CS_read(j)
 			enddo
 			close(fread)
@@ -514,9 +514,7 @@ subroutine setparams()
 		endif
 		pialf(1,2,d) = 1.-sum(pialf(1,3:nal ,d))
 		pialf(2:nal,1,d) = 0. !exogenous separation is not built into alpha transitions
-		!change this!!!!!!!!!!!!!!!
-		!pialf(1,3:nal,d) = 0.
-		!pialf(1,2,d) = 1.
+
 	enddo
 
 	!~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -584,7 +582,7 @@ subroutine setparams()
 		if(wglev_0 .eqv. .false.) allocate(wage_coef(Nknots-1 + Nskill*Nknots+5) )
 		wage_coef = 0._dp
 
-		t= 6
+		t= 7
 		do j=1,Nskill
 			occwg_datspline(j) = wage_coef_CS_read(t)
 			t = t+1
@@ -769,10 +767,10 @@ subroutine setparams()
 
 	!from Mincer regressions (see Appendix) with Heckman 2-step
 	wtau(1) =  0.
-	wtau(2) = -0.032/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(2)-agegrid(1))
-	wtau(3) = -0.032/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(3)-agegrid(1))
-	wtau(4) = -0.12
-	wtau(5) = -0.174
+	wtau(2) = -0.05461/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(2)-agegrid(1))
+	wtau(3) = -0.05461/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(3)-agegrid(1))
+	wtau(4) = -0.20978
+	wtau(5) = -0.3476
 
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
@@ -1026,8 +1024,8 @@ subroutine setparams()
 	!Disability Extent-Specific Things
 	!Wage Penalty
 	wd(1) = 0.		!Healthy, no penalty
-	wd(2) = -0.097	!Partially Disabled, small penalty
-	wd(3) = -0.266	!Full Disabled, large penalty
+	wd(2) = -0.06831	!Partially Disabled, small penalty
+	wd(3) = -0.22422	!Full Disabled, large penalty
 	!Fixed cost of particpation
 	Fd(1) = 0.
 	Fd(2) = 0.276*5

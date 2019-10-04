@@ -5390,25 +5390,26 @@ module find_params
 		type(pol_struct) :: pfs,pfs_cf
 		type(hist_struct):: hst
 		type(moments_struct):: moments_sim
-		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app,napp_t,nu1,nu0
+		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app,napp_t,nu1,nu0, objval
 		real(dp) :: fndgrid0(nl,nz),sepgrid0(nl,nz)
 		real(dp) :: dist_urt,dist_frt,Efrt,Esrt,urt !moments fro the unemployment rate calibration
-		integer :: ij=1,t0tT(2),it,i
+		integer :: ij=1,t0tT(2),it,i,npar, nerr
 		integer :: rank_hr,ierr,fcal_eval
 		character(2) :: rank_str
-
+		npar = size(paramvec)
+		nerr = size(errvec)
 		cal_niter = cal_niter + 1
 		nu   = paramvec(1)
-		if( size(paramvec)==2 ) then
+		if( npar ==2 ) then
 			xizcoef = paramvec(2)
 		else
 			xizcoef = paramvec(2)
 		endif
-		if( size(paramvec) > 3) then
+		if( npar > 3) then
 			Fd(2) = paramvec(3)*paramvec(4)
 			Fd(3) = paramvec(4)
 		endif
-		if( size(paramvec)>=5 ) then
+		if( npar >=5 ) then
 			xiagezcoef = paramvec(5)
 		endif
 		fndrt_mul = paramvec(6)
@@ -5473,21 +5474,25 @@ module find_params
 
 		if(verbose >1) print *, "age effect here: ", moments_sim%diaward_ageeffect
 		errvec(1) = (moments_sim%init_diaward - diaward_target)/diaward_target
-		if(size(errvec)>1) &
+		if(nerr>1) &
 		&	errvec(2) = (moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
-		if(size(errvec)>2) &
+		if(nerr>2) &
 		&	errvec(3) = (moments_sim%work_rateD(2)-moments_sim%work_rateD(1) - p1d2_target)/(p1d2_target+p1d3_target)
-		if(size(errvec)>3) &
+		if(nerr>3) &
 		&	errvec(4) = (moments_sim%work_rateD(3)-moments_sim%work_rateD(1) - p1d3_target)/(p1d2_target+p1d3_target)
 		errvec(5) = (moments_sim%diaward_ageeffect - award_age_target)/award_age_target
 		errvec(6) = dist_urt
 		errvec(7) = dist_frt
-
+		objval =0._dp
+		do i=1,nerr
+			objval =errvec(i)**2 +objval
+		enddo
 
 		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
 		write(rank_str, '(I2.2)') rank_hr
 		fcal_eval = rank_hr+100
 		open(unit=fcal_eval, file = "cal_dist_"//trim(rank_str)//".csv" ,ACCESS='APPEND', POSITION='APPEND')
+		write(fcal_eval,  "(G20.12)", advance='no') objval
 		do i=1,size(paramvec)
 			write(fcal_eval, "(G20.12)", advance='no')  paramvec(i)
 		enddo
