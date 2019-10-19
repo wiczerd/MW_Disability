@@ -766,11 +766,11 @@ subroutine setparams()
 	agegrid = agegrid + 10._dp !started them at 30, but they've been working since 20
 
 	!from Mincer regressions (see Appendix) with Heckman 2-step
-	wtau(1) =  0.
-	wtau(2) = -0.05461/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(2)-agegrid(1))
-	wtau(3) = -0.05461/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(3)-agegrid(1))
-	wtau(4) = -0.20978
-	wtau(5) = -0.3476
+	wtau(1) =  0.0
+	wtau(2) =  0.0757/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(2)-agegrid(1))
+	wtau(3) =  0.0757/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(3)-agegrid(1))
+	wtau(4) =  0.0157
+	wtau(5) = -0.0661
 
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
@@ -1024,8 +1024,8 @@ subroutine setparams()
 	!Disability Extent-Specific Things
 	!Wage Penalty
 	wd(1) = 0.		!Healthy, no penalty
-	wd(2) = -0.06831	!Partially Disabled, small penalty
-	wd(3) = -0.22422	!Full Disabled, large penalty
+	wd(2) = -0.075746904	!Partially Disabled, small penalty
+	wd(3) = -0.182154425	!Full Disabled, large penalty
 	!Fixed cost of particpation
 	Fd(1) = 0.
 	Fd(2) = 0.276*5
