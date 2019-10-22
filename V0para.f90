@@ -57,6 +57,7 @@ integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
 			NKpolyT = 1,&			!polynomial order for time trend for occupation or number of spline segments
 			NTpolyT = 2,& 			!polynomial order for time trend overall or number of spline segments
 			Nknots   = 4,& 			! Number of knots
+			max_DFBOLS = 150, &		!Iterations on DFBOLS
 			maxiter = 2000, &		!Tolerance parameter
 			Nsim = 40000,&!5000*nj	!how many agents to draw
 			year0 = 1984, &			!when simulation starts and stops

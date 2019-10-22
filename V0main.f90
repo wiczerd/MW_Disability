@@ -5181,7 +5181,7 @@ module find_params
 		real(dp) :: condstd_tsemp,totdi_rt,totapp_dif_hist,ninsur_app,napp_t,nu1,nu0, objval
 		real(dp) :: fndgrid0(nl,nz),sepgrid0(nl,nz)
 		real(dp) :: dist_urt,dist_frt,Efrt,Esrt,urt !moments fro the unemployment rate calibration
-		integer :: ij=1,t0tT(2),it,i,npar, nerr
+		integer :: ij=1,t0tT(2),it,i,j,npar, nerr
 		integer :: rank_hr,ierr,fcal_eval
 		character(2) :: rank_str
 		npar = size(paramvec)
@@ -5202,17 +5202,22 @@ module find_params
 		endif
 		fndrt_mul = paramvec(6)
 		seprt_mul = paramvec(7)
+
+		! set up economy and solve it
+		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp() which resets fndgrid and sepgrid
+		
+		! these must come after set_zjt because that also resets fndgrid, sepgrid:
+		forall(i=1:nl,j=1:nz) fndgrid0(i,j) = fndgrid(i,j)
+		forall(i=1:nl,j=1:nz) sepgrid0(i,j) = sepgrid(i,j)
+		forall(i=1:nl,j=1:nz) fndgrid(i,j) = fndrt_mul * fndgrid0(i,j)
+		forall(i=1:nl,j=1:nz) sepgrid(i,j) = seprt_mul * sepgrid0(i,j)
 		
 		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
 		call alloc_econ(vfs,pfs,hst)
 
-		fndgrid0 = fndgrid
-		sepgrid0 = sepgrid
 		if(print_lev .ge. 2) call mat2csv(fndgrid0,"fndgrid0"//trim(caselabel)//".csv")
 		if(verbose >2) print *, "In the calibration"
 
-		! set up economy and solve it
-		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp()
 
 		!solve w/o DI, in case of welfare_cf .eqv. .true.
 		if(welfare_cf .eqv. .true. ) then
@@ -5227,8 +5232,6 @@ module find_params
 
 		if(verbose >2) print *, "Solving the model"
 		call sol(vfs,pfs)
-
-		!I only want to iterate on the wage trend if I have a good set of parameters
 
 		if(verbose >2) print *, "Simulating the model"
 		call sim(vfs, pfs, hst,shk,.false.)
@@ -5443,16 +5446,12 @@ module find_params
 						else
 							print *, "Computing from: ",  x0(1), x0(2), x0(3)," on node: ", rank, "after ", j, " tries"
 						endif
-						!output the internal stage 1 parameters
-						call vec2csv(wage_coef, "wage_coef_opt"// rank_str //".csv")
-						call mat2csv(fndgrid0*fndrt_mul, "fndgrid_opt"// rank_str //".csv")
-						call mat2csv(sepgrid0*seprt_mul, "sepgrid_opt"// rank_str //".csv")
 
 						cal_niter = 1
 						iprint = 1
 						xopt = (x0-xl)/(xu-xl) !convert x0 draw into normalized (0,1) units
 						call bobyqa_h(nopt,ninterppt,xopt,zeros,ones, &
-						&	rhobeg,rhoend,iprint,70,wspace,nopt)
+						&	rhobeg,rhoend,iprint,max_DFBOLS,wspace,nopt)
 
 						call dfovec(nopt,nopt,xopt,v_err)
 						exit
@@ -5551,8 +5550,7 @@ module find_params
 			nstarts = nstarts+nnode*nstartpn !<-number of starts so far
 			fval = fopt_hist(1)
 			xopt = xopt_hist(:,1)
-			fndgrid0 = fndgrid
-			sepgrid0 = sepgrid
+			
 			do i=1,nstarts
 				fdist = dabs( fopt_hist(i)-fval )/dabs(fval)
 				xdist = sum(dabs( xopt_hist(:,i)- xopt ) / dabs(xopt))
@@ -5744,7 +5742,7 @@ subroutine dfovec(ntheta, mv, theta0, v_err)
 	paramwt = 1._dp
 	paramwt(1) = 2.0_dp
 	paramwt(2) = 1.0_dp
-	do i=1,ntheta
+	do i=1,mv
 		v_err(i) = errvec(i)*paramwt(i)
 	enddo
 
@@ -5819,7 +5817,7 @@ program V0main
 	call mpi_comm_size(mpi_comm_world,nnode,ierr)
 	nopt = nopt_tgts
 
-	print *, "Running version Sep 25, 2018"
+	print *, "Running version October 20, 2019"
 	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
