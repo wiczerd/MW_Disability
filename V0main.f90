@@ -4852,7 +4852,7 @@ module find_params
 		type(shocks_struct) :: shk
 		type(hist_struct):: hst
 		real(dp), intent(out) :: urt,Efrt,Esrt
-		real(dp) :: Nunemp,Nlf, Nsep,Nfnd,ltu
+		real(dp) :: Nunemp,Nlf, Nsep,Nfnd,ltu,Nun
 		integer :: i, j, it,duri
 
 		ltu  = 0._dp
@@ -4861,6 +4861,7 @@ module find_params
 		Nunemp = 0._dp
 		Nsep = 0._dp
 		Nfnd = 0._dp
+		Nun  = 0._dp
 		do i = 1,Nsim
 			duri = 0
 			do it=1,Tsim
@@ -4878,14 +4879,19 @@ module find_params
 						duri = 0
 					endif
 				endif
-				if(hst%status_hist(i,it)>2) duri = 0
+				if(hst%status_hist(i,it)>2 .or. hst%status_hist(i,it)==1) duri = 0
+				if(hst%status_hist(i,it)==3) then 
+					if(it >1) then 
+						if (hst%status_hist(i,it-1)==2) Nun = Nun+1._dp
+					endif
+				endif
 			enddo
 		enddo
 		urt  = Nunemp/Nlf
 		Esrt = Nsep/(Nlf-Nunemp)
-		if(Nunemp > 0._dp) then
+		if(Nunemp > 0._dp .and. ((Nunemp - Nun) > 0) ) then
 			ltu  = 1._dp - ltu/Nunemp
-			Efrt = Nfnd/Nunemp
+			Efrt = (Nfnd- Nun)/(Nunemp - Nun)
 		else
 			ltu  = 0._dp
 			Efrt = 0._dp
@@ -5203,6 +5209,9 @@ module find_params
 		fndrt_mul = paramvec(6)
 		seprt_mul = paramvec(7)
 
+		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
+		call alloc_econ(vfs,pfs,hst)
+
 		! set up economy and solve it
 		call set_zjt(hst%z_jt_macroint, hst%z_jt_panel, shk) ! includes call settfp() which resets fndgrid and sepgrid
 		
@@ -5212,8 +5221,6 @@ module find_params
 		forall(i=1:nl,j=1:nz) fndgrid(i,j) = fndrt_mul * fndgrid0(i,j)
 		forall(i=1:nl,j=1:nz) sepgrid(i,j) = seprt_mul * sepgrid0(i,j)
 		
-		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
-		call alloc_econ(vfs,pfs,hst)
 
 		if(print_lev .ge. 2) call mat2csv(fndgrid0,"fndgrid0"//trim(caselabel)//".csv")
 		if(verbose >2) print *, "In the calibration"
@@ -6143,7 +6150,7 @@ program V0main
 	!bounds for paramvec:
 	!            nu, xizcoef, Fd(2)/Fd(3), Fd(3)  , xiagezcoef, fndrt_mul , seprt_mul
 	lb = (/ 0.00_dp, 0.010_dp, 0.001_dp,   0.001_dp, 0.01_dp,  0.25_dp   , 0.25_dp  /)
-	ub = (/ 0.50_dp, 0.999_dp, 0.750_dp,   3.000_dp, 2.01_dp,  2.00_dp   , 2.00_dp  /)
+	ub = (/ 0.50_dp, 0.999_dp, 0.750_dp,   3.000_dp, 3.01_dp,  3.00_dp   , 2.00_dp  /)
 
 	! nu, xizcoef, xiagezcoef, Fd(2)/Fd(3), Fd(3),xiagezcoef
 	!lb = (/ 0.00_dp, 0.050_dp, 0.001_dp,    0.001_dp, 0.001_dp, 0.001_dp/)
@@ -6208,12 +6215,20 @@ program V0main
 		read(fread,*) nu
 		read(fread,*) xizcoef
 		if(size(parvec)>2) then
+			! reading point 3
 			read(fread,*) Fd(2)
 			read(fread,*) Fd(3)
 		endif
 		if(size(parvec)>4) then
+			! reading point 5 of nuxiw_opt
 			read(fread,*) xiagezcoef
 		endif
+		if(size(parvec)>5) then 
+			!reading line 6,7
+			read(fread,*) fndrt_mul
+			read(fread,*) seprt_mul
+		endif
+
 		read(fread,*) wmean
 	close(fread)
 
