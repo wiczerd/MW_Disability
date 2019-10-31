@@ -40,7 +40,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
 		itlen = 12,&		! just an integer version of tlen so I don't have to keep casting
-		nopt_tgts = 7		! number of calibration parameters/targets in main program
+		nopt_tgts = 5		! number of calibration parameters/targets in main program
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
@@ -239,9 +239,9 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		voc_acc_target = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_acc_target = 0.75,&		!fraction taken based on health criteria, target 1985
 		old_target = 0.41,&		!fraction over 55
-		avg_unrt = 0.055,&	!average rate of unemployment over the period.
+		avg_unrt = 0.056,&	!average rate of unemployment over the period.
 		avg_undur = 3.,&	! average months of unemployment
-		avg_frt   = 0.4,&	! average rate of long-term unemployment
+		avg_frt   = .3242085 ,&	! average rate of long-term unemployment
 		award_age_target  = 0.8/0.3,&	!target for increase in vocation due to age (from Chen & van der Klaauw page 771 ) In levels it's (0.093+0.287)
 		p1d2_target = -.197,&	! how much less d=2 participate
 		p1d3_target = -.649  	! how much less d=3 participate
