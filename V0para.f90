@@ -40,7 +40,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
 		itlen = 12,&		! just an integer version of tlen so I don't have to keep casting
-		nopt_tgts = 5		! number of calibration parameters/targets in main program
+		nopt_tgts = 8		! number of calibration parameters/targets in main program
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
@@ -174,7 +174,7 @@ real(8)	::	agegrid(TT)		! the mid points of the ages
 real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount rate to start)
 		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential wage
 		util_const = 0.,&	!Give life some value
-		Fd(nd) = 0.,&			! Fixed cost of participating in labor
+		Fd(nd,TT-1) = 0.,&			! Fixed cost of participating in labor
 
 !	Idiosyncratic income process
 		alfrho(nd) = 0.988, &	!Peristence of Alpha_i type
@@ -243,9 +243,13 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		avg_undur = 3.,&	! average months of unemployment
 		avg_frt   = .3242085 ,&	! average rate of long-term unemployment
 		award_age_target  = 0.8/0.3,&	!target for increase in vocation due to age (from Chen & van der Klaauw page 771 ) In levels it's (0.093+0.287)
-		p1d2_target = -.197,&	! how much less d=2 participate
-		p1d3_target = -.649  	! how much less d=3 participate
-
+		p1d1_2545target =   0.,&	! normalize how much young healthy participate
+		p1d2_2545target = 0.7562,&	! how much less d=2 participate: (.927-.226)/.927 
+		p1d3_2545target = 0.1737,&	! how much less d=3 participate: (.927-.766)/.927
+		p1d1_4665target = 0.9364,&	! how much less d=2 participate: (.927-.059)/.927
+		p1d2_4665target = 0.5383,&	! how much less d=2 participate: (.927-.428)/.927	
+		p1d3_4665target = 0.0831	! how much less d=3 participate: (.927-.850)/.927
+		
 
 
 !Preferences----------------------------------------------------------------!
@@ -1028,9 +1032,11 @@ subroutine setparams()
 	wd(2) = -0.075746904	!Partially Disabled, small penalty
 	wd(3) = -0.182154425	!Full Disabled, large penalty
 	!Fixed cost of particpation
-	Fd(1) = 0.
-	Fd(2) = 0.276*5
-	Fd(3) = 0.524*5
+	Fd(1,:) = 0.
+	Fd(2,1) = 0.276*5
+	Fd(3,1) = 0.524*5
+	Fd(2,2) = 0.276*5
+	Fd(3,2) = 0.524*5
 
 
 	!DI Acceptance probability for each d,t status
