@@ -226,7 +226,7 @@ module helper_funs
 	!------------------------------------------------------------------------
 	! 4) Acceptance probability
 	!--------------------
-	function xifun(idin,trin,itin,hlthprob)
+	function xifun(idin,trin,itin,hlthprob) result(diprob)
 
 		!idin is the health (integer)
 		!trin is the wage trend, as realized by the change in returns to skills (real)
@@ -236,42 +236,47 @@ module helper_funs
 		real(dp), intent(in):: trin
 		integer, intent(in):: idin,itin
 		real(dp), optional :: hlthprob
-		real(dp) :: xifunH,xifunV,xifun, hlthfrac,trqtl,trwt,trhr
+		real(dp) :: xifunH,xifunV, hlthfrac,trqtl,trwt,trhr,advage
 		integer :: trqtl_L, trqtl_H
+		real(dp) :: diprob
 
-		!stage 1-3
-		xifunH = xi_d(idin)
-		!adjust for time aggregation in first stage?
-		xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
+		! !stage 1-3
+		! xifunH = xi_d(idin)
+		! !adjust for time aggregation in first stage?
+		! xifunH = 1._dp - max(0.,1.-xifunH)**(1._dp/proc_time1)
+		! !vocational stages 4-5
+		! trhr = trin
+		! xifunV =  xizcoef*(maxval(trgrid)-trhr)/((maxval(trgrid)-minval(trgrid)))
+		! if(itin>=(TT-2)) &
+		!  	&	xifunV = xifunV*(1. + xiagezcoef)
+		! !adjust for time aggregation in second stage?
+		! xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
+		! !if(itin ==1) xifunV = 0._dp
+		! xifun = min(xifunH+xifunV,1._dp)
+		! hlthfrac = xifunH/xifun
+		! xifun = max(min(xifun,1._dp),0._dp)
+
+		!as a nested logit:
+		if(itin >= (TT-2)) then
+			advage = 1._dp
+		else 
+			advage = 0._dp
+		endif
+		xifunV = -xizcoef * trin - xiagezcoef*advage*trin
 		
-		!vocational stages 4-5
-		trhr = trin
+		diprob = dexp(xifunV/.1_dp)/(1._dp + dexp(xifunV/.1_dp))*(1._dp - hlth_acc_target) + hlth_acc_target*xi_d(idin)
 		
-		xifunV =  xizcoef*(maxval(trgrid)-trhr)/((maxval(trgrid)-minval(trgrid)))
+		hlthfrac = hlth_acc_target*xi_d(idin)/diprob
+		diprob = max(min(diprob,1._dp),0._dp)
 
-		if(itin>=(TT-2)) &
-		 	&	xifunV = xifunV*(1. + xiagezcoef)
-
-		!adjust for time aggregation in second stage?
-		xifunV = 1._dp - max(0._dp,1.-xifunV)**(1._dp/proc_time2)
-
-		!if(itin ==1) xifunV = 0._dp
-
-		xifun = min(xifunH+xifunV,1._dp)
-
-		hlthfrac = xifunH/xifun
-
-!		if( idin ==1 ) &
-!		&	xifun = xifun - (1._dp-(1._dp - xizd1coef)**(1._dp/proc_time2))
-
-		xifun = max(min(xifun,1._dp),0._dp)
+		diprob = 1._dp - max(0.,1.-diprob)**(1._dp / proc_time1)
 
 		if((itin == 1) .and. (ineligNoNu .eqv. .false.)) then
-			xifun = xifun*eligY
+			diprob = diprob*eligY
 		endif
 
 		if(present(hlthprob) .eqv. .true.) &
-			hlthprob = hlthfrac*xifun
+			hlthprob = hlthfrac*diprob
 
 	end function
 
@@ -1180,6 +1185,9 @@ module model_data
 		!just for convenience
 		forall(it=1:TT) totage(it) = sum(totage_st(it,:))
 
+		p1d2_target = p1d2_2545target*totage(1)/sum(totage) + p1d2_4665target*(1._dp - totage(1)/sum(totage))
+		p1d3_target = p1d3_2545target*totage(1)/sum(totage) + p1d3_4665target*(1._dp - totage(1)/sum(totage))
+
 		!work-dif app-dif distribution by age, shock
 		do it=1,(TT-1)
 			if( tot3age(it) > 0) then
@@ -1306,7 +1314,7 @@ module model_data
 		else
 			moments_sim%init_hlth_acc= 1._dp
 		endif
-		
+		moments_sim%init_hlth_acc= 1._dp - (1._dp - moments_sim%init_hlth_acc)**(moments_sim%init_hlth_acc*proc_time1 + (1._dp - moments_sim%init_hlth_acc)*proc_time2)
 		if(print_lev >= 2) then
 			call veci2csv(totst,"pop_st.csv")
 			call vec2csv(a_age,"a_age"//trim(caselabel)//".csv")
@@ -5396,6 +5404,7 @@ module find_params
 		errvec(5)  = (moments_sim%work_rateD(1)/moments_sim%work_rateD(2) - 1._dp/p1d2_target  )*2/ ( moments_sim%work_rateD(1)/moments_sim%work_rateD(2) + 1._dp/p1d2_target )
 		errvec(6)  = (moments_sim%work_rateD(1)/moments_sim%work_rateD(3) - 1._dp/p1d3_target  )*2/ ( moments_sim%work_rateD(1)/moments_sim%work_rateD(3) + 1._dp/p1d3_target )
 		
+		errvec(7)  = (moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
 		!errvec(5) = (moments_sim%diaward_ageeffect - award_age_target)/award_age_target
 
 
@@ -5936,7 +5945,7 @@ program V0main
 	call mpi_comm_size(mpi_comm_world,nnode,ierr)
 	nopt = nopt_tgts
 
-	print *, "Running version October 20, 2019"
+	print *, "Running version November 12, 2019"
 	print *, "Starting on node ", nodei, "out of ", nnode
 
 	call setparams()
@@ -6261,7 +6270,7 @@ program V0main
 		!print *, "error 5: ",	(moments_sim%diaward_ageeffect - award_age_target)/award_age_target
 		print *, "error 5: ",	(moments_sim%work_rateD(1)/moments_sim%work_rateD(2) - 1._dp/p1d2_target  )*2/ ( moments_sim%work_rateD(1)/moments_sim%work_rateD(2) + 1._dp/p1d2_target )
 		print *, "error 6: ",	(moments_sim%work_rateD(1)/moments_sim%work_rateD(3) - 1._dp/p1d3_target  )*2/ ( moments_sim%work_rateD(1)/moments_sim%work_rateD(3) + 1._dp/p1d3_target )
-		
+		print *, "error 7: ",   (moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
 
 		call dealloc_econ(vfs,pfs,hst)
 
@@ -6280,9 +6289,10 @@ program V0main
 	!         nu,     xizcoef,   Fd(2,1)/Fd(3,1),Fd(3,1),   Fd(1,2), Fd(2,2)/Fd(3,2), Fd(3,2),xiagezcoef
 	!lb = (/ 0.00_dp, 0.010_dp,    0.001_dp,      0.001_dp, -0.51_dp,   0.01_dp       ,0.01_dp, 0.00_dp /)
 	!ub = (/ 1.00_dp, 0.999_dp,    0.750_dp,      3.000_dp,  2.01_dp,   1.00_dp       ,3.00_dp, 1.50_dp /)
-	!         nu,     xizcoef,   xiage    ,      Fd(2,2)/Fd(3,2), Fd(3,1)  , F(2,2)/F(2,1) & F(3,2)/F(3,1)
-	lb = (/ 0.00_dp, 0.010_dp,    0.000_dp,      0.001_dp,       0.01_dp,   0._dp /)
-	ub = (/ 1.00_dp, 0.999_dp,    1.50_dp ,      1.000_dp,       3.01_dp,   1.50_dp /)
+	
+	!         nud1,   nud2,     nud3 ,  xizcoef,   xiage    ,   Fd(2,2)/Fd(3,2) , Fd(3,2)   
+	lb = (/ 0.00_dp, 0.00_dp, 0.00_dp, 0.010_dp,    0.000_dp,      0.001_dp,       0.01_dp /)
+	ub = (/ 1.00_dp, 1.00_dp, 1.00_dp, 0.999_dp,    1.50_dp ,      1.000_dp,       3.01_dp /)
 
 
 	if( (run_cal .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then

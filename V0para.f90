@@ -40,7 +40,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
 		itlen = 12,&		! just an integer version of tlen so I don't have to keep casting
-		nopt_tgts = 6		! number of calibration parameters/targets in main program
+		nopt_tgts = 7		! number of calibration parameters/targets in main program
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
