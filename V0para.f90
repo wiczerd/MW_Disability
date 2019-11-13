@@ -40,7 +40,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
 		itlen = 12,&		! just an integer version of tlen so I don't have to keep casting
-		nopt_tgts = 7		! number of calibration parameters/targets in main program
+		nopt_tgts = 9		! number of calibration parameters/targets in main program
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
@@ -201,8 +201,8 @@ real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount r
 		proc_time1 = 13.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
 		proc_time2 = 13.5,&!The average time to decision	(could be 28.05 for appeal that continues)
 		xizcoef    = 0.1, &	!change in acceptance rate with z deterioration
-		xizd12coef = 0.0, &	!change in acceptance rate with z deterioration if d=1 or 2
-		xizd3coef  = 0.1, &	!change in acceptance rate with z deterioration if d= 3
+		xid2coef = 0.1, &	!change in acceptance rate with z deterioration if d=1 or 2
+		xid3coef  = 0.2, &	!change in acceptance rate with z deterioration if d= 3
 		xiagezcoef = 0.279,&!OLD/LOWEDU coefficient from Hu, Lahiri, Vaughan & Wixon
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
@@ -238,7 +238,9 @@ real(8) :: tbase_out(Tsim, Nknots-1)
 real(8) :: apprt_target = .01,&	!target for application rates (to be filled below)
 		dirt_target = 0.018,&	!target for di rates
 		diaward_target = 0.00337,& !target for new award rate (3-yr average)
-		d1_diawardfrac_target = 0.20,&
+		d1_diawardfrac_target = 0.16,&
+		d2_diawardfrac_target = 0.22,&
+		d3_diawardfrac_target = 0.62,&
 		voc_acc_target = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_acc_target = 0.75,&		!fraction taken based on health criteria, target 1985
 		old_target = 0.41,&		!fraction over 55

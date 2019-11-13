@@ -85,7 +85,8 @@ module helper_funs
 		integer :: alloced
 		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+1,nj+1)
 		real(dp) :: s2,avg_di,init_di
-		real(dp) :: init_hlth_acc,init_diprob,avg_hlth_acc,d1_diawardfrac,init_diaward,init_diaward_discr, &
+		real(dp) :: init_hlth_acc,init_diprob,avg_hlth_acc,d1_diawardfrac, d2_diawardfrac, d3_diawardfrac, &
+		&			init_diaward,init_diaward_discr, &
 		&			diaward_ageeffect,old_diawardfrac
 		real(dp) :: hlth_acc_rt(TT-1)
 
@@ -256,17 +257,24 @@ module helper_funs
 		! hlthfrac = xifunH/xifun
 		! xifun = max(min(xifun,1._dp),0._dp)
 
-		!as a nested logit:
+		!as a multinomial non-nested logit:
 		if(itin >= (TT-2)) then
 			advage = 1._dp
 		else 
 			advage = 0._dp
 		endif
 		xifunV = -xizcoef * trin - xiagezcoef*advage*trin
+		if(  idin==2) then 
+			xifunH = xid2coef
+		elseif(idin==3) then 
+			xifunH = xid3coef
+		else 
+			xifunH =-10 !just a really small--- basically machine error number
+		endif
 		
-		diprob = dexp(xifunV/.1_dp)/(1._dp + dexp(xifunV/.1_dp))*(1._dp - hlth_acc_target) + hlth_acc_target*xi_d(idin)
+		diprob = dexp(xifunV/.1_dp)/(1._dp + dexp(xifunV/.1_dp) + dexp(xifunH)) + dexp(xifunH)/(1._dp + dexp(xifunV/.1_dp) + dexp(xifunH))
 		
-		hlthfrac = hlth_acc_target*xi_d(idin)/diprob
+		hlthfrac = dexp(xifunH)/(1._dp + dexp(xifunV/.1_dp) + dexp(xifunH))/diprob
 		diprob = max(min(diprob,1._dp),0._dp)
 
 		diprob = 1._dp - max(0.,1.-diprob)**(1._dp / proc_time1)
@@ -955,7 +963,8 @@ module model_data
 				& status_Nt(5,Tsim),DIatriskpop,napp_t,ninsur_app, dicont_hr=0., &
 				& init_diaward_discr,tot_apppr, vocprob_age(TT),diprob_age(TT),initdiage(TT)
 		real(dp) :: di_rateD_denom(nd) ,work_rateD_denom(nd),work_rateDage_denom(nd,2),accept_rateD_denom(nd)
-		real(dp) :: d1_diawardfrac_disc,diawrd_denom,old_diawardfrac_disc, avgdiprob, initdenialprob, initdenialprob_denom
+		real(dp) :: d1_diawardfrac_disc,d2_diawardfrac_disc,d3_diawardfrac_disc,diawrd_denom, &
+		&		old_diawardfrac_disc, avgdiprob, initdenialprob, initdenialprob_denom
 		integer  :: apl_i, allow_i, apl_periods
 
 		if(hst%alloced /= 0) then
@@ -990,11 +999,15 @@ module model_data
 		alappdif	= 0._dp
 		status_Nt 	= 0._dp
 		d1_diawardfrac_disc = 0._dp
+		d2_diawardfrac_disc = 0._dp
+		d3_diawardfrac_disc = 0._dp
 		old_diawardfrac_disc = 0._dp
 		diawrd_denom = 0._dp
 		moments_sim%hlth_acc_rt = 0._dp
 		moments_sim%avg_hlth_acc = 0._dp
 		moments_sim%d1_diawardfrac = 0._dp
+		moments_sim%d2_diawardfrac = 0._dp
+		moments_sim%d3_diawardfrac = 0._dp
 		moments_sim%old_diawardfrac = 0._dp
 		moments_sim%di_rateD = 0._dp
 		moments_sim%work_rateD = 0._dp
@@ -1100,6 +1113,11 @@ module model_data
 							diawrd_denom = diawrd_denom + 1._dp
 							if( shk%d_hist(si,st)==1 ) &
 							& 	d1_diawardfrac_disc = d1_diawardfrac_disc+1._dp
+							if( shk%d_hist(si,st)==2 ) &
+							& 	d2_diawardfrac_disc = d2_diawardfrac_disc+1._dp
+							if( shk%d_hist(si,st)==3 ) &
+							& 	d3_diawardfrac_disc = d3_diawardfrac_disc+1._dp
+							
 							if( shk%age_hist(si,st)>=TT-2 .and. shk%age_hist(si,st)<=TT-1 ) &
 							& 	old_diawardfrac_disc = old_diawardfrac_disc + 1._dp
 						endif
@@ -1109,6 +1127,10 @@ module model_data
 						tot_apppr = tot_apppr+hst%di_prob_hist(si,st)
 						if( shk%d_hist(si,st)==1) then
 							moments_sim%d1_diawardfrac = hst%di_prob_hist(si,st) +moments_sim%d1_diawardfrac
+						elseif(shk%d_hist(si,st)==2) then
+							moments_sim%d2_diawardfrac = hst%di_prob_hist(si,st) +moments_sim%d2_diawardfrac
+						elseif(shk%d_hist(si,st)==3) then 
+							moments_sim%d3_diawardfrac = hst%di_prob_hist(si,st) +moments_sim%d3_diawardfrac
 						endif
 						if( shk%age_hist(si,st)>=TT-2 .and. shk%age_hist(si,st)<=TT-1 ) then
 							moments_sim%old_diawardfrac  = dexp(hst%di_prob_hist(si,st)-avgdiprob)/(1._dp + dexp(hst%di_prob_hist(si,st)-avgdiprob)) &
@@ -1169,16 +1191,25 @@ module model_data
 		else
 			moments_sim%avg_hlth_acc = 0._dp
 		endif
-		if( diawrd_denom >0 ) &
-		&	d1_diawardfrac_disc = d1_diawardfrac_disc/diawrd_denom
+		if( diawrd_denom >0 ) then 
+			d1_diawardfrac_disc = d1_diawardfrac_disc/diawrd_denom
+			d2_diawardfrac_disc = d2_diawardfrac_disc/diawrd_denom
+			d3_diawardfrac_disc = d3_diawardfrac_disc/diawrd_denom
+		endif
 		if(tot_apppr>0) then
 			moments_sim%d1_diawardfrac = smth_diaward*moments_sim%d1_diawardfrac/tot_apppr &
 			&	+ (1._dp - smth_diaward) * d1_diawardfrac_disc
+			moments_sim%d2_diawardfrac = smth_diaward*moments_sim%d2_diawardfrac/tot_apppr &
+			&	+ (1._dp - smth_diaward) * d2_diawardfrac_disc
+			moments_sim%d3_diawardfrac = smth_diaward*moments_sim%d3_diawardfrac/tot_apppr &
+			&	+ (1._dp - smth_diaward) * d3_diawardfrac_disc
 			moments_sim%old_diawardfrac = old_diawardfrac_disc/diawrd_denom !smth_diaward*moments_sim%old_diawardfrac /tot_apppr &
 			!& 	+ (1._dp - smth_diaward)*old_diawardfrac_disc/diawrd_denom
 
 		else
 			moments_sim%d1_diawardfrac = 0._dp
+			moments_sim%d2_diawardfrac = 0._dp
+			moments_sim%d3_diawardfrac = 0._dp
 			moments_sim%old_diawardfrac = 0._dp
 		endif
 		
@@ -5266,11 +5297,15 @@ module find_params
 			nud(3)      = paramvec(3)
 			xizcoef 	= paramvec(4)
 			xiagezcoef  = paramvec(5)
-			Fd(2,1) 	= paramvec(6)*paramvec(7)
-			Fd(3,1) 	= paramvec(7)
+			xid2coef    = paramvec(6)
+			xid3coef    = paramvec(7)
+			
+			Fd(2,1) 	= paramvec(8)*paramvec(9)
+			Fd(3,1) 	= paramvec(9)
+			
 
-			Fd(2,2) = paramvec(6)*paramvec(7)
-			Fd(3,2) = paramvec(7)
+			Fd(2,2) = paramvec(8)*paramvec(9)
+			Fd(3,2) = paramvec(8)
 		endif
 
 		if(verbose >2) &
@@ -5405,6 +5440,8 @@ module find_params
 		errvec(6)  = (moments_sim%work_rateD(1)/moments_sim%work_rateD(3) - 1._dp/p1d3_target  )*2/ ( moments_sim%work_rateD(1)/moments_sim%work_rateD(3) + 1._dp/p1d3_target )
 		
 		errvec(7)  = (moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
+		errvec(8)  = (moments_sim%d2_diawardfrac - d2_diawardfrac_target)/d2_diawardfrac_target
+		errvec(9)  = (moments_sim%d3_diawardfrac - d3_diawardfrac_target)/d3_diawardfrac_target
 		!errvec(5) = (moments_sim%diaward_ageeffect - award_age_target)/award_age_target
 
 
@@ -5623,19 +5660,8 @@ module find_params
 
 				xopt = xopt*(xu-xl)+xl !convert to input space
 				call set_glbparams(xopt)  
-			!	if( nopt ==2) then
-			!		call vec2csv( (/ nu, xizcoef,wmean /)  , "nuxiw_opt"// rank_str //".csv")
-			!	elseif(nopt==3) then
-			!		call vec2csv( (/ nu, xizcoef,wmean /)  , "nuxiw_opt"// rank_str //".csv")
-			!	elseif(nopt==4) then
-			!		call vec2csv( (/ nu, xizcoef,Fd(2,1),Fd(3,1),wmean /)  , "nuxiw_opt" // rank_str //".csv")
-			!	elseif(nopt==5) then
-			!		call vec2csv( (/ nu, xizcoef,Fd(2,1),Fd(3,1),xiagezcoef,wmean /)  , "nuxiw_opt" // rank_str //".csv")
-			!	elseif(nopt==7) then 
-			!		call vec2csv( (/ nu, xizcoef,Fd(2,1),Fd(3,1),xiagezcoef,fndrt_mul,seprt_mul,wmean /)  , "nuxiw_opt" // rank_str //".csv")
-			!	elseif(nopt==8) then 
-			!		call vec2csv( (/ nu, xizcoef,Fd(2,1),Fd(3,1),Fd(1,2),Fd(2,2),Fd(3,2),xiagezcoef,wmean /)  , "nuxiw_opt" // rank_str //".csv")
-			!	endif
+
+				
 				xoptw(1:nopt) = xopt 
 				xoptw(nopt+1) = wmean
 				call  readwrite_glbparams(xoptw ,"nuxiw_opt" // rank_str //".csv", .true.) 
@@ -6271,6 +6297,8 @@ program V0main
 		print *, "error 5: ",	(moments_sim%work_rateD(1)/moments_sim%work_rateD(2) - 1._dp/p1d2_target  )*2/ ( moments_sim%work_rateD(1)/moments_sim%work_rateD(2) + 1._dp/p1d2_target )
 		print *, "error 6: ",	(moments_sim%work_rateD(1)/moments_sim%work_rateD(3) - 1._dp/p1d3_target  )*2/ ( moments_sim%work_rateD(1)/moments_sim%work_rateD(3) + 1._dp/p1d3_target )
 		print *, "error 7: ",   (moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
+		print *, "error 8: ",   (moments_sim%d2_diawardfrac - d2_diawardfrac_target)/d2_diawardfrac_target
+		print *, "error 9: ",   (moments_sim%d3_diawardfrac - d3_diawardfrac_target)/d3_diawardfrac_target
 
 		call dealloc_econ(vfs,pfs,hst)
 
@@ -6290,9 +6318,9 @@ program V0main
 	!lb = (/ 0.00_dp, 0.010_dp,    0.001_dp,      0.001_dp, -0.51_dp,   0.01_dp       ,0.01_dp, 0.00_dp /)
 	!ub = (/ 1.00_dp, 0.999_dp,    0.750_dp,      3.000_dp,  2.01_dp,   1.00_dp       ,3.00_dp, 1.50_dp /)
 	
-	!         nud1,   nud2,     nud3 ,  xizcoef,   xiage    ,   Fd(2,2)/Fd(3,2) , Fd(3,2)   
-	lb = (/ 0.00_dp, 0.00_dp, 0.00_dp, 0.010_dp,    0.000_dp,      0.001_dp,       0.01_dp /)
-	ub = (/ 1.00_dp, 1.00_dp, 1.00_dp, 0.999_dp,    1.50_dp ,      1.000_dp,       3.01_dp /)
+	!         nud1,   nud2,     nud3 ,  xizcoef,   xiage    ,  xid2coef ,  xid3coef , Fd(2,2)/Fd(3,2) , Fd(3,2)   
+	lb = (/ 0.00_dp, 0.00_dp, 0.00_dp, 0.010_dp,    0.000_dp, -1.00_dp  , -1.00_dp  ,    0.001_dp,       0.01_dp /)
+	ub = (/ 1.00_dp, 1.00_dp, 1.00_dp, 2.000_dp,    1.50_dp ,  1.00_dp  ,  1.00_dp  ,    1.000_dp,       3.01_dp /)
 
 
 	if( (run_cal .eqv. .true.) .and. (dbg_skip .eqv. .false.) ) then
