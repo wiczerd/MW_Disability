@@ -40,7 +40,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
 		itlen = 12,&		! just an integer version of tlen so I don't have to keep casting
-		nopt_tgts = 8		! number of calibration parameters/targets in main program
+		nopt_tgts = 6		! number of calibration parameters/targets in main program
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
@@ -80,6 +80,7 @@ logical            :: tr_spline  = .true.,& 	! use spline or global polynomials 
 					  w_strchng	 = .true.,&     ! w gets fed a structural change sequence
 					  wglev_0	 = .false. ,&  	!should the initial wage level be 0 for all occupations
 					  noDI       = .false. ,&   !cannot get DI, even if they want it
+					  nu_byD     = .true.  ,&   ! use different xiz for different health levels??
 					  readshocks = .false.		!readshocks from disk?
 
 
@@ -89,7 +90,7 @@ logical           ::  del_by_occ = .true.,& !delta is fully determined by occupa
 					  j_rand     = .true.,&! randomly assign j, or let choose.
 					  demog_dat	 = .true.,& !do the demographics follow
 					  wtr_by_occ = .true.,& ! do we feed in occupation-specific trends for wages
-					  occ_dat    = .true.,& ! do we
+					  occ_dat    = .true.,& ! do we use the occupational sizes?
 					  NBER_tseq  = .true.,&	!just feed in NBER recessions?
 					  RAS_pid    = .true.,& !balance the health transition matrix
 					  buscyc	 = .true.,& !turn on/off business cycles?
@@ -173,14 +174,15 @@ real(8)	::	agegrid(TT)		! the mid points of the ages
 !***preferences and technologies that may change
 real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount rate to start)
 		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential wage
+		nud(nd) = 0. ,&		!psychic cost of applying for DI, if it depends on nu
 		util_const = 0.,&	!Give life some value
-		Fd(nd,TT-1) = 0.,&			! Fixed cost of participating in labor
-
+		Fd(nd,2) = 0.,&			! Fixed cost of participating in labor
+!
 !	Idiosyncratic income process
 		alfrho(nd) = 0.988, &	!Peristence of Alpha_i type
 		alfmu(nd) = 0.0,&		!Mean of Alpha_i type
 		alfcondsig(nd) = 0.015**0.5,&	!Conditional StdDev of Alpha_i type (Normal)
-
+!
 		LTUrr = 0.4,&			!Home production income
 		lrho = 0.5,&		!Discount in the probability of finding a job when long-term unemployed (David)
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
@@ -196,15 +198,16 @@ real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount r
 		dRiskH	= 1.05,&		!Upper bound on occupation-related extra disability risk
 		wmean	= 1.,&		! to set the average wage on which disability stuff is set
 !
-		proc_time1 = 8.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
-		proc_time2 = 8.5,&!The average time to decision	(could be 28.05 for appeal that continues)
+		proc_time1 = 13.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
+		proc_time2 = 13.5,&!The average time to decision	(could be 28.05 for appeal that continues)
 		xizcoef    = 0.1, &	!change in acceptance rate with z deterioration
-		xizd1coef  = 0.0, &	!change in acceptance rate with z deterioration if d=1
-		xizd23coef = 0.1, &	!change in acceptance rate with z deterioration if d=2 or 3
+		xizd12coef = 0.0, &	!change in acceptance rate with z deterioration if d=1 or 2
+		xizd3coef  = 0.1, &	!change in acceptance rate with z deterioration if d= 3
 		xiagezcoef = 0.279,&!OLD/LOWEDU coefficient from Hu, Lahiri, Vaughan & Wixon
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
-
+		xidscale   = 1.,& 	!scaling term for allowance probability
+!
 		DItest1 = 0.3076, &	!Earnings Index threshold 1 (These change based on the average wage)
 		DItest2 = 1.8570, &	!Earnings Index threshold 2
 		DItest3 = 3.4093,&  !Earnings Index threshold 3
@@ -248,9 +251,10 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		p1d3_2545target = 0.1737,&	! how much less d=3 participate: (.927-.766)/.927
 		p1d1_4665target = 0.9364,&	! how much less d=2 participate: (.927-.059)/.927
 		p1d2_4665target = 0.5383,&	! how much less d=2 participate: (.927-.428)/.927	
-		p1d3_4665target = 0.0831	! how much less d=3 participate: (.927-.850)/.927
-		
+		p1d3_4665target = 0.0831,&	! how much less d=3 participate: (.927-.850)/.927
+		allowrt_target  = 0.4		! average allowance rate
 
+real(8) :: p1d2_target, p1d3_target 
 
 !Preferences----------------------------------------------------------------!
 ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
@@ -1032,11 +1036,11 @@ subroutine setparams()
 	wd(2) = -0.075746904	!Partially Disabled, small penalty
 	wd(3) = -0.182154425	!Full Disabled, large penalty
 	!Fixed cost of particpation
-	Fd(1,:) = 0.
-	Fd(2,1) = 0.276*5
-	Fd(3,1) = 0.524*5
-	Fd(2,2) = 0.276*5
-	Fd(3,2) = 0.524*5
+	Fd = 0.
+	!Fd(2,1) = 0.276*5
+	!Fd(3,1) = 0.524*5
+	!Fd(2,2) = 0.276*5
+	!Fd(3,2) = 0.524*5
 
 
 	!DI Acceptance probability for each d,t status
