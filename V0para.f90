@@ -30,7 +30,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		tlen =12., &		!Number of periods per year (monthly)
 		Longev = 82.- 30.,&	!Median longevity
 		UIrr = 0.8, &		!Replacement Rate in UI
-		eligY  = 0.834,&	!Fraction young who are eligable
+		eligY  = 1.,&	!0.834 : Fraction young who are eligable
 		R = dexp(.016/tlen),&	!People can save in the backyard
 		upd_zscl = 0.1,&		! rate at which to update zshift
 		upd_wgtrnd = 0.01,&		! rate at which update wage_trend
@@ -38,9 +38,10 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 
 
 integer, parameter :: oldN = 4,&	!4!Number of old periods
-		TT = oldN+2, &		!Total number of periods, oldN periods plus young and retired
+		TT = oldN+2,&		!Total number of periods, oldN periods plus young and retired
 		itlen = 12,&		! just an integer version of tlen so I don't have to keep casting
-		nopt_tgts = 9		! number of calibration parameters/targets in main program
+		nopt_tgts = 10,&		! number of calibration targets in main program
+		nopt_pars = 10
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
@@ -59,7 +60,7 @@ integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
 			Nknots   = 4,& 			! Number of knots
 			max_DFBOLS = 150, &		!Iterations on DFBOLS
 			maxiter = 2000, &		!Tolerance parameter
-			Nsim = 40000,&!5000*nj	!how many agents to draw
+			Nsim = 20000,&   !5000*nj	!how many agents to draw
 			year0 = 1984, &			!when simulation starts and stops
 			yearT = 2013, &
 			TossYears = 5, & 		!number of years to run and throwaway
@@ -201,6 +202,7 @@ real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount r
 		proc_time1 = 13.5,&!The average time to decision	(could be 2.5 for 'meets criteria' or 3.64 for initial decision)
 		proc_time2 = 13.5,&!The average time to decision	(could be 28.05 for appeal that continues)
 		xizcoef    = 0.1, &	!change in acceptance rate with z deterioration
+		xid1coef = -0.1, &	!change in acceptance rate with z deterioration if d=1 or 2
 		xid2coef = 0.1, &	!change in acceptance rate with z deterioration if d=1 or 2
 		xid3coef  = 0.2, &	!change in acceptance rate with z deterioration if d= 3
 		xiagezcoef = 0.279,&!OLD/LOWEDU coefficient from Hu, Lahiri, Vaughan & Wixon
@@ -243,12 +245,12 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		d3_diawardfrac_target = 0.62,&
 		voc_acc_target = 0.25,&		!fraction of admissions from vocational criteria, target 1985
 		hlth_acc_target = 0.75,&		!fraction taken based on health criteria, target 1985
-		old_target = 0.41,&		!fraction over 55
+		old_target = 0.46,&		!fraction over 55
 		avg_unrt = 0.056,&	!average rate of unemployment over the period.
 		avg_undur = 3.,&	! average months of unemployment
 		avg_frt   = .3242085 ,&	! average rate of long-term unemployment
 		award_age_target  = 0.8/0.3,&	!target for increase in vocation due to age (from Chen & van der Klaauw page 771 ) In levels it's (0.093+0.287)
-		p1d1_2545target =   0.,&	! normalize how much young healthy participate
+		p1d1_2545target = 1. ,&	! normalize how much young healthy participate
 		p1d2_2545target = 0.7562,&	! how much less d=2 participate: (.927-.226)/.927 
 		p1d3_2545target = 0.1737,&	! how much less d=3 participate: (.927-.766)/.927
 		p1d1_4665target = 0.9364,&	! how much less d=2 participate: (.927-.059)/.927
@@ -256,7 +258,7 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		p1d3_4665target = 0.0831,&	! how much less d=3 participate: (.927-.850)/.927
 		allowrt_target  = 0.4		! average allowance rate
 
-real(8) :: p1d2_target, p1d3_target 
+real(8) :: p1d1_target, p1d2_target, p1d3_target 
 
 !Preferences----------------------------------------------------------------!
 ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
