@@ -256,7 +256,7 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		p1d1_4665target = 0.9364,&	! how much less d=2 participate: (.927-.059)/.927
 		p1d2_4665target = 0.5383,&	! how much less d=2 participate: (.927-.428)/.927	
 		p1d3_4665target = 0.0831,&	! how much less d=3 participate: (.927-.850)/.927
-		allowrt_target  = 0.4		! average allowance rate
+		allowrt_target  = 0.677		! average allowance rate (finally allowed from Autor et al Delay Decay)
 
 real(8) :: p1d1_target, p1d2_target, p1d3_target 
 

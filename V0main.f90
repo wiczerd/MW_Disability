@@ -85,7 +85,7 @@ module helper_funs
 		integer :: alloced
 		real(dp) :: work_cov_coefs(Nk,Nk),di_cov_coefs(Nk,Nk),ts_emp_cov_coefs(nj+1,nj+1)
 		real(dp) :: s2,avg_di,init_di
-		real(dp) :: init_hlth_acc,init_diprob,avg_hlth_acc,d1_diawardfrac, d2_diawardfrac, d3_diawardfrac, &
+		real(dp) :: init_hlth_acc,init_diprob,avg_diprob,avg_hlth_acc,d1_diawardfrac, d2_diawardfrac, d3_diawardfrac, &
 		&			init_diaward,init_diaward_discr, old_initdiawdfrac, &
 		&			diaward_ageeffect,old_diawardfrac
 		real(dp) :: hlth_acc_rt(TT-1)
@@ -1016,15 +1016,17 @@ module model_data
 		moments_sim%work_rateD = 0._dp
 		moments_sim%work_rateDage = 0._dp
 		moments_sim%accept_rateD = 0._dp
+		moments_sim%avg_diprob = 0._dp
 		di_rateD_denom = 0._dp
 		work_rateD_denom = 0._dp
+		work_rateDage_denom =0._dp
 		accept_rateD_denom = 0._dp
 		avgdiprob = 0._dp
 
 		id = 0
 		do si=1,Nsim
 			do st = (TossYears*itlen),Tsim
-				if((hst%status_hist(si,st)>0) .and. (shk%age_hist(si,st) >0) .and. &
+				if( (shk%age_hist(si,st) >0) .and. &
 				&	 hst%status_hist(si,st) == 3 .and. hst%app_dif_hist(si,st) >0  ) then
 					avgdiprob = avgdiprob + hst%di_prob_hist(si,st)
 					id = id + 1
@@ -1032,6 +1034,8 @@ module model_data
 			enddo
 		enddo
 		avgdiprob = avgdiprob/dble(id)
+
+		moments_sim%avg_diprob = 1._dp - (1._dp - avgdiprob)**tlen
 		initdenialprob_denom = 0._dp 
 		initdenialprob = 0._dp
 
@@ -1175,6 +1179,7 @@ module model_data
 				initdenialprob = initdenialprob + dble(apl_periods)/proc_time1
 			endif
 		enddo ! si=1,Nsim
+		initdenialprob = initdenialprob/initdenialprob_denom
 
 		moments_sim%di_rateD   = moments_sim%di_rateD/di_rateD_denom
 		moments_sim%work_rateD   = moments_sim%work_rateD/work_rateD_denom
@@ -1373,7 +1378,7 @@ module model_data
 		
 		moments_sim%old_initdiawdfrac = smth_diaward*moments_sim%old_initdiawdfrac &
 		&	 + (1._dp - smth_diaward)*old_initdiawdfrac_disc
-		
+		print *, "Initial denial prob:  ", initdenialprob, " allowance rate: ", moments_sim%init_diprob
 		if(print_lev >= 2) then
 			call veci2csv(totst,"pop_st.csv")
 			call vec2csv(a_age,"a_age"//trim(caselabel)//".csv")
@@ -5463,7 +5468,7 @@ module find_params
 		errvec(1) = (moments_sim%init_diaward - diaward_target)/diaward_target
 		errvec(2) = (moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
 		errvec(3) = (moments_sim%old_initdiawdfrac - old_target)/old_target
-		errvec(4) = (moments_sim%init_diprob - allowrt_target)/allowrt_target
+		errvec(4) = (moments_sim%avg_diprob - allowrt_target)/allowrt_target
 
 		!errvec(4) = (moments_sim%work_rateDage(1,1)/moments_sim%work_rateDage(2,1) - 1._dp/p1d2_2545target)*2/(moments_sim%work_rateDage(1,1)/moments_sim%work_rateDage(2,1) + 1._dp/p1d2_2545target)
 		!errvec(5) = (moments_sim%work_rateDage(1,1)/moments_sim%work_rateDage(3,1) - 1._dp/p1d3_2545target)*2/(moments_sim%work_rateDage(1,1)/moments_sim%work_rateDage(3,1) + 1._dp/p1d3_2545target)
@@ -5489,19 +5494,25 @@ module find_params
 		fcal_eval = rank_hr+100
 		open(unit=fcal_eval, file = "cal_dist_"//trim(rank_str)//".csv" ,ACCESS='APPEND', POSITION='APPEND')
 		write(fcal_eval,  "(G20.12)", advance='no') objval
+		write(fcal_eval, "(A)", advance='no')  " , "
 		do i=1,size(paramvec)
 			write(fcal_eval, "(G20.12)", advance='no')  paramvec(i)
+			write(fcal_eval, "(A)", advance='no')   " , "
 		enddo
 		do i=1,size(errvec)
 			write(fcal_eval, "(G20.12)", advance='no') errvec(i)
+			write(fcal_eval, "(A)", advance='no') " , "
 		enddo
 		!some diagnostics to print
 		if( moments_sim%init_diaward_discr >0._dp ) then
 			write(fcal_eval, "(G20.12)", advance='no')  moments_sim%init_diaward/moments_sim%init_diaward_discr
+			write(fcal_eval, "(A)", advance='no') " , "
 		else
 			write(fcal_eval, "(G20.12)", advance='no')  0._dp
+			write(fcal_eval, "(A)", advance='no') " , "
+
 		endif
-		write(fcal_eval, "(G20.12)", advance='yes')  moments_sim%avg_di
+		write(fcal_eval, "(G20.12)", advance='yes')  moments_sim%avg_di 
 
 		close(unit=fcal_eval)
 		cal_obj = sum( errvec**2 )
@@ -5611,26 +5622,28 @@ module find_params
 		write( rank_str,"(I2.2)" ) rank
 		fcal_eval = 100+rank
 		open(unit=fcal_eval, file = "cal_dist_"//trim(rank_str)//".csv" )
-		write(fcal_eval, "(G20.12)", advance='no') "obj"
-		write(fcal_eval, "(G20.12)", advance='no') "nu1"
-		write(fcal_eval, "(G20.12)", advance='no') "nu2"
-		write(fcal_eval, "(G20.12)", advance='no') "nu3"
-		write(fcal_eval, "(G20.12)", advance='no') "xiz"
-		write(fcal_eval, "(G20.12)", advance='no') "xiage"
-		write(fcal_eval, "(G20.12)", advance='no') "xid2"
-		write(fcal_eval, "(G20.12)", advance='no') "xid3"
-		write(fcal_eval, "(G20.12)", advance='no') "Fd2"
-		write(fcal_eval, "(G20.12)", advance='no') "Fd3"
+		write(fcal_eval, "(A)", advance='no') "obj , "
+		write(fcal_eval, "(A)", advance='no') "nu1 , "
+		write(fcal_eval, "(A)", advance='no') "nu2 , "
+		write(fcal_eval, "(A)", advance='no') "nu3 , "
+		write(fcal_eval, "(A)", advance='no') "xiz , "
+		write(fcal_eval, "(A)", advance='no') "xiage , "
+		write(fcal_eval, "(A)", advance='no') "xid1 , "
+		write(fcal_eval, "(A)", advance='no') "xid2 , "
+		write(fcal_eval, "(A)", advance='no') "xid3 , "
+		write(fcal_eval, "(A)", advance='no') "Fd2 , "
+		write(fcal_eval, "(A)", advance='no') "Fd3 , "
 		
-		write(fcal_eval, "(G20.12)", advance='no') "awd"
-		write(fcal_eval, "(G20.12)", advance='no') "hlth"
-		write(fcal_eval, "(G20.12)", advance='no') "old"
-		write(fcal_eval, "(G20.12)", advance='no') "allowrt"
-		write(fcal_eval, "(G20.12)", advance='no') "workrt2"
-		write(fcal_eval, "(G20.12)", advance='no') "workrt3"
-		write(fcal_eval, "(G20.12)", advance='no') "d1awdfrac"
-		write(fcal_eval, "(G20.12)", advance='no') "d2awdfrac"
-		write(fcal_eval, "(G20.12)", advance='no') "d3awdfrac"
+		write(fcal_eval, "(A)", advance='no') "awd , "
+		write(fcal_eval, "(A)", advance='no') "hlth , "
+		write(fcal_eval, "(A)", advance='no') "old , "
+		write(fcal_eval, "(A)", advance='no') "allowrt , "
+		write(fcal_eval, "(A)", advance='no') "workrt1 , "
+		write(fcal_eval, "(A)", advance='no') "workrt2 , "
+		write(fcal_eval, "(A)", advance='no') "workrt3 , "
+		write(fcal_eval, "(A)", advance='no') "d1awdfrac , "
+		write(fcal_eval, "(A)", advance='no') "d2awdfrac , "
+		write(fcal_eval, "(A)", advance='no') "d3awdfrac , "
 		
 		close( fcal_eval )
 		fndgrid0 = fndgrid
@@ -6339,7 +6352,7 @@ program V0main
 		print *, "error 1:  ",	(moments_sim%init_diaward - diaward_target)/diaward_target
 		print *, "error 2:  ",	(moments_sim%init_hlth_acc - hlth_acc_target)/hlth_acc_target
 		print *, "error 3:  ",	(moments_sim%old_initdiawdfrac - old_target)/old_target
-		print *, "error 4:  ", 	(moments_sim%init_diprob - allowrt_target)/allowrt_target
+		print *, "error 4:  ", 	(moments_sim%avg_diprob - allowrt_target)/allowrt_target
 
 		!print *, "error 3: ",	(moments_sim%d1_diawardfrac - d1_diawardfrac_target)/d1_diawardfrac_target
 		!print *, "error 3: ",	(moments_sim%work_rateDage(1,1)/moments_sim%work_rateDage(2,1) - 1./p1d2_2545target)*2/(moments_sim%work_rateDage(1,1)/moments_sim%work_rateDage(2,1) + 1./p1d2_2545target)
@@ -6375,7 +6388,7 @@ program V0main
 	
 	!         nud1,   nud2,     nud3 ,   xizcoef,   xiage    ,xid1coef   ,  xid2coef ,  xid3coef ,    Fd(2,2) ,       Fd(3,2)   
 	lb = (/ 0.00_dp, 0.00_dp,-1.00_dp,  0.001_dp,    0.000_dp, -2.50_dp  , -2.50_dp  , -2.50_dp  ,    0.001_dp,       0.01_dp /)
-	ub = (/ 4.00_dp, 1.00_dp, 1.00_dp, 10.000_dp,    3.00_dp , -2.50_dp  ,  2.50_dp  ,  2.50_dp  ,    3.000_dp,       5.01_dp /)
+	ub = (/ 4.00_dp, 1.00_dp, 1.00_dp, 10.000_dp,    3.00_dp ,  2.50_dp  ,  2.50_dp  ,  2.50_dp  ,    3.000_dp,       5.01_dp /)
 
 	x0w(1:nopt_pars) = (lb+ub)/2._dp*(ub-lb) + lb  
 	x0w(1+nopt_pars) = wmean 
