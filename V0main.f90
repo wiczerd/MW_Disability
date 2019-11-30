@@ -263,15 +263,18 @@ module helper_funs
 		else 
 			advage = 0._dp
 		endif
-
-		xifunV = -xizcoef * trin - xiagezcoef* trin *(agegrid(itin)-agegrid(TT-3))/(agegrid(TT-1)-agegrid(1))
-		
+		!         weakly rising in age (xiagezcoef) and has an intercept (xizcoef)
+		if(trin .le. 0._dp) then 
+			xifunV =  xiagezcoef*(agegrid(itin)-agegrid(TT-3))/(agegrid(TT-1)-agegrid(1)) + xizcoef
+		else 
+			xifunV = -10.
+		endif
 		if(  idin==2) then 
 			xifunH = xid2coef
 		elseif(idin==3) then 
 			xifunH = xid3coef
 		else 
-			xifunH =xid1coef !just a really small--- basically machine error number
+			xifunH =xid1coef 
 		endif
 		
 		diprob = dexp(xifunV)/(1._dp + dexp(xifunV) + dexp(xifunH)) + dexp(xifunH)/(1._dp + dexp(xifunV) + dexp(xifunH))
@@ -6183,20 +6186,20 @@ program V0main
 		do it=1,TT-1
 			do id=1,(nd-1)
 				write(1, "(G20.12)", advance='no') xifun(id,minval(trgrid),it,junk)
-				write(2, "(G20.12)", advance='no') junk
+				write(2, "(G20.12)", advance='no') junk/xifun(id,minval(trgrid),it,junk)
 			enddo
 			id = nd
 			write(1,*) xifun(id,minval(trgrid),it,junk)
-			write(2,*) junk
+			write(2,*) junk/xifun(id,minval(trgrid),it,junk)
 		enddo
 		do it=1,TT-1
 			do id=1,(nd-1)
 				write(1, "(G20.12)", advance='no') xifun(id,maxval(trgrid),it,junk)
-				write(2, "(G20.12)", advance='no') junk
+				write(2, "(G20.12)", advance='no') junk/ xifun(id,maxval(trgrid),it,junk)
 			enddo
 			id = nd
 			write(1,*) xifun(id,maxval(trgrid),it,junk)
-			write(2,*) junk
+			write(2,*) junk/xifun(id,maxval(trgrid),it,junk)
 		enddo
 		close(1)
 		close(2)
@@ -6386,9 +6389,9 @@ program V0main
 	!lb = (/ 0.00_dp, 0.010_dp,    0.001_dp,      0.001_dp, -0.51_dp,   0.01_dp       ,0.01_dp, 0.00_dp /)
 	!ub = (/ 1.00_dp, 0.999_dp,    0.750_dp,      3.000_dp,  2.01_dp,   1.00_dp       ,3.00_dp, 1.50_dp /)
 	
-	!         nud1,   nud2,     nud3 ,   xizcoef,   xiage    ,xid1coef   ,  xid2coef ,  xid3coef ,    Fd(2,2) ,       Fd(3,2)   
-	lb = (/ 0.00_dp, 0.00_dp,-1.00_dp,  0.001_dp,    0.000_dp, -2.50_dp  , -2.50_dp  , -2.50_dp  ,    0.001_dp,       0.01_dp /)
-	ub = (/ 4.00_dp, 1.00_dp, 1.00_dp, 10.000_dp,    3.00_dp ,  2.50_dp  ,  2.50_dp  ,  2.50_dp  ,    3.000_dp,       5.01_dp /)
+	!         nud1,   nud2,     nud3 ,  xizcoef,   xiage    , xid1coef  ,  xid2coef ,  xid3coef ,    Fd(2,2) ,       Fd(3,2)   
+	lb = (/ 0.00_dp, 0.00_dp,-1.00_dp, -2.50_dp,    0.000_dp, -2.50_dp  , -2.50_dp  , -2.50_dp  ,    0.001_dp,       0.01_dp /)
+	ub = (/ 4.00_dp, 1.00_dp, 1.00_dp,  2.50_dp,    3.00_dp ,  2.50_dp  ,  2.50_dp  ,  2.50_dp  ,    3.000_dp,       5.01_dp /)
 
 	x0w(1:nopt_pars) = (lb+ub)/2._dp*(ub-lb) + lb  
 	x0w(1+nopt_pars) = wmean 
