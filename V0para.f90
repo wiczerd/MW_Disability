@@ -40,8 +40,8 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 integer, parameter :: oldN = 4,&	!4!Number of old periods
 		TT = oldN+2,&		!Total number of periods, oldN periods plus young and retired
 		itlen = 12,&		! just an integer version of tlen so I don't have to keep casting
-		nopt_tgts = 10,&		! number of calibration targets in main program
-		nopt_pars = 10
+		nopt_tgts = 11,&		! number of calibration targets in main program
+		nopt_pars = 11
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
@@ -143,7 +143,8 @@ real(8) :: 	alfgrid(nal,nd), &	!Alpha_i grid- individual wage type parameter
 !
 		tr_decls(11),& !0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1
 		wg_decls(11),& !0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1
-!
+		wtr_tmean_ts(Tsim),&   !average trend among employed
+		!
 		jshift(nj,Tsim),&!Preference shift to ensure proper proportions, 2 regimes
 		wage_trend(Tsim,nj),&!trend in wages
 		wage_lev(nj),&		!occupation-specific differences in wage-level
@@ -164,7 +165,7 @@ real(8) :: 	alfgrid(nal,nd), &	!Alpha_i grid- individual wage type parameter
 		occwg_dattrend(Tsim,nj),& !trend in occupation wage
 		occwg_datlev(nj),&		!level of occupation wage
 		occsz0(nj), &		   !Fraction in each occupation
-		occpr_trend(Tsim,nj) !trend in occupation choice
+		occpr_trend(Tsim,nj)   !trend in occupation choice
 
 real(8), allocatable :: wage_coef(:), & !occupation-specific differences in wage-level
 						tr_knots(:)  !will be the knot points
@@ -176,6 +177,7 @@ real(8)	::	agegrid(TT)		! the mid points of the ages
 real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount rate to start)
 		nu = 1.e-3, &		!Psychic cost of applying for DI - proportion of potential wage
 		nud(nd) = 0. ,&		!psychic cost of applying for DI, if it depends on nu
+		nuage   = 0. ,&		!psychic cost of applying for DI, if it depends on age
 		util_const = 0.,&	!Give life some value
 		Fd(nd,2) = 0.,&			! Fixed cost of participating in labor
 !
@@ -209,6 +211,7 @@ real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount r
 		xi_d1shift = -0.,&	!worse hlth stage acceptance for d=1
 		xi_d3shift = 0.,&	!better hlth stage acceptance for d=3
 		xidscale   = 1.,& 	!scaling term for allowance probability
+		wtr_scale  = .01,&	!scaling for wtr in the xi function
 !
 		DItest1 = 0.3076, &	!Earnings Index threshold 1 (These change based on the average wage)
 		DItest2 = 1.8570, &	!Earnings Index threshold 2
@@ -309,6 +312,7 @@ subroutine setparams()
 	print_lev = 2
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+	
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	! Read things in:
 
