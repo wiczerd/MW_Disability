@@ -270,7 +270,7 @@ module helper_funs
 		endif
 		prV = max(min( (wtr_ref - trin)/wtr_scale, 1._dp), 0._dp)
 		!         weakly rising in age (xiagezcoef) and has an intercept (xizcoef)
-		if(trin .le. wtr_ref .and. itin .ge. TT-2) then
+		if(trin .le. wtr_ref .and. itin .ge. TT-3) then
 			!xifunV =  xiagezcoef*(agegrid(itin)-agegrid(TT-3))/(agegrid(TT-1)-agegrid(1)) + xizcoef
 			xifunV =  xiagezcoef + xizcoef
 		elseif(trin .le. wtr_ref ) then
@@ -1638,7 +1638,6 @@ module sol_val
 		!**********Value if apply for DI
 
 
-		xihr = xifun(id,trgrid(itr),it,0._dp) !xifun(id, wagehere,it)
 		nuhr = nud(id)
 		if(it .ge. TT-2) nuhr = nud(id) + nuage
 		!if(it== TT-1) nuhr = nu*(ptau(it)) !only pay nu for non-retired state
@@ -1656,6 +1655,9 @@ module sol_val
 				do izz = 1,nz	 !Loop over z'
 				do ialal = ialL,nal !Loop over alpha_i'
 				do idd = 1,nd
+					!xihr = xifun(id,trgrid(itr),it,0._dp) ! <- when it depended on trend
+					xihr = xifun(id, wage(trgrid(itr),alfgrid(ialal,id),idd,it), it, wmean)
+
 					if(ial == ialUn) ialalhr = ialUn
 					if(ial > ialUn)  ialalhr = ialal
 					!ialalhr = ialal
@@ -1712,8 +1714,10 @@ module sol_val
 		!******************************************************
 		!***************** Discrete choice for application
 		smthV = dexp(smthV0param*(Vnapp-Vapp))/( dexp(smthV0param*(Vnapp-Vapp)) +1._dp )
-		if( Vapp >  Vnapp  ) smthV =0.
-		if(Vnapp >=  Vapp  ) smthV =1._dp
+		if(smthV .ge. 1 .or. smthV .le. 0 .or. isnan(smthV)) then 
+			if( Vapp >  Vnapp  ) smthV =0.
+			if(Vnapp >=  Vapp  ) smthV =1._dp
+		endif
 		if (noDI .eqv. .true.) then
 			smthV = 1._dp
 		endif
@@ -1847,7 +1851,7 @@ module sol_val
 		! Value Functions- Stack z-risk j and indiv. exposure beta_i
 		!************************************************************************************************!
 		real(dp)  	  	:: Vtest1, maxer_v, smthV, wagehere, iee1wt, gadif,gwdif
-
+		real(dp), allocatable 	:: maxer_hist(:) 
 		real(dp), allocatable	:: verloc(:,:,:,:,:)
 		real(dp), allocatable :: VR0(:,:,:,:), &			!Retirement
 					VD0(:,:,:,:), &			!Disabled
@@ -1905,6 +1909,9 @@ module sol_val
 		gwork_dif => pol_funs%gwork_dif
 
 		allocate(verloc(na,nz,ne,nd,nal))
+		allocate(maxer_hist(maxiter))
+		maxer_hist = 0._dp
+		
 		emin = minval(egrid)
 		emax = maxval(egrid)
 
@@ -2528,6 +2535,7 @@ module sol_val
 				!------------------------------------------------!
 				sumer = 0._dp
 				maxer = 0._dp
+				maxer_v = 0._dp
 				wo = 0
 				npara = nal*ntr*nd*ne*nz
 			!$OMP   parallel do reduction(+:sumer) &
@@ -2699,12 +2707,21 @@ module sol_val
 					write(*,*) sumer, iter, it, il
 					write(*,*) maxer_v, maxer_i(1)
 				endif
-				if (sumer < Vtol ) then
+				maxer_hist(iter) = sumer
+				if (sumer < Vtol .or. maxer_v < Vtol) then
 					if(verbose >= 2) then
 						write(*,*) sumer, iter, it, il
 						write(*,*) maxer_v, maxer_i(1)
 					endif
 					exit !Converged
+				elseif( sumer<1e-4 .and. iter .ge. 300 ) then 
+					if (sumer + 1e-4 .ge. sum(maxer_hist(iter-10:iter-1))/10._dp) then ! pretty close, but not converging anymore
+						if(verbose >= 2) then
+							write(*,*) sumer, iter, it, il
+							write(*,*) maxer_v, maxer_i(1)
+						endif
+						exit
+					endif
 				endif
 
 				iter=iter+1
@@ -2774,8 +2791,11 @@ module sol_val
 			enddo !ie
 			enddo !ial
 			enddo !idi
+			
+			call vec2csv(maxer_hist, "maxer_hist.csv") 
 		endif
 
+		deallocate(maxer_hist)	
 		deallocate(verloc)
 		deallocate(VR0,VD0,VN0,VU0,VW0,V0)
 	!		deallocate(VR,VD,VN,VU,VW,V)
@@ -4351,9 +4371,9 @@ module sim_hists
 						endif
 					endif
 					if( (w_strchng .eqv. .true.) .and. (it > TossYears*itlen ) )then
-						shk%wtr_it(i,it) = wage_trend(it,j_hr) + wage_lev(j_hr)
+						shk%wtr_it(i,it) = wage_trend(it,j_hr) + wage_lev(j_hr) - wtr_tmean_ts(it)
 					else
-						shk%wtr_it(i,it) = wage_lev(j_hr)
+						shk%wtr_it(i,it) = wage_lev(j_hr) - wtr_tmean_ts(it)
 					endif
 					tri_hr = finder(trgrid,shk%wtr_it(i,it))
 
@@ -4497,11 +4517,8 @@ module sim_hists
 							endif
 
 							!store the disability probability for the first group
-							! if(it>itlen*4+1) then
-							! 	wtr_avg = sum(shk%wtr_it(i,(it-itlen*4):(it-1)) )/tlen*4._dp
-							! else
-								wtr_avg = shk%wtr_it(i,it)
-							! endif
+							wtr_avg = shk%wtr_it(i,it)
+							!wtr_avg = wage_hr
 							di_prob_it(i,it) = xifun(d_hr,wtr_avg,age_hr, wtr_tmean_ts(it),hlthprob)
 
 							!draws for exog find and sep
@@ -4596,13 +4613,10 @@ module sim_hists
 
 									!applying, do you get it?
 									!record probabilities
-									! if(it>itlen*4+1) then
-									! 	wtr_avg = sum(shk%wtr_it(i,(it-itlen*4):(it-1)) )/tlen*4._dp
-									! else
-										wtr_avg = shk%wtr_it(i,it)
-									! endif
+									wtr_avg = shk%wtr_it(i,it)
+									!wtr_avg = wage_hr
 									junk = xifun(d_hr,wtr_avg, age_hr, wtr_tmean_ts(it),hlthprob)
-									!junk = xifun(d_hr,0._dp,age_hr,hlthprob)!xifun(d_hr,wage_hr,age_hr,hlthprob)
+									
 									if( (age_hr .eq. 1) .and. (ineligNoNu .eqv. .true.) ) then
 										di_prob_it(i,it) = junk*eligY
 										hst%hlthprob_hist(i,it) = hlthprob*eligY
@@ -4792,20 +4806,25 @@ module sim_hists
 				wtr_tmean_ts(it) = 0._dp
 				junk = 0._dp
 				ii = 1
+				wtr_avg = 0._dp ! actually the average sum of suqares here
+				wtr_scale = 0._dp
 				do i=1,Nsim
 					if( hst%status_hist(i,it) .ge. 1 .and. hst%status_hist(i,it) .le. 3 &
 					&  .and. shk%age_hist(i,it)>0) then
 						tr_hist_vec(ii) = shk%wtr_it(i,it)
-						wtr_tmean_ts(it) = wtr_tmean_ts(it)+ shk%wtr_it(i,it)
+						wtr_tmean_ts(it) = wtr_tmean_ts(it)+  shk%wtr_it(i,it) !hst%wage_hist(i,it)
+						wtr_avg = (shk%wtr_it(i,it)-wtr_tmean_ts(it))**2 + wtr_avg
 						ii = ii+1
 					endif
 				enddo
+				wtr_avg = wtr_avg/dble(ii)
+				wtr_scale = wtr_avg + wtr_scale
 				wtr_tmean_ts(it) = wtr_tmean_ts(it)/dble(ii)
 			!	call quicksort(tr_hist_vec,1,ii-1)
 			!	i = floor(  dble(ii-1)/2._dp )
 			!	wtr_tmean_ts(it) = tr_hist_vec(i)
 			enddo
-			wtr_scale =  maxval(wtr_tmean_ts) - minval(wtr_tmean_ts )
+			wtr_scale =  wtr_avg/dble(Tsim)
 
 			if(print_lev >=3)then
 				call mat2csv (e_it,"e_it.csv")
@@ -6194,21 +6213,25 @@ program V0main
 		open(2, file="xi_hlth.csv")
 		do it=1,TT-1
 			do id=1,(nd-1)
-				write(1, "(G20.12)", advance='no') xifun(id,minval(trgrid),it,0._dp,junk)
-				write(2, "(G20.12)", advance='no') junk/xifun(id,minval(trgrid),it,0._dp,junk)
+				wagehere = wage(minval(trgrid),alfgrid(ial,id),id,it)
+				write(1, "(G20.12)", advance='no') xifun(id,minval(trgrid),it,0._dp,junk)!xifun(id,wagehere,it,1._dp,junk) !
+				write(2, "(G20.12)", advance='no') junk/xifun(id,minval(trgrid),it,0._dp,junk)!junk/xifun(id,wagehere,it,1._dp,junk) !
 			enddo
 			id = nd
-			write(1,*) xifun(id,minval(trgrid),it,junk)
-			write(2,*) junk/xifun(id,minval(trgrid),it,junk)
+			wagehere = wage(minval(trgrid),alfgrid(ial,id),id,it)
+			write(1,*) xifun(id,minval(trgrid),it,0._dp,junk) !xifun(id,wagehere,it,1._dp,junk)
+			write(2,*) junk/xifun(id,minval(trgrid),it,0._dp,junk)!junk/xifun(id,wagehere,it,1._dp,junk)
 		enddo
 		do it=1,TT-1
 			do id=1,(nd-1)
-				write(1, "(G20.12)", advance='no') xifun(id,maxval(trgrid),it,0._dp,junk)
-				write(2, "(G20.12)", advance='no') junk/ xifun(id,maxval(trgrid),it,0._dp,junk)
+				wagehere = wage(maxval(trgrid),alfgrid(ial,id),id,it)
+				write(1, "(G20.12)", advance='no') xifun(id,maxval(trgrid),it,0._dp,junk)!xifun(id,wagehere,it,1._dp,junk)
+				write(2, "(G20.12)", advance='no') junk/xifun(id,maxval(trgrid),it,0._dp,junk) !junk/ xifun(id,wagehere,it,1._dp,junk)
 			enddo
 			id = nd
-			write(1,*) xifun(id,maxval(trgrid),it,0._dp,junk)
-			write(2,*) junk/xifun(id,maxval(trgrid),it,0._dp,junk)
+			wagehere = wage(maxval(trgrid),alfgrid(ial,id),id,it)
+			write(1,*) xifun(id,maxval(trgrid),it,0._dp,junk) !xifun(id,wagehere,it,1._dp,junk)
+			write(2,*) junk/xifun(id,maxval(trgrid),it,0._dp,junk) !xifun(id,wagehere,it,1._dp,junk)
 		enddo
 		close(1)
 		close(2)
@@ -6355,6 +6378,7 @@ program V0main
 		do it=1,Tsim
 			wtr_tmean_ts(it) = 0._dp
 			junk = 0._dp
+			ii = 0
 			do i=1,Nsim
 				if( hst%status_hist(i,it)>0 .and. shk%age_hist(i,it)>0) then
 					tr_hist_vec(ii) = wage_trend(it,shk%j_i(i))
