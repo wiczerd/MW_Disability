@@ -57,7 +57,7 @@ integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
 			Nskill  = 2,&			!number of skills that define occupations. First is always physical
 			NKpolyT = 1,&			!polynomial order for time trend for occupation or number of spline segments
 			NTpolyT = 2,& 			!polynomial order for time trend overall or number of spline segments
-			Nknots   = 4,& 			! Number of knots
+			Nknots   = 5,& 			! Number of knots
 			max_DFBOLS = 150, &		!Iterations on DFBOLS
 			maxiter = 2000, &		!Tolerance parameter
 			Nsim = 20000,&   !5000*nj	!how many agents to draw
@@ -161,7 +161,7 @@ real(8) :: 	alfgrid(nal,nd), &	!Alpha_i grid- individual wage type parameter
 		occ_onet(nj,Nskill),&!physical and 3 KSA
 		occwg_datcoef_sqr(Nskill+1,NKpolyT+1),& !Only used with NKpolyT>=2. Then these are the data coefficients for wage regression. also includes 0-order and time-only
 		occwg_datcoef(Nskill*2+NTpolyT+5),& !!coefficients for wage regression. First is cubic in time, then linear in skill dimension. Then 2 for age profile, 2 for health dummies, 1 const
-		occwg_datspline(Nskill+Nknots-1+Nskill*(Nknots-1)+5),& !!coefficients for wage spline regression. First is levels for skills, then cubic spline in time. Then spline for each skill. Then 2 for age profile, 2 for health dummies, 1 const
+		occwg_datsplncoef(Nskill+Nknots-1+Nskill*(Nknots-1)+5),& !!coefficients for wage spline regression. First is levels for skills, then cubic spline in time. Then spline for each skill. Then 2 for age profile, 2 for health dummies, 1 const
 		occwg_dattrend(Tsim,nj),& !trend in occupation wage
 		occwg_datlev(nj),&		!level of occupation wage
 		occsz0(nj), &		   !Fraction in each occupation
@@ -378,7 +378,7 @@ subroutine setparams()
 			close(fread)
 		else
 			open(unit= fread, file = "OLSWageTrend_CS1.csv")
-			do j=1,19
+			do j=1,(7 + Nskill+(Nknots)*(Nskill+1))
 				read(fread,*) wage_coef_CS_read(j)
 			enddo
 			close(fread)
@@ -555,8 +555,10 @@ subroutine setparams()
 		enddo
 	endif
 
+
+	!read the coefficients in:
 	occwg_datcoef = 0._dp
-	occwg_datspline = 0._dp
+	occwg_datsplncoef = 0._dp
 	occwg_datcoef_sqr   = 0._dp
 	if( tr_spline .eqv. .false. ) then
 		allocate(wc_guess_nolev(NTpolyT+Nskill+2))
@@ -599,22 +601,22 @@ subroutine setparams()
 		if(wglev_0 .eqv. .false.) allocate(wage_coef(Nknots-1 + Nskill*Nknots+5) )
 		wage_coef = 0._dp
 
-		t= 7
+		t= 6
 		do j=1,Nskill
-			occwg_datspline(j) = wage_coef_CS_read(t)
+			occwg_datsplncoef(j) = wage_coef_CS_read(t)
 			t = t+1
 		enddo
 		do j=1,(Nknots-1)
-			occwg_datspline(j+Nskill) = wage_coef_CS_read(t)
+			occwg_datsplncoef(j+Nskill) = wage_coef_CS_read(t)
 			t = t+1
 		enddo
 		do k=1,NSkill
 			do j=1,(Nknots-1)
-				occwg_datspline(j +(k-1)*(Nknots-1) + Nskill+(Nknots-1)) = wage_coef_CS_read(t)
+				occwg_datsplncoef(j +(k-1)*(Nknots-1) + Nskill+(Nknots-1)) = wage_coef_CS_read(t)
 				t =t+1
 			enddo
 		enddo
-		wage_coef = occwg_datspline
+		wage_coef = occwg_datsplncoef
 	endif
 
 	!use the coefficients to set the trends (stored in occwg_dattrend):
@@ -628,7 +630,7 @@ subroutine setparams()
 					it = TossYears*itlen
 				endif
 				do k=1,Nskill
-					occwg_dattrend(t,j) = occwg_datspline(k)*occ_onet(j,k) +occwg_dattrend(t,j)
+					occwg_dattrend(t,j) = occwg_datsplncoef(k)*occ_onet(j,k) +occwg_dattrend(t,j)
 				enddo
 				tbase = 0._dp
 				tbase(1) = (dble(it)/tlen - dble(TossYears))
@@ -645,11 +647,11 @@ subroutine setparams()
 				enddo
 				tbase_out(t,:) = tbase
 				do i=1,(Nknots-1)
-					occwg_dattrend(t,j) = occwg_datspline(i+Nskill)*tbase(i) +occwg_dattrend(t,j)
+					occwg_dattrend(t,j) = occwg_datsplncoef(i+Nskill)*tbase(i) +occwg_dattrend(t,j)
 				enddo
 				do k=1,Nskill
 					do i=1,(Nknots-1)
-						occwg_dattrend(t,j) = occwg_datspline(i+(k-1)*(Nknots-1)+Nskill+Nknots-1)*tbase(i)*occ_onet(j,k) &
+						occwg_dattrend(t,j) = occwg_datsplncoef(i+(k-1)*(Nknots-1)+Nskill+Nknots-1)*tbase(i)*occ_onet(j,k) &
 								& + occwg_dattrend(t,j)
 					enddo
 				enddo
@@ -784,11 +786,17 @@ subroutine setparams()
 
 	!from Mincer regressions (see Appendix) with Heckman 2-step
 	wtau(1) =  0.0
-	wtau(2) =  0.0757/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(2)-agegrid(1))
-	wtau(3) =  0.0757/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(3)-agegrid(1))
-	wtau(4) =  0.0157
-	wtau(5) = -0.0661
-
+	!wtau(2) =  0.0757/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(2)-agegrid(1))
+	!wtau(3) =  0.0757/(.5*agegrid(2)+.5*agegrid(3)-agegrid(1))*(agegrid(3)-agegrid(1))
+	!wtau(4) =  0.0157
+	!wtau(5) = -0.0661
+	do i=1,(TT-1)
+		wtau(i)  = 0.0213453024627902*(agegrid(i)-13.5) - 0.000765398276859*(agegrid(i)-13.5)**2
+	enddo
+	do i=(TT-1),1,(-1)
+		wtau(i)  = wtau(i) -wtau(1)
+	enddo
+	
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
 	ptau(1) = 1-(tlen*youngD)**(-1)
@@ -1041,8 +1049,8 @@ subroutine setparams()
 	!Disability Extent-Specific Things
 	!Wage Penalty
 	wd(1) = 0.		!Healthy, no penalty
-	wd(2) = -0.075746904	!Partially Disabled, small penalty
-	wd(3) = -0.182154425	!Full Disabled, large penalty
+	wd(2) = -0.074520650705695	!Partially Disabled, small penalty
+	wd(3) = -0.195639344387911	!Full Disabled, large penalty
 	!Fixed cost of particpation
 	Fd = 0.
 	!Fd(2,1) = 0.276*5

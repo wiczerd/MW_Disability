@@ -4371,9 +4371,9 @@ module sim_hists
 						endif
 					endif
 					if( (w_strchng .eqv. .true.) .and. (it > TossYears*itlen ) )then
-						shk%wtr_it(i,it) = wage_trend(it,j_hr) + wage_lev(j_hr) - wtr_tmean_ts(it)
+						shk%wtr_it(i,it) = wage_trend(it,j_hr) + wage_lev(j_hr) 
 					else
-						shk%wtr_it(i,it) = wage_lev(j_hr) - wtr_tmean_ts(it)
+						shk%wtr_it(i,it) = wage_lev(j_hr) 
 					endif
 					tri_hr = finder(trgrid,shk%wtr_it(i,it))
 
@@ -4802,12 +4802,13 @@ module sim_hists
 			if(verbose >0 .and. nomatch>0)  print *, "did match for new borns in period >1 ", nomatch, " times"
 
 			ii =1
+			wtr_scale = 0._dp
+				
 			do it=1,Tsim
 				wtr_tmean_ts(it) = 0._dp
 				junk = 0._dp
 				ii = 1
 				wtr_avg = 0._dp ! actually the average sum of suqares here
-				wtr_scale = 0._dp
 				do i=1,Nsim
 					if( hst%status_hist(i,it) .ge. 1 .and. hst%status_hist(i,it) .le. 3 &
 					&  .and. shk%age_hist(i,it)>0) then
@@ -6182,7 +6183,7 @@ program V0main
 		call mat2csv(occwg_dattrend,"occwg_dattrend.csv")
 		call vec2csv(occwg_datlev,"occwg_datlev.csv")
 		if(tr_spline .eqv. .true.) then
-			call vec2csv(occwg_datspline,"occwg_datspline.csv")
+			call vec2csv(occwg_datsplncoef,"occwg_datsplncoef.csv")
 		else
 			if(NKpolyT >=2) then
 				call mat2csv(occwg_datcoef_sqr,"occwg_datcoefs.csv")
@@ -6472,7 +6473,7 @@ program V0main
 	print *, "about to read everything "
 	open(unit = fread, file= "wage_coef_opt.csv")
 	if( tr_spline .eqv. .true. ) then
-		do i=1,size(occwg_datspline)
+		do i=1,size(occwg_datsplncoef)
 			read(fread, *) wage_coef(i)
 		enddo
 	else
