@@ -17,6 +17,7 @@ save
 character(LEN=10), parameter ::    sfile = 'one'	!Where to save things
 character(len=18) :: caselabel
 character(len=10) :: callog = "callog.log"
+character(len=15) :: buffer
 integer           :: fcallog = 7
 
 integer, parameter:: dp=kind(0.d0) ! double precision
@@ -60,12 +61,12 @@ integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
 			Nknots   = 5,& 			! Number of knots
 			max_DFBOLS = 150, &		!Iterations on DFBOLS
 			maxiter = 2000, &		!Tolerance parameter
-			Nsim = 20000,&   !5000*nj	!how many agents to draw
+			Nsim = 40000,&   !5000*nj	!how many agents to draw
 			year0 = 1984, &			!when simulation starts and stops
 			yearT = 2013, &
-			TossYears = 7, & 		!number of years to run and throwaway
+			TossYears = 5, & 		!number of years to run and throwaway
 			Tsim = itlen*(yearT - year0+1 + TossYears), &	!how many periods to solve for simulation
-			init_yrs = 5,&			!how many years for calibration to initial state of things
+			init_yrs = 3,&			!how many years for calibration to initial state of things
 			init0_yrs= TossYears+1,&	!how many years buffer before calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
@@ -251,7 +252,7 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		old_target = 0.46,&		!fraction over 55
 		avg_unrt = 0.056,&	!average rate of unemployment over the period.
 		avg_undur = 3.,&	! average months of unemployment
-		avg_frt   = .3242085 ,&	! average rate of long-term unemployment
+		avg_frt   = .3242085 ,&	! average rate of job finding from U
 		award_age_target  = 0.8/0.3,&	!target for increase in vocation due to age (from Chen & van der Klaauw page 771 ) In levels it's (0.093+0.287)
 		p1d1_2545target = 1. ,&	! normalize how much young healthy participate
 		p1d2_2545target = 0.7562,&	! how much less d=2 participate: (.927-.226)/.927 
@@ -266,9 +267,9 @@ real(8) :: p1d1_target, p1d2_target, p1d3_target
 !Preferences----------------------------------------------------------------!
 ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
 
-real(8) :: 	gam	= 1.5, &	!IES
-		eta 	= -0.185, &	!Util cost of participation
-		theta 	= -0.448	!Util cost of disability
+real(8) :: 	gam	= 2. , & !1.5, &	!IES
+		eta 	= 0. , & !-0.185, &	!Util cost of participation
+		theta 	= 0. !-0.448	!Util cost of disability
 
 integer :: print_lev, verbose
 logical :: simp_concav = .false.
@@ -378,7 +379,7 @@ subroutine setparams()
 			close(fread)
 		else
 			open(unit= fread, file = "OLSWageTrend_CS1.csv")
-			do j=1,(7 + Nskill+(Nknots)*(Nskill+1))
+			do j=1,21 !(7 + Nskill+(Nknots-1)*(Nskill+1))
 				read(fread,*) wage_coef_CS_read(j)
 			enddo
 			close(fread)
@@ -751,8 +752,13 @@ subroutine setparams()
 	do i =1,nz
 		do j=1,nj
 			k = 3-i !flip, recession is 1 and expansion is 2 in markov chain
-			fndrate(i,j) = UE_occ_read(k,j)
-			seprisk(i,j) = EU_occ_read(k,j)
+			if(i==1) then 
+				fndrate(i,j) = 0.20 ! UE_occ_read(k,j)
+				seprisk(i,j) = 0.075*avg_frt/(1.-0.075) ! EU_occ_read(k,j)
+			else 
+				fndrate(i,j) = 0.35 ! UE_occ_read(k,j)
+				seprisk(i,j) = 0.045*avg_frt/(1.-0.045) ! EU_occ_read(k,j)
+			endif
 		enddo
 	enddo
 
@@ -782,7 +788,7 @@ subroutine setparams()
 	enddo
 	agegrid(TT) = Longev/2 - (youngD + oldD*oldN) /2 + (youngD + oldD*oldN)
 
-	agegrid = agegrid + 10._dp !started them at 30, but they've been working since 20
+	agegrid = agegrid + 10._dp !started them at 30, but they'veeen working since 20
 
 	!from Mincer regressions (see Appendix) with Heckman 2-step
 	wtau(1) =  0.0
@@ -791,7 +797,7 @@ subroutine setparams()
 	!wtau(4) =  0.0157
 	!wtau(5) = -0.0661
 	do i=1,(TT-1)
-		wtau(i)  = 0.0213453024627902*(agegrid(i)-13.5) - 0.000765398276859*(agegrid(i)-13.5)**2
+		wtau(i)  = 0.0213453024627902*(agegrid(i)-10) - 0.000765398276859*(agegrid(i)-10)**2
 	enddo
 	do i=(TT-1),1,(-1)
 		wtau(i)  = wtau(i) -wtau(1)
