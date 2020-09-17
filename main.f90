@@ -1651,7 +1651,7 @@ module sol_val
 				do izz = 1,nz	 !Loop over z'
 				do ialal = ialL,nal !Loop over alpha_i'
 				do idd = 1,nd
-					xihr = xifun(id,trgrid(itr),it,maxval(trgrid)) ! <- when it depended on trend
+					xihr = xifun(id,trgrid(itr),it,0._dp ) ! <- when it depended on trend
 					!xihr = xifun(id, wage(trgrid(itr),alfgrid(ialal,id),idd,it), it, wmean)
 
 					if(ial == ialUn) ialalhr = ialUn
@@ -1813,7 +1813,7 @@ module sol_val
 			gwork_pol = 0
 		endif
 		smthV = dexp( smthV0param *(VWhere -VUhere) ) &
-			& /( dexp(smthV0param *(VWhere -VUhere)) + 1 )
+			& /( dexp(smthV0param *(VWhere -VUhere)) + 1._dp )
 		if (smthV <1e-5 .or. smthV>.999999 .or. isnan(smthV) ) then
 			if(VWhere >=  VUhere)	smthV = 1._dp
 			if(VWhere  <  VUhere)	smthV = 0.
@@ -2023,7 +2023,7 @@ module sol_val
 		enddo ! iteration iter
 
 		if(sumer >= Vtol) then
-			print *, "VR did not converge"
+			print *, "VR did not converge and distance is", sumer
 		endif
 
 		i = 1
@@ -2582,7 +2582,6 @@ module sol_val
 						iaN = iaN+1
 						ia_o(iaN) = ia
 
-
 						ia = na
 						iaa0 = aW((il-1)*ntr+itr,(idi-1)*nal+ial,id,ie,1,iz,it)
 						iaaA = na
@@ -2724,7 +2723,7 @@ module sol_val
 				if(iter>=maxiter-1) then
 					iter_timeout = iter_timeout+1
 				endif
-				if(iter<200) smthV0param = smthV0param*1.01_dp !tighten up the discrete choice
+!				if(iter<200) smthV0param = smthV0param*1.01_dp !tighten up the discrete choice
 			enddo	!iter: V-iter loop
 	!WRITE(*,*) il, itr, idi, it
 		enddo	!t loop, going backwards
@@ -5041,7 +5040,7 @@ module find_params
 	use sol_val
 	use sim_hists
 	use model_data
-	use mpi
+	!use mpi
 
 	implicit none
 
@@ -5329,13 +5328,13 @@ module find_params
 		do it=2,size(realwagegrowth)
 			realwagegrowth(it) = exp(realwagegrowth(it)/100.)*realwagegrowth(it-1)
 		enddo
-		do ij=1,nj
-			do it=1,Tsim
-				if(it>TossYears*itlen) then
-					new_wgtrend(it,ij) = new_wgtrend(it,ij) - log(realwagegrowth(it/itlen- TossYears+1))
-				endif
-			enddo
-		enddo
+		!do ij=1,nj
+		!	do it=1,Tsim
+		!		if(it>TossYears*itlen) then
+		!			new_wgtrend(it,ij) = new_wgtrend(it,ij) - log(realwagegrowth(it/itlen- TossYears+1))
+		!		endif
+		!	enddo
+		!enddo
 
 
 		call mat2csv(tbase_out, "tbase_main.csv")
@@ -5399,7 +5398,7 @@ module find_params
 		ui = fread + 11
 
 		if(readflag .eqv. .true.) then
-			open(unit = ui, file=fname)
+			open(unit = ui, file=fname, action='read')
 			do i=1,nopt_pars
 				read(ui,*) paramvecw(i)
 			enddo
@@ -5445,7 +5444,7 @@ module find_params
 
 		call set_glbparams(paramvec)
 
-		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
+!		call mpi_comm_rank(mpi_comm_world,rank_hr,ierr)
 		call alloc_econ(vfs,pfs,hst)
 
 		! set up economy and solve it
@@ -5623,8 +5622,10 @@ module find_params
 		print_lev = 0
 		verbose = 1
 
-		call mpi_comm_size(mpi_comm_world,nnode,ierr)
-		call mpi_comm_rank(mpi_comm_world,rank,ierr)
+!		call mpi_comm_size(mpi_comm_world,nnode,ierr)
+!		call mpi_comm_rank(mpi_comm_world,rank,ierr)
+		nnode = 1
+		rank = 0
 		print *, "Starting on node ", rank, "out of ", nnode
 		!set ndraw to do it only once:
 		ndraw = nnode*nstartpn
@@ -5793,12 +5794,12 @@ module find_params
 			close(unit=fcallog)
 
 			!pull together all of the optimization arguments
-			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, world_fopts,&
-			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
-			call mpi_allgather( node_xopts, nopt*nstartpn, MPI_DOUBLE, world_xopts,&
-			&		nopt*nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
-			call mpi_allgather( node_internalopt, ninternalopt*nstartpn, MPI_DOUBLE, world_internalopt,&
-			&		ninternalopt*nstartpn, MPI_DOUBLE,mpi_comm_world, ierr )
+!			call mpi_allgather( node_fopts, nstartpn, MPI_DOUBLE, world_fopts,&
+!			&		nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
+!			call mpi_allgather( node_xopts, nopt*nstartpn, MPI_DOUBLE, world_xopts,&
+!			&		nopt*nstartpn, MPI_DOUBLE,mpi_comm_world, ierr)
+!			call mpi_allgather( node_internalopt, ninternalopt*nstartpn, MPI_DOUBLE, world_internalopt,&
+!			&		ninternalopt*nstartpn, MPI_DOUBLE,mpi_comm_world, ierr )
 
 
 			nstarts = (d-1)*(nnode*nstartpn)
@@ -6026,7 +6027,7 @@ program V0main
 	use sim_hists
 	use model_data
 	use find_params
-	use mpi
+!	use mpi
 
 	implicit none
 
@@ -6078,12 +6079,12 @@ program V0main
 	allocate(parvec(nopt_tgts))
 !	occ_dat = .false.
 	ierr =0
-	call mpi_init(ierr)
-	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
-	call mpi_comm_size(mpi_comm_world,nnode,ierr)
+!	call mpi_init(ierr)
+!	call mpi_comm_rank(mpi_comm_world,nodei,ierr)
+!	call mpi_comm_size(mpi_comm_world,nnode,ierr)
 	nopt = nopt_tgts
 
-	print *, "Running version Feb 17, 2020"
+	print *, "Running version June 9, 2020"
 	print *, "Starting on node ", nodei, "out of ", nnode
 
     call date_and_time(DATE=date,ZONE=zone)
@@ -6597,7 +6598,6 @@ program V0main
 		endif
 		parvec = x0w( 1:nopt_pars )
 
-
 		call gen_new_wgtrend(wage_trend,wage_coef)
 		caselabel = "delocc_CF"
 	 	print *, caselabel, " ---------------------------------------------------"
@@ -7023,7 +7023,7 @@ program V0main
 	deallocate(parvec)
 	call dealloc_shocks(shk)
 
-	call mpi_finalize(ierr)
+!	call mpi_finalize(ierr)
 
 
 

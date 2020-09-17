@@ -46,13 +46,13 @@ integer, parameter :: oldN = 4,&	!4!Number of old periods
 !----------------------------------------------------------------------------!
 
 !**Programming Parameters***********************!
-integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
-			ntr = 7,    &!7	        !Number of occupation trend points
+integer, parameter ::	nal = 4,  &!6		!Number of individual alpha types
+			ntr = 5,    &!7	        !Number of occupation trend points
 			ndi = 2,    &		    !Number of individual disability risk types
-			nl	= 2,    &			!Number of finding/separation rates
+			nl	= 1,    &			!Number of finding/separation rates
 			nd  = 3,    &		    !Number of disability extents
-			ne  = 5,    &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
-			na  = 30,   &!50	    !Points on assets grid
+			ne  = 4,    &!5	        !Points on earnings grid - should be 1 if hearnlw = .true.
+			na  = 25,   &!50	    !Points on assets grid
 			nz  = 2,    &		    !Number of aggregate shock states
 			nj  = 16,   &!16		!Number of occupations
 			Nskill  = 2,&			!number of skills that define occupations. First is always physical
@@ -60,14 +60,14 @@ integer, parameter ::	nal = 6,  &!6		!Number of individual alpha types
 			NTpolyT = 2,& 			!polynomial order for time trend overall or number of spline segments
 			Nknots   = 5,& 			! Number of knots
 			max_DFBOLS = 150, &		!Iterations on DFBOLS
-			maxiter = 2000, &		!Tolerance parameter
+			maxiter = 800, &		!Tolerance parameter
 			Nsim = 40000,&   !5000*nj	!how many agents to draw
 			year0 = 1984, &			!when simulation starts and stops
 			yearT = 2013, &
 			TossYears = 5, & 		!number of years to run and throwaway
 			Tsim = itlen*(yearT - year0+1 + TossYears), &	!how many periods to solve for simulation
 			init_yrs = 3,&			!how many years for calibration to initial state of things
-			init0_yrs= TossYears+1,&	!how many years buffer before calibration to initial state of things
+			init0_yrs= TossYears,&	!how many years buffer before calibration to initial state of things
 			struc_brk = 20,&	    ! when does the structural break happen
 			Nk   = TT+(nd-1)*2+2,&	!number of regressors - each age-1, each health and leading, occupation dynamics + 1 constant
 			fread = 10
@@ -80,10 +80,12 @@ logical            :: tr_spline  = .true.,& 	! use spline or global polynomials 
 					  ineligNoNu = .false.,&	!do young ineligable also pay the nu cost when they are ineligable?
 					  dieyoung   = .true.,&		!do the young die (rate associated with health state)
 					  w_strchng	 = .true.,&     ! w gets fed a structural change sequence
-					  wglev_0	 = .false. ,&  	!should the initial wage level be 0 for all occupations
+					  wglev_0	 = .true. ,&  	!should the initial wage level be 0 for all occupations
 					  noDI       = .false. ,&   !cannot get DI, even if they want it
 					  nu_byD     = .true.  ,&   ! use different xiz for different health levels??
-					  readshocks = .false.		!readshocks from disk?
+					  readshocks = .false.	,&	!readshocks from disk?
+					  allow_wtr_tmean = .true., &
+					  nomeantrend = .true. !turn off mean wage trend
 
 
 ! these relate to what's changing over the simulation/across occupation
@@ -233,7 +235,7 @@ logical  :: cal_on_iter_wgtrend = .true.
 integer  :: cal_niter = 0
 real(8)  :: cal_obj = 1.
 
-real(8), allocatable  :: wc_guess_nolev(:), wc_guess_lev(:)
+
 
 logical  :: cal_on_grad = .false.
 
@@ -255,14 +257,14 @@ real(8) :: apprt_target = .01,&	!target for application rates (to be filled belo
 		avg_frt   = .3242085 ,&	! average rate of job finding from U
 		award_age_target  = 0.8/0.3,&	!target for increase in vocation due to age (from Chen & van der Klaauw page 771 ) In levels it's (0.093+0.287)
 		p1d1_2545target = 1. ,&	! normalize how much young healthy participate
-		p1d2_2545target = 0.7562,&	! how much less d=2 participate: (.927-.226)/.927 
+		p1d2_2545target = 0.7562,&	! how much less d=2 participate: (.927-.226)/.927
 		p1d3_2545target = 0.1737,&	! how much less d=3 participate: (.927-.766)/.927
 		p1d1_4665target = 0.9364,&	! how much less d=2 participate: (.927-.059)/.927
-		p1d2_4665target = 0.5383,&	! how much less d=2 participate: (.927-.428)/.927	
+		p1d2_4665target = 0.5383,&	! how much less d=2 participate: (.927-.428)/.927
 		p1d3_4665target = 0.0831,&	! how much less d=3 participate: (.927-.850)/.927
 		allowrt_target  = 0.677		! average allowance rate (finally allowed from Autor et al Delay Decay)
 
-real(8) :: p1d1_target, p1d2_target, p1d3_target 
+real(8) :: p1d1_target, p1d2_target, p1d3_target
 
 !Preferences----------------------------------------------------------------!
 ! u(c,p,d) = 1/(1-gam)*(c*e^(theta*d)*e^(eta*p))^(1-gam)
@@ -293,8 +295,7 @@ subroutine setparams()
 	real(8) :: UE_occ_read(2,16),EU_occ_read(2,16), apprt_read(50,2), ONET_read(16,4)
 	real(8) :: pid_tmp(nd,nd,TT-1),causal_phys_read(16), PrDDp_Age_read(15,4), PrD_Age_read(6,4),pid_in_read(6,5),PrDeath_in_read(15)
 	real(8) :: age_read_wkr(38),occpr_read_wkr(yearT-year0+1)
-	real(8) :: wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(22),wage_coef_CS_read(25)
-
+	real(8) :: wage_coef_O2_read(17),wage_coef_O3_read(21),wage_coef_O1_read(22),wage_coef_CS_read(25), realwagegrowth(36)
 
 	real(8) :: pid1(nd,nd),r1(nd),s1(nd),PrDage_tp1(nd,TT-1)
 
@@ -313,7 +314,7 @@ subroutine setparams()
 	print_lev = 2
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-	
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	! Read things in:
 
@@ -562,8 +563,6 @@ subroutine setparams()
 	occwg_datsplncoef = 0._dp
 	occwg_datcoef_sqr   = 0._dp
 	if( tr_spline .eqv. .false. ) then
-		allocate(wc_guess_nolev(NTpolyT+Nskill+2))
-		allocate(wc_guess_lev(NTpolyT+Nskill*2+2))
 		if(wglev_0 .eqv. .false.) allocate(wage_coef(NTpolyT+Nskill*2+5))
 		if(wglev_0 .eqv. .true.) allocate(wage_coef(NTpolyT+Nskill+5))
 		wage_coef = 0._dp
@@ -596,10 +595,9 @@ subroutine setparams()
 		endif
 		wage_coef = occwg_datcoef
 	else
-		allocate(wc_guess_nolev((Nskill+1)*(Nknots-1)+2))
-		allocate(wc_guess_lev( Nknots-1+ Nskill*Nknots +2 ))
-		if(wglev_0 .eqv. .true.) allocate(wage_coef((Nskill+1)*(Nknots-1)+5) )
-		if(wglev_0 .eqv. .false.) allocate(wage_coef(Nknots-1 + Nskill*Nknots+5) )
+	!	if(wglev_0 .eqv. .true.) allocate(wage_coef((Nskill+1)*(Nknots-1)+5) )
+	!	if(wglev_0 .eqv. .false.)
+		allocate(wage_coef(Nknots-1 + Nskill*Nknots+5) )
 		wage_coef = 0._dp
 
 		t= 6
@@ -607,8 +605,13 @@ subroutine setparams()
 			occwg_datsplncoef(j) = wage_coef_CS_read(t)
 			t = t+1
 		enddo
+		! Allow an overall trend or not?
 		do j=1,(Nknots-1)
-			occwg_datsplncoef(j+Nskill) = wage_coef_CS_read(t)
+			if(allow_wtr_tmean .eqv. .true.) then
+				occwg_datsplncoef(j+Nskill) = wage_coef_CS_read(t)
+			else
+				occwg_datsplncoef(j+Nskill) = 0._dp
+			endif
 			t = t+1
 		enddo
 		do k=1,NSkill
@@ -617,6 +620,8 @@ subroutine setparams()
 				t =t+1
 			enddo
 		enddo
+
+
 		wage_coef = occwg_datsplncoef
 	endif
 
@@ -647,13 +652,21 @@ subroutine setparams()
 					tbase(i+1) = tbase(i+1)*(tr_knots(Nknots)-tr_knots(1))**(-2)
 				enddo
 				tbase_out(t,:) = tbase
-				do i=1,(Nknots-1)
-					occwg_dattrend(t,j) = occwg_datsplncoef(i+Nskill)*tbase(i) +occwg_dattrend(t,j)
-				enddo
+
+				if(nomeantrend .eqv. .false. )then
+					do i=1,(Nknots-1)
+						occwg_dattrend(t,j) = occwg_datsplncoef(i+Nskill)*tbase(i) +occwg_dattrend(t,j)
+					enddo
+				endif
 				do k=1,Nskill
 					do i=1,(Nknots-1)
-						occwg_dattrend(t,j) = occwg_datsplncoef(i+(k-1)*(Nknots-1)+Nskill+Nknots-1)*tbase(i)*occ_onet(j,k) &
-								& + occwg_dattrend(t,j)
+						if (k>1) then
+							occwg_dattrend(t,j) = occwg_datsplncoef(i+(k-1)*(Nknots-1)+Nskill+Nknots-1)*tbase(i)*occ_onet(j,k) &
+									& + occwg_dattrend(t,j)
+						else
+							occwg_dattrend(t,j) = occwg_datsplncoef(i+(k-1)*(Nknots-1)+Nskill+Nknots-1)*tbase(i)*occ_onet(j,k) &
+									& + occwg_dattrend(t,j)
+						endif
 					enddo
 				enddo
 			enddo !Tsim
@@ -706,23 +719,50 @@ subroutine setparams()
 		endif !square coefficients or linear
 	endif !spline or global polynomial
 
-	!initialize the input to the observed
-	do i=1,nj
-		occwg_datlev(i) = occwg_dattrend(TossYears*itlen,i)
-		occwg_dattrend(:,i) = occwg_dattrend(:,i) - occwg_datlev(i)
+	!deflate by real wage growth (series LEU0252881600A_PC1, median wage of hourly and salaried workers from the CPS)
+	realwagegrowth = (/ 0., 1.91083, 2.1875, 0.61162, -0.91185, -1.22699, -2.17391, -0.63492, 0.31949, 0.95541, -0.63091, -0.31746, -0.31847, 0.31949, 2.2293, 2.49221, 1.51976, 0.5988, 0.59524, -0.29586, 0.29674, -1.47929, 0., 0.6006, 0., 2.98507, -0.86957, -1.75439, -0.29762, -0.59701, 0.3003, 2.09581, 1.75953, 1.15274, 0.5698, 1.69972  /)
+	realwagegrowth(1) = exp(realwagegrowth(1))
+	do t=2,size(realwagegrowth)
+		realwagegrowth(t) = exp(realwagegrowth(t)/100.)*realwagegrowth(t-1)
 	enddo
+	!do i=1,nj
+	!	do t=1,Tsim
+	!		if(t>TossYears*itlen) then
+	!			occwg_dattrend(t,i) = occwg_dattrend(t,i) - log(realwagegrowth(t/itlen- TossYears+1))
+	!		endif
+	!	enddo
+	!enddo
+
+	!initialize the input to the observed
 	if(wglev_0 .eqv. .true.) then
 		wage_lev = 0._dp
+		do i=1,nj
+			occwg_datlev(i) = occwg_dattrend(TossYears*itlen,i)
+			occwg_dattrend(:,i) = occwg_dattrend(:,i) - occwg_datlev(i)
+		enddo
 	else
-		wage_lev = occwg_datlev
+		occwg_datlev = 0.
+		wage_lev = 0._dp
 	endif
 	wage_trend = occwg_dattrend
 
 
 	!Wage-trend grid-setup
 	trgrid(1) = (minval(wage_trend(Tsim,:) + wage_lev ))*1.1_dp
+	do t=1,Tsim
+		do i=1,nj
+			if(trgrid(1)> wage_trend(t,i) + wage_lev(i) ) trgrid(1)= wage_trend(t,i) + wage_lev(i)
+		enddo
+	enddo
+
 	if(ntr>1) then
 		trgrid(ntr) = (maxval(wage_trend(Tsim,:)+wage_lev))*1.2_dp
+		do t=1,Tsim
+			do i=1,nj
+				if(trgrid(ntr)< wage_trend(t,i) + wage_lev(i) ) trgrid(ntr)= wage_trend(t,i) + wage_lev(i)
+			enddo
+		enddo
+
 		do tri=2,(ntr-1)
 			trgrid(tri) = dble(tri-1)*(trgrid(ntr)-trgrid(1))/dble(ntr-1) + trgrid(1)
 		enddo
@@ -752,23 +792,28 @@ subroutine setparams()
 	do i =1,nz
 		do j=1,nj
 			k = 3-i !flip, recession is 1 and expansion is 2 in markov chain
-			if(i==1) then 
-				fndrate(i,j) = 0.20 ! UE_occ_read(k,j)
-				seprisk(i,j) = 0.075*avg_frt/(1.-0.075) ! EU_occ_read(k,j)
-			else 
-				fndrate(i,j) = 0.35 ! UE_occ_read(k,j)
-				seprisk(i,j) = 0.045*avg_frt/(1.-0.045) ! EU_occ_read(k,j)
+			if(i==1) then
+				fndrate(i,j) = 0.17 ! UE_occ_read(k,j)
+				seprisk(i,j) = 0.0793*fndrate(i,j)/(1.-0.0793) ! EU_occ_read(k,j)
+			else
+				fndrate(i,j) = 0.27 ! UE_occ_read(k,j)
+				seprisk(i,j) = 0.05*fndrate(i,j)/(1.-0.05) ! EU_occ_read(k,j)
 			endif
 		enddo
 	enddo
 
 	do i=1,nz
-		do j=1,nl
+		if(nl>1) then
+			do j=1,nl
 
-			fndgrid(j,i) = (maxval(fndrate(i,:))-minval(fndrate(i,:))) *dble( j-1 )/dble(nl-1) + minval(fndrate(i,:))
-			sepgrid(j,i) = (maxval(seprisk(i,:))-minval(seprisk(i,:))) *dble( j-1 )/dble(nl-1) + minval(seprisk(i,:))
+				fndgrid(j,i) = (maxval(fndrate(i,:))-minval(fndrate(i,:))) *dble( j-1 )/dble(nl-1) + minval(fndrate(i,:))
+				sepgrid(j,i) = (maxval(seprisk(i,:))-minval(seprisk(i,:))) *dble( j-1 )/dble(nl-1) + minval(seprisk(i,:))
 
-		enddo
+			enddo
+		else
+			fndgrid(1,i) = fndrate(i,1)
+			sepgrid(1,i) = seprisk(i,1)
+		endif
 	enddo
 
 	! TFP
@@ -802,7 +847,7 @@ subroutine setparams()
 	do i=(TT-1),1,(-1)
 		wtau(i)  = wtau(i) -wtau(1)
 	enddo
-	
+
 	!Aging Probability (actually, probability of not aging)
 	! Mean Duration = (pr(age))^(-1)-1 <--in 1/tlen units
 	ptau(1) = 1-(tlen*youngD)**(-1)
@@ -1248,14 +1293,17 @@ subroutine settfp()
 	ergpi2  = 0.
 
 	!reset separation/finding probabilities:
-	do i=1,nz
-		do j=1,nl
-
-			fndgrid(j,i) = (maxval(fndrate(i,:))-minval(fndrate(i,:))) *dble( j-1 )/dble(nl-1) + minval(fndrate(i,:))
-			sepgrid(j,i) = (maxval(seprisk(i,:))-minval(seprisk(i,:))) *dble( j-1 )/dble(nl-1) + minval(seprisk(i,:))
-
-		enddo
-	enddo
+	! do i=1,nz
+	! 	do j=1,nl
+	! 		if(nl>1) then
+	! 			fndgrid(j,i) = (maxval(fndrate(i,:))-minval(fndrate(i,:))) *dble( j-1 )/dble(nl-1) + minval(fndrate(i,:))
+	! 			sepgrid(j,i) = (maxval(seprisk(i,:))-minval(seprisk(i,:))) *dble( j-1 )/dble(nl-1) + minval(seprisk(i,:))
+	! 		else
+	! 			fndgrid(1,i) = fndrate(i,1)
+	! 			sepgrid(1,i) = seprisk(i,1)
+	! 		endif
+	! 	enddo
+	! enddo
 
 	if( nz>2 ) then !using z process
 
