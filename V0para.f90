@@ -30,7 +30,7 @@ real(8), parameter ::	youngD = 15., &	!Length of initial young period
 		oldD = 5., &		!Length of each old period
 		tlen =12., &		!Number of periods per year (monthly)
 		Longev = 82.- 30.,&	!Median longevity
-		UIrr = 0.8, &		!Replacement Rate in UI
+		UIrr = 0.75, &		!Replacement Rate in UI
 		eligY  = 0.834,&	!0.834 : Fraction young who are eligable
 		R = dexp(.016/tlen),&	!People can save in the backyard
 		upd_zscl = 0.1,&		! rate at which to update zshift
@@ -85,7 +85,7 @@ logical            :: tr_spline  = .true.,& 	! use spline or global polynomials 
 					  nu_byD     = .true.  ,&   ! use different xiz for different health levels??
 					  readshocks = .false.	,&	!readshocks from disk?
 					  allow_wtr_tmean = .true., &
-					  nomeantrend = .true. !turn off mean wage trend
+					  nomeantrend = .false. !turn off mean wage trend
 
 
 ! these relate to what's changing over the simulation/across occupation
@@ -106,7 +106,7 @@ logical			  ::  run_experiments = .false., &
 					  elast_xi 	 = .false.   !calculate the elasticity of w.r.t. xi?
 
 
-real(8), parameter ::  amax 	 = 24.0,   &	!Max on Asset Grid
+real(8), parameter ::  amax 	 = 18.0,   &	!Max on Asset Grid
 					   amin = 0.0	   	!Min on Asset Grid
 
 
@@ -189,7 +189,7 @@ real(8) :: 	beta= dexp(-.025/tlen),&	!People are impatient (5% annual discount r
 		alfmu(nd) = 0.0,&		!Mean of Alpha_i type
 		alfcondsig(nd) = 0.015**0.5,&	!Conditional StdDev of Alpha_i type (Normal)
 !
-		LTUrr = 0.4,&			!Home production income
+		LTUrr = 0.35,&			!Home production income
 		lrho = 0.5,&		!Discount in the probability of finding a job when long-term unemployed (David)
 		srho = 0.5, &		!Probability of finding a job when short-term unemployed
 		pphi = 0.2, &		!Probability moving to LTU (5 months)
