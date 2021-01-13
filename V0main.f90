@@ -284,7 +284,7 @@ module helper_funs
 
 		diprob = dexp(xifunV)/(1._dp + dexp(xifunV)*prV + dexp(xifunH)) + dexp(xifunH)/(1._dp + dexp(xifunV)*prV + dexp(xifunH))
 		if( diprob>0._dp) then
-			hlthfrac = dexp(xifunH)/(1._dp + dexp(xifunV)*prV + dexp(xifunH))/diprob
+			hlthfrac =  dexp(xifunH)/(1._dp + dexp(xifunV)*prV + dexp(xifunH))/diprob
 		else
 			hlthfrac = 1._dp
 		endif
